@@ -1,0 +1,10 @@
+.git
+logs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+*.pt
+*.pth

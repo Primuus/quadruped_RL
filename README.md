@@ -23,7 +23,38 @@
 
 2. 激活已有的 Isaac Gym conda 环境。
 
-3. 确认当前环境里可以使用 `isaacgym` 和 `rsl-rl`。
+3. 确认当前环境里可以使用 `isaacgym`。
+
+`rsl_rl` 已经随本仓库提供，不需要单独克隆。
+
+## Docker 运行
+
+如果服务器上的 NVIDIA 用户态库和当前加载的内核模块版本不一致，可以直接用 Docker 运行训练环境。
+
+默认会使用这台服务器上的 Isaac Gym 目录：
+
+```bash
+export ISAACGYM_ROOT=/home/hurricane/RL/isaacgym
+```
+
+构建并启动容器：
+
+```bash
+cd ~/quadruped_train
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
+进入容器：
+
+```bash
+docker compose -f docker/docker-compose.yml exec quadruped_train bash
+```
+
+容器里直接跑同样的训练命令即可：
+
+```bash
+python legged_gym/scripts/train_go2.py --headless
+```
 
 ## 训练命令
 

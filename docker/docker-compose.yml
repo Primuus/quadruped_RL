@@ -1,0 +1,27 @@
+services:
+  quadruped_train:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: quadruped_train:go2
+    container_name: quadruped_train
+    stdin_open: true
+    tty: true
+    command: ["/bin/bash", "/workspace/quadruped_train/docker/start.sh"]
+    volumes:
+      - ../:/workspace/quadruped_train
+      - ${ISAACGYM_ROOT:-/home/hurricane/RL/isaacgym}:/opt/isaacgym
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    environment:
+      DISPLAY: ${DISPLAY}
+      QT_X11_NO_MITSHM: "1"
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+      - /dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+      - /dev/nvidia-caps/nvidia-cap1:/dev/nvidia-caps/nvidia-cap1
+      - /dev/nvidia-caps/nvidia-cap2:/dev/nvidia-caps/nvidia-cap2
+    shm_size: '32gb'
+    network_mode: "host"
