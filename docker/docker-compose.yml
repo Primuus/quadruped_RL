@@ -5,16 +5,18 @@ services:
       dockerfile: docker/Dockerfile
     image: quadruped_train:go2
     container_name: quadruped_train
+    init: true
     stdin_open: true
     tty: true
     command: ["/bin/bash", "/workspace/quadruped_train/docker/start.sh"]
     gpus: all
+    working_dir: /workspace/quadruped_train
     volumes:
       - ../:/workspace/quadruped_train
       - ${ISAACGYM_ROOT:-/home/hurricane/RL/isaacgym}:/opt/isaacgym
       - /tmp/.X11-unix:/tmp/.X11-unix
     environment:
-      DISPLAY: ${DISPLAY}
+      DISPLAY: ${DISPLAY:-}
       QT_X11_NO_MITSHM: "1"
     shm_size: '32gb'
     network_mode: "host"
