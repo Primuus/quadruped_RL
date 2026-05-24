@@ -13,7 +13,7 @@ services:
     working_dir: /workspace/quadruped_train
     volumes:
       - ../:/workspace/quadruped_train
-      - ${ISAACGYM_ROOT:?Please set ISAACGYM_ROOT to your Isaac Gym path}:/opt/isaacgym
+      - ${ISAACGYM_ROOT:-../isaacgym}:/opt/isaacgym
       - /tmp/.X11-unix:/tmp/.X11-unix
     environment:
       DISPLAY: ${DISPLAY:-}

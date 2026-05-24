@@ -35,16 +35,9 @@ Docker 里的训练环境和本机 conda 环境是分开的，不会互相影响
 
 - 已安装 Docker 和 NVIDIA Container Toolkit
 - 已能访问 `nvcr.io/nvidia/pytorch:22.12-py3`，首次构建前通常需要先 `docker login nvcr.io`
-- 本机已经下载并解压 Isaac Gym
-- 已设置 `ISAACGYM_ROOT`，或者先复制 `.env.example` 为 `.env`
+- 本机已经下载并解压 Isaac Gym，推荐放在仓库根目录下的 `isaacgym/`
 
-准备环境变量：
-
-```bash
-cp .env.example .env
-```
-
-把 `.env` 里的 `ISAACGYM_ROOT` 改成你本机 Isaac Gym 的绝对路径。
+如果 Isaac Gym 不在仓库根目录下，再设置 `ISAACGYM_ROOT`，或者复制 `.env.example` 作为参考。
 
 如果要在桌面环境里看窗口，可先放开 X11：
 
@@ -55,19 +48,19 @@ xhost +local:root
 构建并启动容器：
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d --build
+bash docker/build.sh
+```
+
+直接跑训练命令：
+
+```bash
+bash docker/build.sh python quadruped_rl/scripts/train_go2.py --headless
 ```
 
 进入容器：
 
 ```bash
-docker compose -f docker/docker-compose.yml exec quadruped_train bash
-```
-
-容器里直接训练：
-
-```bash
-python quadruped_rl/scripts/train_go2.py --headless
+bash docker/build.sh
 ```
 
 常用完整示例：
