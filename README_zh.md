@@ -29,18 +29,32 @@
 
 ## Docker 运行
 
-Docker 镜像默认使用宿主机当前可用的 NVIDIA 驱动库，不再单独下载旧版本用户态库。
+Docker 里的训练环境和本机 conda 环境是分开的，不会互相影响。
 
-默认会使用这台服务器上的 Isaac Gym 目录：
+前提条件：
+
+- 已安装 Docker 和 NVIDIA Container Toolkit
+- 已能访问 `nvcr.io/nvidia/pytorch:22.12-py3`，首次构建前通常需要先 `docker login nvcr.io`
+- 本机已经下载并解压 Isaac Gym
+- 已设置 `ISAACGYM_ROOT`，或者先复制 `.env.example` 为 `.env`
+
+准备环境变量：
 
 ```bash
-export ISAACGYM_ROOT=/home/hurricane/RL/isaacgym
+cp .env.example .env
+```
+
+把 `.env` 里的 `ISAACGYM_ROOT` 改成你本机 Isaac Gym 的绝对路径。
+
+如果要在桌面环境里看窗口，可先放开 X11：
+
+```bash
+xhost +local:root
 ```
 
 构建并启动容器：
 
 ```bash
-cd ~/quadruped_train
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
@@ -50,10 +64,16 @@ docker compose -f docker/docker-compose.yml up -d --build
 docker compose -f docker/docker-compose.yml exec quadruped_train bash
 ```
 
-容器里直接跑同样的训练命令即可：
+容器里直接训练：
 
 ```bash
 python quadruped_rl/scripts/train_go2.py --headless
+```
+
+常用完整示例：
+
+```bash
+python quadruped_rl/scripts/train_go2.py --headless --num_envs 4096 --seed 1 --max_iterations 10000
 ```
 
 ## 训练命令
