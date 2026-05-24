@@ -2,4 +2,3 @@
 #  SPDX-License-Identifier: BSD-3-Clause
 
 from .rollout_storage import RolloutStorage
-from .him_rollout_storage import HIMRolloutStorage

@@ -1,6 +1,0 @@
-from legged_gym.envs.go2.go2_config import GO2RoughCfg, GO2RoughCfgPPO
-from .base.legged_robot import LeggedRobot
-
-from legged_gym.utils.task_registry import task_registry
-
-task_registry.register("go2", LeggedRobot, GO2RoughCfg(), GO2RoughCfgPPO())

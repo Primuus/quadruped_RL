@@ -1,8 +1,8 @@
 import isaacgym
 
-import legged_gym.scripts.play as play_module
-from legged_gym.envs import *
-from legged_gym.utils import get_args
+import quadruped_rl.scripts.play as play_module
+from quadruped_rl.envs import *
+from quadruped_rl.utils import get_args
 
 
 def main():

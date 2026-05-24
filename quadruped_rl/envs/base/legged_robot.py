@@ -1,4 +1,3 @@
-from legged_gym import LEGGED_GYM_ROOT_DIR, envs
 import time
 from warnings import WarningMessage
 import numpy as np
@@ -11,11 +10,11 @@ import torch
 from torch import Tensor
 from typing import Tuple, Dict
 
-from legged_gym import LEGGED_GYM_ROOT_DIR
-from legged_gym.envs.base.base_task import BaseTask
-from legged_gym.utils.math import wrap_to_pi
-from legged_gym.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
-from legged_gym.utils.helpers import class_to_dict
+from quadruped_rl import QUADRUPED_RL_ROOT_DIR
+from quadruped_rl.envs.base.base_task import BaseTask
+from quadruped_rl.utils.math import wrap_to_pi
+from quadruped_rl.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
+from quadruped_rl.utils.helpers import class_to_dict
 from .legged_robot_config import LeggedRobotCfg
 
 class LeggedRobot(BaseTask):
@@ -526,7 +525,7 @@ class LeggedRobot(BaseTask):
                 2.3 create actor with these properties and add them to the env
              3. Store indices of different bodies of the robot
         """
-        asset_path = self.cfg.asset.file.format(LEGGED_GYM_ROOT_DIR=LEGGED_GYM_ROOT_DIR)
+        asset_path = self.cfg.asset.file.format(QUADRUPED_RL_ROOT_DIR=QUADRUPED_RL_ROOT_DIR)
         asset_root = os.path.dirname(asset_path)
         asset_file = os.path.basename(asset_path)
 

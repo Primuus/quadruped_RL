@@ -1,4 +1,4 @@
-from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
+from quadruped_rl.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class GO2RoughCfg( LeggedRobotCfg ):
     class init_state( LeggedRobotCfg.init_state ):
@@ -35,7 +35,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
         decimation = 4
 
     class asset( LeggedRobotCfg.asset ):
-        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf'
+        file = '{QUADRUPED_RL_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf'
         name = "go2"
         foot_name = "foot"
         penalize_contacts_on = ["thigh", "calf"]

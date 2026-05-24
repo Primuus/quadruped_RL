@@ -1,7 +1,7 @@
 from setuptools import find_packages
 from distutils.core import setup
 
-setup(name='quadruped_train',
+setup(name='quadruped_rl',
       version='1.0.0',
       author='Unitree Robotics',
       license="BSD-3-Clause",

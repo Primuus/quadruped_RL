@@ -3,7 +3,7 @@
 </div>
 
 <p align="center">
-  <strong>基于 Isaac Gym 和 legged_gym 的 Go2 训练工作区。</strong>
+  <strong>基于 Isaac Gym 和 quadruped_rl 的 Go2 训练工作区。</strong>
 </p>
 
 ## 目录说明
@@ -25,11 +25,11 @@
 
 3. 确认当前环境里可以使用 `isaacgym`。
 
-`rsl_rl` 已经随本仓库提供，不需要单独克隆。
+`rsl_rl` 已经随本仓库同步为官方版本，不需要单独克隆；如需单独更新，可以直接从官方仓库拉取。
 
 ## Docker 运行
 
-如果服务器上的 NVIDIA 用户态库和当前加载的内核模块版本不一致，可以直接用 Docker 运行训练环境。
+Docker 镜像默认使用宿主机当前可用的 NVIDIA 驱动库，不再单独下载旧版本用户态库。
 
 默认会使用这台服务器上的 Isaac Gym 目录：
 
@@ -53,7 +53,7 @@ docker compose -f docker/docker-compose.yml exec quadruped_train bash
 容器里直接跑同样的训练命令即可：
 
 ```bash
-python legged_gym/scripts/train_go2.py --headless
+python quadruped_rl/scripts/train_go2.py --headless
 ```
 
 ## 训练命令
@@ -61,13 +61,13 @@ python legged_gym/scripts/train_go2.py --headless
 基础命令：
 
 ```bash
-python legged_gym/scripts/train_go2.py
+python quadruped_rl/scripts/train_go2.py
 ```
 
 这条命令已经默认使用 Go2，并会写入：
 
 ```bash
-python legged_gym/scripts/train_go2.py \
+python quadruped_rl/scripts/train_go2.py \
   --task go2 \
   --experiment_name go2 \
   --run_name rough \
@@ -91,7 +91,7 @@ python legged_gym/scripts/train_go2.py \
 多个参数可以连写：
 
 ```bash
-python legged_gym/scripts/train_go2.py --headless --num_envs 4096 --seed 1
+python quadruped_rl/scripts/train_go2.py --headless --num_envs 4096 --seed 1
 ```
 
 ## 可用参数
@@ -115,19 +115,19 @@ python legged_gym/scripts/train_go2.py --headless --num_envs 4096 --seed 1
 
 ```bash
 # 服务器上无窗口训练
-python legged_gym/scripts/train_go2.py --headless
+python quadruped_rl/scripts/train_go2.py --headless
 
 # 指定并行环境数和随机种子
-python legged_gym/scripts/train_go2.py --headless --num_envs 4096 --seed 1
+python quadruped_rl/scripts/train_go2.py --headless --num_envs 4096 --seed 1
 
 # 继续上一次训练
-python legged_gym/scripts/train_go2.py --resume
+python quadruped_rl/scripts/train_go2.py --resume
 
 # 继续指定 run 和 checkpoint
-python legged_gym/scripts/train_go2.py --resume --load_run rough --checkpoint 500
+python quadruped_rl/scripts/train_go2.py --resume --load_run rough --checkpoint 500
 
 # 改实验名和训练轮数
-python legged_gym/scripts/train_go2.py --experiment_name go2_v2 --run_name rough2 --max_iterations 20000
+python quadruped_rl/scripts/train_go2.py --experiment_name go2_v2 --run_name rough2 --max_iterations 20000
 ```
 
 ## 导出策略
@@ -135,7 +135,7 @@ python legged_gym/scripts/train_go2.py --experiment_name go2_v2 --run_name rough
 如果需要把训练好的策略导出为 JIT 模型，运行：
 
 ```bash
-python legged_gym/scripts/play_go2.py
+python quadruped_rl/scripts/play_go2.py
 ```
 
 导出文件默认保存在 `logs/go2/exported/policies/policy_1.pt`。

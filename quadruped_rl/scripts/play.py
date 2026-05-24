@@ -1,12 +1,9 @@
-import sys
-from legged_gym import LEGGED_GYM_ROOT_DIR
 import os
-import sys
-from legged_gym import LEGGED_GYM_ROOT_DIR
 
 import isaacgym
-from legged_gym.envs import *
-from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger
+from quadruped_rl import QUADRUPED_RL_ROOT_DIR
+from quadruped_rl.envs import *
+from quadruped_rl.utils import get_args, export_policy_as_jit, task_registry, Logger
 
 import numpy as np
 import torch
@@ -35,7 +32,7 @@ def play(args):
     
     # export policy as a jit module (used to run it from C++)
     if EXPORT_POLICY:
-        path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'policies')
+        path = os.path.join(QUADRUPED_RL_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'policies')
         export_policy_as_jit(ppo_runner.alg.actor_critic, path)
         print('Exported policy as jit script to: ', path)
 
