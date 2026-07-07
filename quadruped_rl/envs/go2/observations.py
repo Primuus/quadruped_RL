@@ -3,6 +3,7 @@ import torch
 GO2_ONE_STEP_OBS_SIZE = 45
 GO2_HISTORY_LENGTH = 6
 GO2_HISTORY_OBS_SIZE = GO2_ONE_STEP_OBS_SIZE * GO2_HISTORY_LENGTH
+GO2_PRIVILEGED_OBS_SIZE = GO2_ONE_STEP_OBS_SIZE + 3
 
 
 def build_go2_45_observations(env):
@@ -29,6 +30,14 @@ def build_go2_observations(env):
         dim=-1,
     )
     return env.obs_history_buf
+
+
+def build_go2_privileged_observations(env):
+    """构造 Go2 critic privileged obs：当前 45 维观测 + 机身线速度。"""
+    return torch.cat((
+        env.current_obs_buf,
+        env.base_lin_vel * env.obs_scales.lin_vel,
+    ), dim=-1)
 
 
 def reset_go2_history(env, env_ids):

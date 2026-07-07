@@ -7,11 +7,12 @@ class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096  # 并行环境数量，越大采样越快，但显存占用也更高
         num_one_step_observations = 45  # 单步观测维度；Go2 使用 HIMLoco 风格 45 维观测
-        history_length = 6  # 历史观测帧数；阶段 3 使用 6 帧历史
+        history_length = 6  # 历史观测帧数；阶段 4 使用 6 帧历史
         num_observations = num_one_step_observations * history_length  # policy 输入维度：45*6=270
-        num_privileged_obs = None  # critic 的额外观测；None 表示不启用特权观测
+        num_one_step_privileged_obs = num_one_step_observations + 3  # critic 特权观测：当前 45 维 + 机身线速度 3 维
+        num_privileged_obs = num_one_step_privileged_obs  # critic 输入维度；actor 仍只使用 num_observations
         num_actions = 12  # 当前工程的动作维度，四足机器人为 12 个关节
-        obs_mode = 'go2_history_45x6'  # 观测模式：6 帧 45 维历史观测，仍使用普通 PPO
+        obs_mode = 'go2_history_45x6'  # 观测模式：6 帧 45 维历史观测，阶段 4 仍使用普通 PPO
         env_spacing = 3.  # 环境之间的间隔，平地/网格地形时用于避免互相碰撞
         send_timeouts = True  # 是否把超时信息传给算法
         episode_length_s = 20  # 单个 episode 的最大时长 [s]

@@ -14,7 +14,7 @@ from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from quadruped_rl.envs.base.base_task import BaseTask
 from quadruped_rl.envs.go2.commands import post_go2_command_step, resample_go2_commands, update_go2_command_curriculum
 from quadruped_rl.envs.go2.domain_rand import apply_go2_safety_cfg, process_go2_rigid_body_props, process_go2_rigid_shape_props, push_go2_robots
-from quadruped_rl.envs.go2.observations import build_go2_observations, reset_go2_history
+from quadruped_rl.envs.go2.observations import build_go2_observations, build_go2_privileged_observations, reset_go2_history
 from quadruped_rl.envs.go2.rewards import apply_go2_reward_safety_overrides
 from quadruped_rl.envs.go2.terminations import update_go2_termination
 from quadruped_rl.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
@@ -195,6 +195,8 @@ class LeggedRobot(BaseTask):
         """ Computes observations
         """
         self.obs_buf = build_go2_observations(self)
+        if self.privileged_obs_buf is not None:
+            self.privileged_obs_buf = build_go2_privileged_observations(self)
         # add perceptive inputs if not blind
         # add noise if needed
         if self.add_noise:
@@ -610,6 +612,15 @@ class LeggedRobot(BaseTask):
                 raise ValueError(f"Go2 45-dim policy expects obs_mode=go2_45, got {cfg.env.obs_mode}")
         if cfg.env.num_observations != expected_obs:
             raise ValueError(f"Go2 policy expects {expected_obs} observations, got {cfg.env.num_observations}")
+        self.num_one_step_privileged_obs = getattr(cfg.env, "num_one_step_privileged_obs", self.num_one_step_obs + 3)
+        if cfg.env.num_privileged_obs is not None:
+            if self.num_one_step_privileged_obs != self.num_one_step_obs + 3:
+                raise ValueError(f"Go2 stage 4 expects 48 privileged observations, got {self.num_one_step_privileged_obs}")
+            if cfg.env.num_privileged_obs != self.num_one_step_privileged_obs:
+                raise ValueError(
+                    f"Go2 critic expects {self.num_one_step_privileged_obs} privileged observations, "
+                    f"got {cfg.env.num_privileged_obs}"
+                )
 
         self.dt = self.cfg.control.decimation * self.sim_params.dt
         self.obs_scales = self.cfg.normalization.obs_scales
