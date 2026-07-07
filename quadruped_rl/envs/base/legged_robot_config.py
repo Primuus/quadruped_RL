@@ -113,6 +113,7 @@ class LeggedRobotCfg(BaseConfig):
         enable_height_scan = False  # 是否启用地形高度采样
         enable_command_curriculum = False  # 是否启用速度命令课程学习
         enable_history_obs = True  # 是否启用 45*6 历史观测；阶段 3 开始启用
+        enable_him_actor_critic = False  # 是否启用 HIMActorCritic；阶段 5 只接入结构，默认不用于正式训练
         enable_himppo = False  # 是否启用 HIM-PPO；阶段 6 前必须保持关闭
 
     class rewards:
@@ -206,6 +207,12 @@ class LeggedRobotCfgPPO(BaseConfig):
         actor_hidden_dims = [512, 256, 128]  # actor 隐藏层宽度
         critic_hidden_dims = [512, 256, 128]  # critic 隐藏层宽度
         activation = 'elu'  # 激活函数：elu / relu / selu / crelu / lrelu / tanh / sigmoid
+        estimator_hidden_dims = [128, 64, 16]  # HIMEstimator encoder 隐藏层，最后一维为 latent 维度
+        estimator_target_hidden_dims = [128, 64]  # HIMEstimator target 分支隐藏层
+        estimator_learning_rate = 1.e-3  # HIMEstimator 独立学习率；阶段 6 的 HIMPPO 使用
+        estimator_max_grad_norm = 10.0  # HIMEstimator 梯度裁剪上限
+        estimator_num_prototype = 32  # HIM 对比学习原型数量
+        estimator_temperature = 3.0  # HIM 对比学习温度系数
         # 仅在循环网络策略下使用
         # rnn_type = 'lstm'
         # rnn_hidden_size = 512
@@ -226,7 +233,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         max_grad_norm = 1.0  # 梯度裁剪上限
 
     class runner:
-        policy_class_name = 'ActorCritic'  # 策略网络类名
+        policy_class_name = 'ActorCritic'  # 策略网络类名；阶段 5 已支持 HIMActorCritic，但默认保持普通 PPO actor
         algorithm_class_name = 'PPO'  # 算法类名
         num_steps_per_env = 24  # 每次迭代每个环境采样步数
         max_iterations = 1500  # 最大训练迭代次数

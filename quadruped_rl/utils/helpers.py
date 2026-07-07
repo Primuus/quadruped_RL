@@ -1,6 +1,7 @@
 import os
 import copy
 import torch
+import torch.nn.functional as F
 import numpy as np
 import random
 from isaacgym import gymapi
@@ -146,7 +147,10 @@ def get_args():
     return args
 
 def export_policy_as_jit(actor_critic, path):
-    if hasattr(actor_critic, 'memory_a'):
+    if hasattr(actor_critic, 'estimator'):
+        exporter = PolicyExporterHIM(actor_critic)
+        exporter.export(path)
+    elif hasattr(actor_critic, 'memory_a'):
         # assumes LSTM: TODO add GRU
         exporter = PolicyExporterLSTM(actor_critic)
         exporter.export(path)
@@ -186,4 +190,27 @@ class PolicyExporterLSTM(torch.nn.Module):
         traced_script_module = torch.jit.script(self)
         traced_script_module.save(path)
 
+
+class PolicyExporterHIM(torch.nn.Module):
+    """导出 HIM 部署模型：输入历史观测，内部执行 estimator + actor。"""
+
+    def __init__(self, actor_critic):
+        super().__init__()
+        self.actor = copy.deepcopy(actor_critic.actor)
+        self.estimator = copy.deepcopy(actor_critic.estimator.encoder)
+        self.num_one_step_obs = int(actor_critic.num_one_step_obs)
+        self.num_latent = int(actor_critic.estimator.num_latent)
+
+    def forward(self, obs_history):
+        parts = self.estimator(obs_history)[:, 0:3 + self.num_latent]
+        vel, latent = parts[..., :3], parts[..., 3:]
+        latent = F.normalize(latent, dim=-1, p=2.0)
+        return self.actor(torch.cat((obs_history[:, :self.num_one_step_obs], vel, latent), dim=1))
+
+    def export(self, path):
+        os.makedirs(path, exist_ok=True)
+        path = os.path.join(path, 'policy_1.pt')
+        self.to('cpu')
+        traced_script_module = torch.jit.script(self)
+        traced_script_module.save(path)
     

@@ -19,6 +19,7 @@ def apply_go2_safety_cfg(env, cfg):
     env.enable_height_scan = bool(getattr(safety, "enable_height_scan", False))
     env.enable_command_curriculum = bool(getattr(safety, "enable_command_curriculum", False))
     env.enable_history_obs = bool(getattr(safety, "enable_history_obs", False))
+    env.enable_him_actor_critic = bool(getattr(safety, "enable_him_actor_critic", False))
     env.enable_himppo = bool(getattr(safety, "enable_himppo", False))
 
     if env.enable_himppo:

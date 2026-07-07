@@ -37,7 +37,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 
 from rsl_rl.algorithms import PPO
-from rsl_rl.modules import ActorCritic, ActorCriticRecurrent
+from rsl_rl.modules import ActorCritic, ActorCriticRecurrent, HIMActorCritic
 from rsl_rl.env import VecEnv
 
 
@@ -58,11 +58,20 @@ class OnPolicyRunner:
             num_critic_obs = self.env.num_privileged_obs 
         else:
             num_critic_obs = self.env.num_obs
-        actor_critic_class = eval(self.cfg["policy_class_name"]) # ActorCritic
-        actor_critic: ActorCritic = actor_critic_class( self.env.num_obs,
-                                                        num_critic_obs,
-                                                        self.env.num_actions,
-                                                        **self.policy_cfg).to(self.device)
+        actor_critic_class = eval(self.cfg["policy_class_name"]) # ActorCritic / HIMActorCritic
+        policy_kwargs = dict(self.policy_cfg)
+        if actor_critic_class is HIMActorCritic:
+            actor_critic: ActorCritic = actor_critic_class( self.env.num_obs,
+                                                            num_critic_obs,
+                                                            self.env.num_one_step_obs,
+                                                            self.env.num_actions,
+                                                            **policy_kwargs).to(self.device)
+        else:
+            policy_kwargs = {key: value for key, value in policy_kwargs.items() if not key.startswith("estimator_")}
+            actor_critic: ActorCritic = actor_critic_class( self.env.num_obs,
+                                                            num_critic_obs,
+                                                            self.env.num_actions,
+                                                            **policy_kwargs).to(self.device)
         alg_class = eval(self.cfg["algorithm_class_name"]) # PPO
         self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
