@@ -12,9 +12,11 @@ from typing import Tuple, Dict
 
 from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from quadruped_rl.envs.base.base_task import BaseTask
+from quadruped_rl.envs.go2.commands import post_go2_command_step, resample_go2_commands, update_go2_command_curriculum
+from quadruped_rl.envs.go2.domain_rand import apply_go2_safety_cfg, process_go2_rigid_body_props, process_go2_rigid_shape_props, push_go2_robots
 from quadruped_rl.envs.go2.observations import build_go2_45_observations
 from quadruped_rl.envs.go2.rewards import apply_go2_reward_safety_overrides
-from quadruped_rl.utils.math import wrap_to_pi
+from quadruped_rl.envs.go2.terminations import update_go2_termination
 from quadruped_rl.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
 from quadruped_rl.utils.helpers import class_to_dict
 from .legged_robot_config import LeggedRobotCfg
@@ -114,7 +116,7 @@ class LeggedRobot(BaseTask):
         self.reset_idx(env_ids)
         
         if self.cfg.domain_rand.push_robots:
-            self._push_robots()
+            push_go2_robots(self)
 
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
 
@@ -126,10 +128,7 @@ class LeggedRobot(BaseTask):
     def check_termination(self):
         """ Check if environments need to be reset
         """
-        self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
-        self.reset_buf |= torch.logical_or(torch.abs(self.rpy[:,1])>1.0, torch.abs(self.rpy[:,0])>0.8)
-        self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
-        self.reset_buf |= self.time_out_buf
+        update_go2_termination(self)
 
     def reset_idx(self, env_ids):
         """ Reset some environments.
@@ -228,18 +227,7 @@ class LeggedRobot(BaseTask):
         Returns:
             [List[gymapi.RigidShapeProperties]]: Modified rigid shape properties
         """
-        if self.cfg.domain_rand.randomize_friction:
-            if env_id==0:
-                # prepare friction randomization
-                friction_range = self.cfg.domain_rand.friction_range
-                num_buckets = 64
-                bucket_ids = torch.randint(0, num_buckets, (self.num_envs, 1))
-                friction_buckets = torch_rand_float(friction_range[0], friction_range[1], (num_buckets,1), device='cpu')
-                self.friction_coeffs = friction_buckets[bucket_ids]
-
-            for s in range(len(props)):
-                props[s].friction = self.friction_coeffs[env_id]
-        return props
+        return process_go2_rigid_shape_props(self, props, env_id)
 
     def _process_dof_props(self, props, env_id):
         """ Callback allowing to store/change/randomize the DOF properties of each environment.
@@ -270,29 +258,13 @@ class LeggedRobot(BaseTask):
         return props
 
     def _process_rigid_body_props(self, props, env_id):
-        # if env_id==0:
-        #     sum = 0
-        #     for i, p in enumerate(props):
-        #         sum += p.mass
-        #         print(f"Mass of body {i}: {p.mass} (before randomization)")
-        #     print(f"Total mass {sum} (before randomization)")
-        # randomize base mass
-        if self.cfg.domain_rand.randomize_base_mass:
-            rng = self.cfg.domain_rand.added_mass_range
-            props[0].mass += np.random.uniform(rng[0], rng[1])
-        return props
+        return process_go2_rigid_body_props(self, props, env_id)
     
     def _post_physics_step_callback(self):
         """ Callback called before computing terminations, rewards, and observations
             Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
         """
-        # 
-        env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
-        self._resample_commands(env_ids)
-        if self.cfg.commands.heading_command:
-            forward = quat_apply(self.base_quat, self.forward_vec)
-            heading = torch.atan2(forward[:, 1], forward[:, 0])
-            self.commands[:, 2] = torch.clip(0.5*wrap_to_pi(self.commands[:, 3] - heading), -1., 1.)
+        post_go2_command_step(self)
 
     def _resample_commands(self, env_ids):
         """ Randommly select commands of some environments
@@ -300,15 +272,7 @@ class LeggedRobot(BaseTask):
         Args:
             env_ids (List[int]): Environments ids for which new commands are needed
         """
-        self.commands[env_ids, 0] = torch_rand_float(self.command_ranges["lin_vel_x"][0], self.command_ranges["lin_vel_x"][1], (len(env_ids), 1), device=self.device).squeeze(1)
-        self.commands[env_ids, 1] = torch_rand_float(self.command_ranges["lin_vel_y"][0], self.command_ranges["lin_vel_y"][1], (len(env_ids), 1), device=self.device).squeeze(1)
-        if self.cfg.commands.heading_command:
-            self.commands[env_ids, 3] = torch_rand_float(self.command_ranges["heading"][0], self.command_ranges["heading"][1], (len(env_ids), 1), device=self.device).squeeze(1)
-        else:
-            self.commands[env_ids, 2] = torch_rand_float(self.command_ranges["ang_vel_yaw"][0], self.command_ranges["ang_vel_yaw"][1], (len(env_ids), 1), device=self.device).squeeze(1)
-
-        # set small commands to zero
-        self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
+        resample_go2_commands(self, env_ids)
 
     def _compute_torques(self, actions):
         """ Compute torques from actions.
@@ -374,17 +338,7 @@ class LeggedRobot(BaseTask):
     def _push_robots(self):
         """ Random pushes the robots. Emulates an impulse by setting a randomized base velocity. 
         """
-        env_ids = torch.arange(self.num_envs, device=self.device)
-        push_env_ids = env_ids[self.episode_length_buf[env_ids] % int(self.cfg.domain_rand.push_interval) == 0]
-        if len(push_env_ids) == 0:
-            return
-        max_vel = self.cfg.domain_rand.max_push_vel_xy
-        self.root_states[:, 7:9] = torch_rand_float(-max_vel, max_vel, (self.num_envs, 2), device=self.device) # lin vel x/y
-        
-        env_ids_int32 = push_env_ids.to(dtype=torch.int32)
-        self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                    gymtorch.unwrap_tensor(self.root_states),
-                                                    gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+        push_go2_robots(self)
 
    
     
@@ -394,10 +348,7 @@ class LeggedRobot(BaseTask):
         Args:
             env_ids (List[int]): ids of environments being reset
         """
-        # If the tracking reward is above 80% of the maximum, increase the range of commands
-        if torch.mean(self.episode_sums["tracking_lin_vel"][env_ids]) / self.max_episode_length > 0.8 * self.reward_scales["tracking_lin_vel"]:
-            self.command_ranges["lin_vel_x"][0] = np.clip(self.command_ranges["lin_vel_x"][0] - 0.5, -self.cfg.commands.max_curriculum, 0.)
-            self.command_ranges["lin_vel_x"][1] = np.clip(self.command_ranges["lin_vel_x"][1] + 0.5, 0., self.cfg.commands.max_curriculum)
+        update_go2_command_curriculum(self, env_ids)
 
 
     def _get_noise_scale_vec(self, cfg):
@@ -656,30 +607,7 @@ class LeggedRobot(BaseTask):
         self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
 
     def _apply_safety_cfg(self, cfg):
-        safety = getattr(cfg, "safety", None)
-        self.enable_foot_clearance = bool(getattr(safety, "enable_foot_clearance", False))
-        self.use_rigid_body_state = bool(getattr(safety, "enable_rigid_body_state_rewards", False))
-        self.enable_joint_power = bool(getattr(safety, "enable_joint_power", False))
-        self.enable_smoothness = bool(getattr(safety, "enable_smoothness", False))
-        self.enable_noise = bool(getattr(safety, "enable_noise", False))
-        self.enable_domain_rand = bool(getattr(safety, "enable_domain_rand", False))
-        self.enable_push = bool(getattr(safety, "enable_push", False))
-        self.enable_height_scan = bool(getattr(safety, "enable_height_scan", False))
-        self.enable_command_curriculum = bool(getattr(safety, "enable_command_curriculum", False))
-        self.enable_history_obs = bool(getattr(safety, "enable_history_obs", False))
-        self.enable_himppo = bool(getattr(safety, "enable_himppo", False))
-
-        if self.enable_history_obs:
-            raise NotImplementedError("45*6 history observations belong to stage 3 and are not enabled yet")
-        if self.enable_himppo:
-            raise NotImplementedError("HIMPPO belongs to stage 6 and is not enabled yet")
-
-        cfg.noise.add_noise = cfg.noise.add_noise and self.enable_noise
-        cfg.domain_rand.randomize_friction = cfg.domain_rand.randomize_friction and self.enable_domain_rand
-        cfg.domain_rand.randomize_base_mass = cfg.domain_rand.randomize_base_mass and self.enable_domain_rand
-        cfg.domain_rand.push_robots = cfg.domain_rand.push_robots and self.enable_push
-        cfg.terrain.measure_heights = cfg.terrain.measure_heights and self.enable_height_scan
-        cfg.commands.curriculum = cfg.commands.curriculum and self.enable_command_curriculum
+        apply_go2_safety_cfg(self, cfg)
 
     def _apply_safety_reward_overrides(self):
         apply_go2_reward_safety_overrides(self.reward_scales, self)
