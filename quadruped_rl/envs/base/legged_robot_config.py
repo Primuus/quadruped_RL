@@ -6,10 +6,12 @@ from .base_config import BaseConfig
 class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096  # 并行环境数量，越大采样越快，但显存占用也更高
-        num_observations = 45  # policy 输入维度；Go2 默认使用 HIMLoco 风格 45 维观测
+        num_one_step_observations = 45  # 单步观测维度；Go2 使用 HIMLoco 风格 45 维观测
+        history_length = 6  # 历史观测帧数；阶段 3 使用 6 帧历史
+        num_observations = num_one_step_observations * history_length  # policy 输入维度：45*6=270
         num_privileged_obs = None  # critic 的额外观测；None 表示不启用特权观测
         num_actions = 12  # 当前工程的动作维度，四足机器人为 12 个关节
-        obs_mode = 'go2_45'  # 观测模式：go2_45 去掉机身线速度，更适合实机部署
+        obs_mode = 'go2_history_45x6'  # 观测模式：6 帧 45 维历史观测，仍使用普通 PPO
         env_spacing = 3.  # 环境之间的间隔，平地/网格地形时用于避免互相碰撞
         send_timeouts = True  # 是否把超时信息传给算法
         episode_length_s = 20  # 单个 episode 的最大时长 [s]
@@ -24,7 +26,7 @@ class LeggedRobotCfg(BaseConfig):
         static_friction = 1.0  # 静摩擦系数
         dynamic_friction = 1.0  # 动摩擦系数
         restitution = 0.  # 弹性系数
-        measure_heights = False  # 是否在观测中加入地形高度采样；45 维安全基线不使用
+        measure_heights = False  # 是否在观测中加入地形高度采样；阶段 3 历史观测不使用高度采样
         measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]  # 足底前后方向采样点
         measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]  # 足底左右方向采样点
         selected = False  # 是否固定训练某一种地形
@@ -109,7 +111,7 @@ class LeggedRobotCfg(BaseConfig):
         enable_push = False  # 是否启用随机外推
         enable_height_scan = False  # 是否启用地形高度采样
         enable_command_curriculum = False  # 是否启用速度命令课程学习
-        enable_history_obs = False  # 是否启用 45*6 历史观测；阶段 3 前必须保持关闭
+        enable_history_obs = True  # 是否启用 45*6 历史观测；阶段 3 开始启用
         enable_himppo = False  # 是否启用 HIM-PPO；阶段 6 前必须保持关闭
 
     class rewards:

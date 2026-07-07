@@ -101,7 +101,7 @@ python quadruped_rl/scripts/train_go2.py \
 
 ## 当前训练配置
 
-当前处于 HIMLoco 化前的安全基线阶段：保留 4096 环境和 45 维单步观测，但默认关闭 foot clearance、rigid body state reward、joint power、smoothness、噪声、域随机化、随机外推和高度采样。Go2 policy 使用 HIMLoco 风格的 45 维观测，不再输入机身线速度。观测顺序必须和本地部署侧保持一致：
+当前处于 HIMLoco 化阶段 3：保留 4096 环境和普通 PPO，但 policy 输入已经从 45 维单步观测改为 `45*6=270` 维历史观测。默认仍关闭 foot clearance、rigid body state reward、joint power、smoothness、噪声、域随机化、随机外推和高度采样。单步观测使用 HIMLoco 风格的 45 维，不直接输入机身线速度：
 
 ```text
 [0:3]   速度命令 vx, vy, yaw_rate
@@ -112,7 +112,7 @@ python quadruped_rl/scripts/train_go2.py \
 [33:45] 上一次策略动作
 ```
 
-因为观测维度已经从旧版 48 维改为 45 维，旧的 48 维 checkpoint 不能继续 `--resume`，也不能直接导出给当前本地部署代码使用。需要从当前配置重新训练，然后再用 `play_go2.py` 导出新的 `policy_1.pt`。
+历史观测顺序为 `[当前 45 维, 上一帧 45 维, ..., 更早第 5 帧 45 维]`。因为 policy 输入维度已经变为 270，旧的 48 维或 45 维 checkpoint 都不能继续 `--resume`。阶段 3 训练出的策略是 270 维普通 PPO 策略，不是最终 HIM-PPO 策略；本地部署侧要等后续阶段同步历史观测后再加载这类策略。
 
 ## 参数写法
 

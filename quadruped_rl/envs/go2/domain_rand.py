@@ -21,8 +21,6 @@ def apply_go2_safety_cfg(env, cfg):
     env.enable_history_obs = bool(getattr(safety, "enable_history_obs", False))
     env.enable_himppo = bool(getattr(safety, "enable_himppo", False))
 
-    if env.enable_history_obs:
-        raise NotImplementedError("45*6 history observations belong to stage 3 and are not enabled yet")
     if env.enable_himppo:
         raise NotImplementedError("HIMPPO belongs to stage 6 and is not enabled yet")
 

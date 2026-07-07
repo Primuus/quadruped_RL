@@ -24,8 +24,10 @@ class GO2RoughCfg( LeggedRobotCfg ):
         }
 
     class env(LeggedRobotCfg.env):
-        num_observations = 45  # 观测维度，HIMLoco 风格，不直接输入机身线速度
-        obs_mode = 'go2_45'  # 45 维观测模式，部署侧必须保持一致
+        num_one_step_observations = 45  # 单步观测维度，HIMLoco 风格，不直接输入机身线速度
+        history_length = 6  # 历史观测帧数，阶段 3 使用 6 帧
+        num_observations = num_one_step_observations * history_length  # policy 输入维度：45*6=270
+        obs_mode = 'go2_history_45x6'  # 6 帧 45 维历史观测，阶段 3 仍使用普通 PPO
         num_actions = 12  # 动作维度，Go2 一共 12 个关节
 
     class commands(LeggedRobotCfg.commands):

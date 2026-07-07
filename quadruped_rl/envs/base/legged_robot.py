@@ -14,7 +14,7 @@ from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from quadruped_rl.envs.base.base_task import BaseTask
 from quadruped_rl.envs.go2.commands import post_go2_command_step, resample_go2_commands, update_go2_command_curriculum
 from quadruped_rl.envs.go2.domain_rand import apply_go2_safety_cfg, process_go2_rigid_body_props, process_go2_rigid_shape_props, push_go2_robots
-from quadruped_rl.envs.go2.observations import build_go2_45_observations
+from quadruped_rl.envs.go2.observations import build_go2_observations, reset_go2_history
 from quadruped_rl.envs.go2.rewards import apply_go2_reward_safety_overrides
 from quadruped_rl.envs.go2.terminations import update_go2_termination
 from quadruped_rl.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
@@ -160,6 +160,7 @@ class LeggedRobot(BaseTask):
         self.feet_air_time[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
+        reset_go2_history(self, env_ids)
         # fill extras
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
@@ -193,11 +194,11 @@ class LeggedRobot(BaseTask):
     def compute_observations(self):
         """ Computes observations
         """
-        self.obs_buf = build_go2_45_observations(self)
+        self.obs_buf = build_go2_observations(self)
         # add perceptive inputs if not blind
         # add noise if needed
         if self.add_noise:
-            self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
+            self.obs_buf = self.obs_buf + (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
 
     def create_sim(self):
         """ Creates simulation, terrain and evironments
@@ -361,18 +362,20 @@ class LeggedRobot(BaseTask):
         Returns:
             [torch.Tensor]: Vector of scales used to multiply a uniform distribution in [-1, 1]
         """
-        noise_vec = torch.zeros_like(self.obs_buf[0])
+        one_step_noise_vec = torch.zeros(self.num_one_step_obs, dtype=torch.float, device=self.device)
         self.add_noise = self.cfg.noise.add_noise and self.enable_noise
         noise_scales = self.cfg.noise.noise_scales
         noise_level = self.cfg.noise.noise_level
-        noise_vec[:3] = 0. # commands
-        noise_vec[3:6] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
-        noise_vec[6:9] = noise_scales.gravity * noise_level
-        noise_vec[9:9+self.num_actions] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
-        noise_vec[9+self.num_actions:9+2*self.num_actions] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
-        noise_vec[9+2*self.num_actions:9+3*self.num_actions] = 0. # previous actions
+        one_step_noise_vec[:3] = 0. # commands
+        one_step_noise_vec[3:6] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
+        one_step_noise_vec[6:9] = noise_scales.gravity * noise_level
+        one_step_noise_vec[9:9+self.num_actions] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
+        one_step_noise_vec[9+self.num_actions:9+2*self.num_actions] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
+        one_step_noise_vec[9+2*self.num_actions:9+3*self.num_actions] = 0. # previous actions
 
-        return noise_vec
+        if self.enable_history_obs:
+            return one_step_noise_vec.repeat(self.history_length)
+        return one_step_noise_vec
 
     #----------------------------------------
     def _init_buffers(self):
@@ -410,6 +413,8 @@ class LeggedRobot(BaseTask):
         # initialize some data used later on
         self.common_step_counter = 0
         self.extras = {}
+        self.current_obs_buf = torch.zeros(self.num_envs, self.num_one_step_obs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.obs_history_buf = torch.zeros(self.num_envs, self.num_one_step_obs * self.history_length, dtype=torch.float, device=self.device, requires_grad=False)
         self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
         self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         self.forward_vec = to_torch([1., 0., 0.], device=self.device).repeat((self.num_envs, 1))
@@ -588,12 +593,24 @@ class LeggedRobot(BaseTask):
         self.env_origins[:, 2] = 0.
 
     def _parse_cfg(self, cfg):
-        if getattr(cfg.env, "obs_mode", "go2_45") != "go2_45":
-            raise ValueError(f"Go2 currently expects obs_mode=go2_45, got {cfg.env.obs_mode}")
-        if cfg.env.num_observations != 45:
-            raise ValueError(f"Go2 45-dim policy expects 45 observations, got {cfg.env.num_observations}")
-
         self._apply_safety_cfg(cfg)
+        self.num_one_step_obs = getattr(cfg.env, "num_one_step_observations", 45)
+        self.history_length = getattr(cfg.env, "history_length", 1)
+        if self.num_one_step_obs != 45:
+            raise ValueError(f"Go2 one-step observation must be 45, got {self.num_one_step_obs}")
+        if self.enable_history_obs:
+            expected_obs = self.num_one_step_obs * self.history_length
+            if self.history_length != 6:
+                raise ValueError(f"Go2 stage 3 expects history_length=6, got {self.history_length}")
+            if getattr(cfg.env, "obs_mode", "go2_history_45x6") != "go2_history_45x6":
+                raise ValueError(f"Go2 history policy expects obs_mode=go2_history_45x6, got {cfg.env.obs_mode}")
+        else:
+            expected_obs = self.num_one_step_obs
+            if getattr(cfg.env, "obs_mode", "go2_45") != "go2_45":
+                raise ValueError(f"Go2 45-dim policy expects obs_mode=go2_45, got {cfg.env.obs_mode}")
+        if cfg.env.num_observations != expected_obs:
+            raise ValueError(f"Go2 policy expects {expected_obs} observations, got {cfg.env.num_observations}")
+
         self.dt = self.cfg.control.decimation * self.sim_params.dt
         self.obs_scales = self.cfg.normalization.obs_scales
         self.reward_scales = class_to_dict(self.cfg.rewards.scales)
