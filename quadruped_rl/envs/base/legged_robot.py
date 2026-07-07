@@ -13,6 +13,7 @@ from typing import Tuple, Dict
 from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from quadruped_rl.envs.base.base_task import BaseTask
 from quadruped_rl.envs.go2.observations import build_go2_45_observations
+from quadruped_rl.envs.go2.rewards import apply_go2_reward_safety_overrides
 from quadruped_rl.utils.math import wrap_to_pi
 from quadruped_rl.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
 from quadruped_rl.utils.helpers import class_to_dict
@@ -681,12 +682,7 @@ class LeggedRobot(BaseTask):
         cfg.commands.curriculum = cfg.commands.curriculum and self.enable_command_curriculum
 
     def _apply_safety_reward_overrides(self):
-        if not self.enable_foot_clearance:
-            self.reward_scales["foot_clearance"] = 0.0
-        if not self.enable_joint_power:
-            self.reward_scales["joint_power"] = 0.0
-        if not self.enable_smoothness:
-            self.reward_scales["smoothness"] = 0.0
+        apply_go2_reward_safety_overrides(self.reward_scales, self)
 
 
     #------------ reward functions----------------
