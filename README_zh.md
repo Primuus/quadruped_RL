@@ -51,10 +51,10 @@ xhost +local:root
 bash docker/build.sh
 ```
 
-直接跑训练命令：
+直接跑安全验证命令：
 
 ```bash
-bash docker/build.sh python quadruped_rl/scripts/train_go2.py --headless
+bash docker/build.sh python quadruped_rl/scripts/train_go2.py --headless --max_iterations 2
 ```
 
 进入容器：
@@ -63,7 +63,7 @@ bash docker/build.sh python quadruped_rl/scripts/train_go2.py --headless
 bash docker/build.sh
 ```
 
-常用完整示例：
+确认安全验证通过后的长训示例：
 
 ```bash
 python quadruped_rl/scripts/train_go2.py --headless --num_envs 4096 --seed 1 --max_iterations 10000
@@ -71,10 +71,22 @@ python quadruped_rl/scripts/train_go2.py --headless --num_envs 4096 --seed 1 --m
 
 ## 训练命令
 
-基础命令：
+首次测试或修改训练配置后，先运行安全验证命令：
 
 ```bash
-python quadruped_rl/scripts/train_go2.py
+CUDA_LAUNCH_BLOCKING=1 python quadruped_rl/scripts/train_go2.py --headless --max_iterations 2
+```
+
+常规小步验证命令：
+
+```bash
+python quadruped_rl/scripts/train_go2.py --headless --max_iterations 2
+```
+
+安全验证通过后，再运行基础训练命令：
+
+```bash
+python quadruped_rl/scripts/train_go2.py --headless
 ```
 
 这条命令已经默认使用 Go2，并会写入：
@@ -86,6 +98,21 @@ python quadruped_rl/scripts/train_go2.py \
   --run_name rough \
   --max_iterations 10000
 ```
+
+## 当前训练配置
+
+当前处于 HIMLoco 化前的安全基线阶段：保留 4096 环境和 45 维单步观测，但默认关闭 foot clearance、rigid body state reward、joint power、smoothness、噪声、域随机化、随机外推和高度采样。Go2 policy 使用 HIMLoco 风格的 45 维观测，不再输入机身线速度。观测顺序必须和本地部署侧保持一致：
+
+```text
+[0:3]   速度命令 vx, vy, yaw_rate
+[3:6]   机身角速度
+[6:9]   重力方向在机身坐标系下的投影
+[9:21]  12 个关节位置偏差
+[21:33] 12 个关节速度
+[33:45] 上一次策略动作
+```
+
+因为观测维度已经从旧版 48 维改为 45 维，旧的 48 维 checkpoint 不能继续 `--resume`，也不能直接导出给当前本地部署代码使用。需要从当前配置重新训练，然后再用 `play_go2.py` 导出新的 `policy_1.pt`。
 
 ## 参数写法
 
@@ -128,9 +155,9 @@ python quadruped_rl/scripts/train_go2.py --headless --num_envs 4096 --seed 1
 
 ```bash
 # 服务器上无窗口训练
-python quadruped_rl/scripts/train_go2.py --headless
+python quadruped_rl/scripts/train_go2.py --headless --max_iterations 2
 
-# 指定并行环境数和随机种子
+# 安全验证通过后，指定并行环境数和随机种子
 python quadruped_rl/scripts/train_go2.py --headless --num_envs 4096 --seed 1
 
 # 继续上一次训练
