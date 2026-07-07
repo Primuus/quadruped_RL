@@ -109,6 +109,8 @@ class LeggedRobotCfg(BaseConfig):
         enable_push = False  # 是否启用随机外推
         enable_height_scan = False  # 是否启用地形高度采样
         enable_command_curriculum = False  # 是否启用速度命令课程学习
+        enable_history_obs = False  # 是否启用 45*6 历史观测；阶段 3 前必须保持关闭
+        enable_himppo = False  # 是否启用 HIM-PPO；阶段 6 前必须保持关闭
 
     class rewards:
         class scales:

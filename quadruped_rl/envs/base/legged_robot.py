@@ -12,6 +12,7 @@ from typing import Tuple, Dict
 
 from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from quadruped_rl.envs.base.base_task import BaseTask
+from quadruped_rl.envs.go2.observations import build_go2_45_observations
 from quadruped_rl.utils.math import wrap_to_pi
 from quadruped_rl.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
 from quadruped_rl.utils.helpers import class_to_dict
@@ -192,14 +193,7 @@ class LeggedRobot(BaseTask):
     def compute_observations(self):
         """ Computes observations
         """
-        # Go2 当前使用 45 维观测：[cmd, ang_vel, gravity, dof_pos, dof_vel, last_action]。
-        self.obs_buf = torch.cat((  self.commands[:, :3] * self.commands_scale,
-                                    self.base_ang_vel  * self.obs_scales.ang_vel,
-                                    self.projected_gravity,
-                                    (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
-                                    self.dof_vel * self.obs_scales.dof_vel,
-                                    self.actions
-                                    ),dim=-1)
+        self.obs_buf = build_go2_45_observations(self)
         # add perceptive inputs if not blind
         # add noise if needed
         if self.add_noise:
@@ -671,6 +665,13 @@ class LeggedRobot(BaseTask):
         self.enable_push = bool(getattr(safety, "enable_push", False))
         self.enable_height_scan = bool(getattr(safety, "enable_height_scan", False))
         self.enable_command_curriculum = bool(getattr(safety, "enable_command_curriculum", False))
+        self.enable_history_obs = bool(getattr(safety, "enable_history_obs", False))
+        self.enable_himppo = bool(getattr(safety, "enable_himppo", False))
+
+        if self.enable_history_obs:
+            raise NotImplementedError("45*6 history observations belong to stage 3 and are not enabled yet")
+        if self.enable_himppo:
+            raise NotImplementedError("HIMPPO belongs to stage 6 and is not enabled yet")
 
         cfg.noise.add_noise = cfg.noise.add_noise and self.enable_noise
         cfg.domain_rand.randomize_friction = cfg.domain_rand.randomize_friction and self.enable_domain_rand
