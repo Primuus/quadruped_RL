@@ -113,6 +113,14 @@ class LeggedRobot(BaseTask):
         self.check_termination()
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
+        if self.privileged_obs_buf is not None:
+            termination_privileged_obs = build_go2_privileged_observations(self)[env_ids].clone()
+        else:
+            termination_privileged_obs = torch.empty(0, device=self.device)
+        self.extras["termination_ids"] = env_ids
+        self.extras["termination_privileged_obs"] = termination_privileged_obs
+        if self.cfg.env.send_timeouts:
+            self.extras["time_outs"] = self.time_out_buf
         self.reset_idx(env_ids)
         
         if self.cfg.domain_rand.push_robots:
@@ -196,7 +204,7 @@ class LeggedRobot(BaseTask):
         """
         self.obs_buf = build_go2_observations(self)
         if self.privileged_obs_buf is not None:
-            self.privileged_obs_buf = build_go2_privileged_observations(self)
+            self.privileged_obs_buf = build_go2_privileged_observations(self, self.current_obs_buf)
         # add perceptive inputs if not blind
         # add noise if needed
         if self.add_noise:
@@ -615,7 +623,7 @@ class LeggedRobot(BaseTask):
         self.num_one_step_privileged_obs = getattr(cfg.env, "num_one_step_privileged_obs", self.num_one_step_obs + 3)
         if cfg.env.num_privileged_obs is not None:
             if self.num_one_step_privileged_obs != self.num_one_step_obs + 3:
-                raise ValueError(f"Go2 stage 4 expects 48 privileged observations, got {self.num_one_step_privileged_obs}")
+                raise ValueError(f"Go2 stage 6 expects 48 privileged observations, got {self.num_one_step_privileged_obs}")
             if cfg.env.num_privileged_obs != self.num_one_step_privileged_obs:
                 raise ValueError(
                     f"Go2 critic expects {self.num_one_step_privileged_obs} privileged observations, "

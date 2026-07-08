@@ -33,8 +33,11 @@ import os
 from collections import deque
 import statistics
 
-from torch.utils.tensorboard import SummaryWriter
 import torch
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError:
+    SummaryWriter = None
 
 from rsl_rl.algorithms import PPO
 from rsl_rl.modules import ActorCritic, ActorCriticRecurrent, HIMActorCritic
@@ -92,6 +95,8 @@ class OnPolicyRunner:
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # initialize writer
         if self.log_dir is not None and self.writer is None:
+            if SummaryWriter is None:
+                raise ImportError("tensorboard is required when log_dir is enabled")
             self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
         if init_at_random_ep_len:
             self.env.episode_length_buf = torch.randint_like(self.env.episode_length_buf, high=int(self.env.max_episode_length))

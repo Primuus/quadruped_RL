@@ -12,7 +12,7 @@ import torch.nn.functional as F
 class HIMEstimator(nn.Module):
     """HIMLoco 风格的历史观测编码器。
 
-    阶段 5 只接入结构和前向推理；真正的 estimator loss 在阶段 6 的 HIMPPO 中启用。
+    阶段 6 中由 HIMPPO 调用 update() 训练速度估计和 latent 表征。
     """
 
     def __init__(

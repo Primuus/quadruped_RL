@@ -22,9 +22,6 @@ def apply_go2_safety_cfg(env, cfg):
     env.enable_him_actor_critic = bool(getattr(safety, "enable_him_actor_critic", False))
     env.enable_himppo = bool(getattr(safety, "enable_himppo", False))
 
-    if env.enable_himppo:
-        raise NotImplementedError("HIMPPO belongs to stage 6 and is not enabled yet")
-
     cfg.noise.add_noise = cfg.noise.add_noise and env.enable_noise
     cfg.domain_rand.randomize_friction = cfg.domain_rand.randomize_friction and env.enable_domain_rand
     cfg.domain_rand.randomize_base_mass = cfg.domain_rand.randomize_base_mass and env.enable_domain_rand

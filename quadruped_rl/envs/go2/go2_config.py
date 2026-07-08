@@ -25,12 +25,16 @@ class GO2RoughCfg( LeggedRobotCfg ):
 
     class env(LeggedRobotCfg.env):
         num_one_step_observations = 45  # 单步观测维度，HIMLoco 风格，不直接输入机身线速度
-        history_length = 6  # 历史观测帧数，阶段 4 使用 6 帧
+        history_length = 6  # 历史观测帧数，阶段 6 使用 6 帧
         num_observations = num_one_step_observations * history_length  # policy 输入维度：45*6=270
         num_one_step_privileged_obs = num_one_step_observations + 3  # critic 特权观测：当前 45 维 + 机身线速度 3 维
         num_privileged_obs = num_one_step_privileged_obs  # critic 输入维度；actor 仍只使用历史观测
-        obs_mode = 'go2_history_45x6'  # 6 帧 45 维历史观测，阶段 4 仍使用普通 PPO
+        obs_mode = 'go2_history_45x6'  # 6 帧 45 维历史观测，阶段 6 使用 HIM-PPO
         num_actions = 12  # 动作维度，Go2 一共 12 个关节
+
+    class safety(LeggedRobotCfg.safety):
+        enable_him_actor_critic = True  # 阶段 6 启用 HIMActorCritic
+        enable_himppo = True  # 阶段 6 启用 HIMPPO
 
     class commands(LeggedRobotCfg.commands):
         curriculum = False  # 安全基线关闭速度命令课程学习，稳定后再单独启用
@@ -97,6 +101,9 @@ class GO2RoughCfgPPO( LeggedRobotCfgPPO ):
         entropy_coef = 0.01  # 熵奖励系数，保持一定探索
 
     class runner( LeggedRobotCfgPPO.runner ):
+        policy_class_name = 'HIMActorCritic'  # 阶段 6 使用 HIM actor-critic：history -> estimator -> actor
+        algorithm_class_name = 'HIMPPO'  # 阶段 6 使用 HIM-PPO，额外训练 estimator
+        runner_class_name = 'HIMOnPolicyRunner'  # 阶段 6 runner 保存 next privileged obs
         max_iterations = 10000  # 最大训练迭代次数
         run_name = 'rough'  # 这次训练的运行名
         experiment_name = 'go2'  # 实验名

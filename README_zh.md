@@ -101,7 +101,7 @@ python quadruped_rl/scripts/train_go2.py \
 
 ## 当前训练配置
 
-当前处于 HIMLoco 化阶段 5：保留 4096 环境和普通 PPO，默认仍使用 `ActorCritic` 训练；代码中已经接入 `HIMEstimator` 和 `HIMActorCritic` 的结构与前向推理，但在阶段 6 切换 HIMPPO 前不要作为正式训练默认链路。当前默认 actor 输入为 `45*6=270` 维历史观测，critic 额外使用 48 维 privileged obs。默认仍关闭 foot clearance、rigid body state reward、joint power、smoothness、噪声、域随机化、随机外推和高度采样。单步观测使用 HIMLoco 风格的 45 维，不直接输入机身线速度：
+当前处于 HIMLoco 化阶段 6：默认使用 `HIMActorCritic + HIMPPO` 训练。actor 外部输入为 `45*6=270` 维历史观测，内部由 `HIMEstimator` 估计 `vel3 + latent16`，再拼接当前 45 维观测形成 64 维 actor 输入；critic 使用 48 维 privileged obs。默认仍关闭 foot clearance、rigid body state reward、joint power、smoothness、噪声、域随机化、随机外推和高度采样。单步观测使用 HIMLoco 风格的 45 维，不直接输入机身线速度：
 
 ```text
 [0:3]   速度命令 vx, vy, yaw_rate
@@ -112,7 +112,7 @@ python quadruped_rl/scripts/train_go2.py \
 [33:45] 上一次策略动作
 ```
 
-历史观测顺序为 `[当前 45 维, 上一帧 45 维, ..., 更早第 5 帧 45 维]`。critic privileged obs 为 `[当前 45 维观测, base_lin_vel 3 维]`，只用于训练 value function，不进入部署侧输入。当前默认训练出的策略仍是 270 维普通 PPO actor；如果以后启用 `HIMActorCritic`，导出的 JIT 会包含 `estimator + actor`，外部输入仍是 270 维历史观测。因为 actor/critic 输入维度已经变化，旧的 48 维、45 维或阶段 3/4 checkpoint 都不要继续 `--resume`。
+历史观测顺序为 `[当前 45 维, 上一帧 45 维, ..., 更早第 5 帧 45 维]`。critic privileged obs 为 `[当前 45 维观测, base_lin_vel 3 维]`，只用于训练 value function 和 estimator，不进入部署侧输入。当前导出的 JIT 会包含 `estimator + actor`，外部输入仍是 270 维历史观测。因为 actor/critic/runner/checkpoint 结构已经变化，旧的 48 维、45 维或阶段 3/4/5 checkpoint 都不要继续 `--resume`。
 
 ## 参数写法
 
@@ -178,7 +178,7 @@ python quadruped_rl/scripts/train_go2.py --experiment_name go2_v2 --run_name rou
 python quadruped_rl/scripts/play_go2.py
 ```
 
-导出文件默认保存在 `logs/go2/exported/policies/policy_1.pt`。普通 `ActorCritic` 会导出单独 actor；`HIMActorCritic` 会导出 `estimator + actor` 组合模型，文件名仍保持 `policy_1.pt`。
+导出文件默认保存在 `logs/go2/exported/policies/policy_1.pt`。阶段 6 会导出 `estimator + actor` 组合模型，文件名仍保持 `policy_1.pt`，部署侧外部输入仍是 270 维历史观测。
 
 ## 说明
 

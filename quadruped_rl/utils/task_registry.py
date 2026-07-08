@@ -6,7 +6,7 @@ import numpy as np
 import sys
 
 from rsl_rl.env import VecEnv
-from rsl_rl.runners import OnPolicyRunner
+from rsl_rl.runners import HIMOnPolicyRunner, OnPolicyRunner
 
 from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from .helpers import get_args, update_cfg_from_args, class_to_dict, get_load_path, set_seed, parse_sim_params
@@ -115,7 +115,9 @@ class TaskRegistry():
             log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.runner.run_name)
         
         train_cfg_dict = class_to_dict(train_cfg)
-        runner = OnPolicyRunner(env, train_cfg_dict, log_dir, device=args.rl_device)
+        runner_class_name = getattr(train_cfg.runner, "runner_class_name", "OnPolicyRunner")
+        runner_class = eval(runner_class_name)
+        runner = runner_class(env, train_cfg_dict, log_dir, device=args.rl_device)
         #save resume path before creating a new log_dir
         resume = train_cfg.runner.resume
         if resume:

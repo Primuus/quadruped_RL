@@ -32,10 +32,12 @@ def build_go2_observations(env):
     return env.obs_history_buf
 
 
-def build_go2_privileged_observations(env):
+def build_go2_privileged_observations(env, current_obs=None):
     """构造 Go2 critic privileged obs：当前 45 维观测 + 机身线速度。"""
+    if current_obs is None:
+        current_obs = build_go2_45_observations(env)
     return torch.cat((
-        env.current_obs_buf,
+        current_obs,
         env.base_lin_vel * env.obs_scales.lin_vel,
     ), dim=-1)
 

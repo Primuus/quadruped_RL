@@ -7,12 +7,12 @@ class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096  # 并行环境数量，越大采样越快，但显存占用也更高
         num_one_step_observations = 45  # 单步观测维度；Go2 使用 HIMLoco 风格 45 维观测
-        history_length = 6  # 历史观测帧数；阶段 4 使用 6 帧历史
+        history_length = 6  # 历史观测帧数；阶段 6 使用 6 帧历史
         num_observations = num_one_step_observations * history_length  # policy 输入维度：45*6=270
         num_one_step_privileged_obs = num_one_step_observations + 3  # critic 特权观测：当前 45 维 + 机身线速度 3 维
         num_privileged_obs = num_one_step_privileged_obs  # critic 输入维度；actor 仍只使用 num_observations
         num_actions = 12  # 当前工程的动作维度，四足机器人为 12 个关节
-        obs_mode = 'go2_history_45x6'  # 观测模式：6 帧 45 维历史观测，阶段 4 仍使用普通 PPO
+        obs_mode = 'go2_history_45x6'  # 观测模式：6 帧 45 维历史观测，Go2 阶段 6 使用 HIM-PPO
         env_spacing = 3.  # 环境之间的间隔，平地/网格地形时用于避免互相碰撞
         send_timeouts = True  # 是否把超时信息传给算法
         episode_length_s = 20  # 单个 episode 的最大时长 [s]
@@ -113,8 +113,8 @@ class LeggedRobotCfg(BaseConfig):
         enable_height_scan = False  # 是否启用地形高度采样
         enable_command_curriculum = False  # 是否启用速度命令课程学习
         enable_history_obs = True  # 是否启用 45*6 历史观测；阶段 3 开始启用
-        enable_him_actor_critic = False  # 是否启用 HIMActorCritic；阶段 5 只接入结构，默认不用于正式训练
-        enable_himppo = False  # 是否启用 HIM-PPO；阶段 6 前必须保持关闭
+        enable_him_actor_critic = False  # 是否启用 HIMActorCritic；Go2 阶段 6 开始启用
+        enable_himppo = False  # 是否启用 HIM-PPO；Go2 阶段 6 开始启用
 
     class rewards:
         class scales:
@@ -233,8 +233,9 @@ class LeggedRobotCfgPPO(BaseConfig):
         max_grad_norm = 1.0  # 梯度裁剪上限
 
     class runner:
-        policy_class_name = 'ActorCritic'  # 策略网络类名；阶段 5 已支持 HIMActorCritic，但默认保持普通 PPO actor
-        algorithm_class_name = 'PPO'  # 算法类名
+        policy_class_name = 'ActorCritic'  # 策略网络类名；Go2 阶段 6 使用 HIMActorCritic
+        algorithm_class_name = 'PPO'  # 算法类名；Go2 阶段 6 使用 HIMPPO
+        runner_class_name = 'OnPolicyRunner'  # runner 类名；Go2 阶段 6 使用 HIMOnPolicyRunner
         num_steps_per_env = 24  # 每次迭代每个环境采样步数
         max_iterations = 1500  # 最大训练迭代次数
 
