@@ -35,6 +35,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
     class safety(LeggedRobotCfg.safety):
         enable_him_actor_critic = True  # 阶段 6 启用 HIMActorCritic
         enable_himppo = True  # 阶段 6 启用 HIMPPO
+        enable_smoothness = True  # 阶段 7 第一步启用二阶动作平滑惩罚
 
     class commands(LeggedRobotCfg.commands):
         curriculum = False  # 安全基线关闭速度命令课程学习，稳定后再单独启用
@@ -84,7 +85,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
             feet_air_time = 0.0  # 参考 HIMLoco walk，避免把步态推得过于跳跃
             foot_clearance = -0.0  # 足端抬脚约束，安全基线默认关闭
             action_rate = -0.01  # 动作一阶差分惩罚
-            smoothness = -0.0  # 二阶动作平滑惩罚，安全基线默认关闭
+            smoothness = -0.01  # 二阶动作平滑惩罚，参考 HIMLoco walk 配置
             torques = -0.0002  # 力矩惩罚，安全基线保留基础约束
             dof_vel = -0.0  # 关节速度惩罚
             collision = -0.0  # walk 阶段先关闭非足端碰撞硬惩罚

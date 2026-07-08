@@ -101,7 +101,7 @@ python quadruped_rl/scripts/train_go2.py \
 
 ## 当前训练配置
 
-当前处于 HIMLoco 化阶段 6：默认使用 `HIMActorCritic + HIMPPO` 训练。actor 外部输入为 `45*6=270` 维历史观测，内部由 `HIMEstimator` 估计 `vel3 + latent16`，再拼接当前 45 维观测形成 64 维 actor 输入；critic 使用 48 维 privileged obs。默认仍关闭 foot clearance、rigid body state reward、joint power、smoothness、噪声、域随机化、随机外推和高度采样。单步观测使用 HIMLoco 风格的 45 维，不直接输入机身线速度：
+当前处于 HIMLoco 化阶段 7 的第一步：默认使用 `HIMActorCritic + HIMPPO` 训练，并已启用 smoothness 二阶动作平滑惩罚。actor 外部输入为 `45*6=270` 维历史观测，内部由 `HIMEstimator` 估计 `vel3 + latent16`，再拼接当前 45 维观测形成 64 维 actor 输入；critic 使用 48 维 privileged obs。默认仍关闭 foot clearance、rigid body state reward、joint power、噪声、域随机化、随机外推和高度采样。单步观测使用 HIMLoco 风格的 45 维，不直接输入机身线速度：
 
 ```text
 [0:3]   速度命令 vx, vy, yaw_rate
