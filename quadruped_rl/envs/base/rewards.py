@@ -1,0 +1,15 @@
+"""四足机器人通用 reward 安全开关。"""
+
+
+QUADRUPED_GUARDED_REWARDS = {
+    "foot_clearance": "enable_foot_clearance",  # 足端抬脚 reward，依赖足端刚体状态，默认关闭
+    "joint_power": "enable_joint_power",  # 关节功率惩罚，默认关闭
+    "smoothness": "enable_smoothness",  # 二阶动作平滑惩罚，默认关闭
+}
+
+
+def apply_quadruped_reward_safety_overrides(reward_scales, env):
+    """根据安全开关关闭尚未验证的 reward 项。"""
+    for reward_name, flag_name in QUADRUPED_GUARDED_REWARDS.items():
+        if not bool(getattr(env, flag_name, False)):
+            reward_scales[reward_name] = 0.0

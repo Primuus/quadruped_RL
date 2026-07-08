@@ -18,7 +18,7 @@ quadruped_train
 
 ## 当前训练框架
 
-默认 Go2 训练链路：
+通用四足训练链路：
 
 ```text
 policy_class_name = HIMActorCritic
@@ -31,7 +31,7 @@ runner_class_name = HIMOnPolicyRunner
 ```text
 actor 单帧观测：45
 actor 历史长度：6
-actor 外部输入：45 * 6 = 270
+actor 外部输入：45 * 6 = 270，当前适配 12 关节四足机器人
 HIMEstimator：obs_history 270 -> vel3 + latent16
 actor 内部输入：当前45 + vel3 + latent16 = 64
 action：12
@@ -59,10 +59,12 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
 
 ## 目录说明
 
-- `quadruped_rl/envs/base/`：四足机器人通用环境基类、观测、reward、随机化接口。
-- `quadruped_rl/envs/go2/`：Go2 配置、观测封装、命令、reward、终止条件和随机化逻辑。
-- `quadruped_rl/scripts/train_go2.py`：Go2 训练入口。
-- `quadruped_rl/scripts/play_go2.py`：Go2 play / 策略导出入口。
+- `quadruped_rl/envs/base/`：四足机器人通用环境基类、观测、reward、随机化、命令和终止条件。
+- `quadruped_rl/envs/go2/`：当前 Go2 机器人实例配置、资产适配和兼容封装。
+- `quadruped_rl/scripts/train.py`：通用训练入口，通过 `--task <robot>` 选择机器人任务。
+- `quadruped_rl/scripts/play.py`：通用 play / 策略导出入口，通过 `--task <robot>` 选择机器人任务。
+- `quadruped_rl/scripts/train_go2.py`：Go2 快捷训练入口，会自动设置 `--task go2`。
+- `quadruped_rl/scripts/play_go2.py`：Go2 快捷 play / 策略导出入口。
 - `quadruped_rl/utils/`：任务注册、地形、日志和通用工具。
 - `rsl_rl/`：随工程同步的 RL 算法库，当前包含 HIM-PPO 相关实现。
 - `docker/`：Docker 训练环境构建脚本。
@@ -121,7 +123,13 @@ python quadruped_rl/scripts/train_go2.py --headless --max_iterations 2
 python quadruped_rl/scripts/train_go2.py --headless --max_iterations 100
 ```
 
-基础训练：
+通用训练入口：
+
+```bash
+python quadruped_rl/scripts/train.py --task go2 --headless
+```
+
+Go2 快捷训练入口：
 
 ```bash
 python quadruped_rl/scripts/train_go2.py --headless
@@ -195,6 +203,12 @@ python quadruped_rl/scripts/train_go2.py \
 训练完成后，用 play 入口加载 checkpoint 并导出 TorchScript：
 
 ```bash
+python quadruped_rl/scripts/play.py --task go2 --headless
+```
+
+Go2 快捷入口等价于：
+
+```bash
 python quadruped_rl/scripts/play_go2.py --headless
 ```
 
@@ -213,7 +227,18 @@ python quadruped_rl/scripts/play_go2.py \
   --checkpoint 1000
 ```
 
-导出的 TorchScript 内部包含 `estimator + actor`，外部输入保持 270 维历史观测。
+导出的 TorchScript 内部包含 `estimator + actor`，外部输入维度必须和机器人任务配置一致。当前 Go2 实例保持 270 维历史观测。
+
+## 新增四足机器人
+
+新增机器人时不要改 HIM-PPO 主算法，按实例扩展：
+
+1. 在 `resources/robots/<robot>/` 添加 URDF/MJCF 资产。
+2. 在 `quadruped_rl/envs/<robot>/` 新增配置类，继承 `LeggedRobotCfg` 和 `LeggedRobotCfgPPO`。
+3. 在配置中替换 `asset.file`、`asset.name`、默认关节角、PD、命令范围、reward 权重和实验名。
+4. 在 `quadruped_rl/envs/__init__.py` 注册新的 task，例如 `task_registry.register("<robot>", RobotEnv, RobotCfg(), RobotCfgPPO())`。
+5. 用 `python quadruped_rl/scripts/train.py --task <robot> --headless` 训练。
+6. 用 `python quadruped_rl/scripts/play.py --task <robot> --headless` 导出策略。
 
 ## 调参流程
 

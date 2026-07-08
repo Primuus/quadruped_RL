@@ -1,6 +1,6 @@
 from quadruped_rl.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-# Go2 专用配置。新增参数时请同步补充中文注释。
+# Go2 机器人实例配置。通用四足逻辑在 base 中，新增机器人时复制本文件并替换资产、关节和任务参数。
 
 
 class GO2RoughCfg( LeggedRobotCfg ):
@@ -31,8 +31,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
         num_privileged_height_scan = 187  # privileged obs 高度采样维度，平地或未启用高度采样时填 0
         num_one_step_privileged_obs = num_one_step_observations + 3 + num_privileged_external_force_obs + num_privileged_height_scan  # critic 特权观测：45 + base_lin_vel3 + 外力3 + 高度187 = 238
         num_privileged_obs = num_one_step_privileged_obs  # critic 输入维度；actor 仍只使用历史观测
-        obs_mode = 'go2_history_45x6'  # 6 帧 45 维历史观测，阶段 6 使用 HIM-PPO
-        num_actions = 12  # 动作维度，Go2 一共 12 个关节
+        obs_mode = 'quadruped_history_45x6'  # 四足 HIM 观测模式：6 帧 45 维历史观测
+        num_actions = 12  # 动作维度，当前 Go2 实例一共 12 个关节
 
     class safety(LeggedRobotCfg.safety):
         enable_him_actor_critic = True  # 阶段 6 启用 HIMActorCritic
@@ -41,7 +41,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
 
     class commands(LeggedRobotCfg.commands):
         curriculum = False  # 安全基线关闭速度命令课程学习，稳定后再单独启用
-        max_curriculum = 2.0  # Go2 walk 阶段命令课程上限
+        max_curriculum = 2.0  # 当前机器人 walk 阶段命令课程上限
         resampling_time = 10.0  # 命令重采样周期 [s]
         heading_command = True  # 使用 heading 误差生成偏航速度命令
 

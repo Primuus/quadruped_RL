@@ -1,11 +1,8 @@
-"""Go2 episode 终止条件。"""
+"""Go2 任务的 episode 终止条件兼容封装。
 
-import torch
+实际实现放在四足通用 base 模块中，Go2 这里只保留旧函数名，避免已有导入失效。
+"""
 
+from quadruped_rl.envs.base.terminations import update_quadruped_termination
 
-def update_go2_termination(env):
-    """根据接触、姿态和超时更新 reset buffer。"""
-    env.reset_buf = torch.any(torch.norm(env.contact_forces[:, env.termination_contact_indices, :], dim=-1) > 1., dim=1)
-    env.reset_buf |= torch.logical_or(torch.abs(env.rpy[:, 1]) > 1.0, torch.abs(env.rpy[:, 0]) > 0.8)
-    env.time_out_buf = env.episode_length_buf > env.max_episode_length
-    env.reset_buf |= env.time_out_buf
+update_go2_termination = update_quadruped_termination

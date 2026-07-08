@@ -12,6 +12,17 @@ from typing import Tuple, Dict
 
 from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from quadruped_rl.envs.base.base_task import BaseTask
+from quadruped_rl.envs.base.commands import (
+    post_quadruped_command_step,
+    resample_quadruped_commands,
+    update_quadruped_command_curriculum,
+)
+from quadruped_rl.envs.base.domain_rand import (
+    apply_quadruped_safety_cfg,
+    process_quadruped_rigid_body_props,
+    process_quadruped_rigid_shape_props,
+    push_quadruped_robots,
+)
 from quadruped_rl.envs.base.observations import (
     QUADRUPED_PRIVILEGED_EXTERNAL_FORCE_SIZE,
     QUADRUPED_PRIVILEGED_HEIGHT_SCAN_SIZE,
@@ -19,10 +30,8 @@ from quadruped_rl.envs.base.observations import (
     build_him_privileged_observations,
     reset_observation_history,
 )
-from quadruped_rl.envs.go2.commands import post_go2_command_step, resample_go2_commands, update_go2_command_curriculum
-from quadruped_rl.envs.go2.domain_rand import apply_go2_safety_cfg, process_go2_rigid_body_props, process_go2_rigid_shape_props, push_go2_robots
-from quadruped_rl.envs.go2.rewards import apply_go2_reward_safety_overrides
-from quadruped_rl.envs.go2.terminations import update_go2_termination
+from quadruped_rl.envs.base.rewards import apply_quadruped_reward_safety_overrides
+from quadruped_rl.envs.base.terminations import update_quadruped_termination
 from quadruped_rl.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
 from quadruped_rl.utils.helpers import class_to_dict
 from .legged_robot_config import LeggedRobotCfg
@@ -130,7 +139,7 @@ class LeggedRobot(BaseTask):
         self.reset_idx(env_ids)
         
         if self.cfg.domain_rand.push_robots:
-            push_go2_robots(self)
+            push_quadruped_robots(self)
 
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
 
@@ -142,7 +151,7 @@ class LeggedRobot(BaseTask):
     def check_termination(self):
         """ Check if environments need to be reset
         """
-        update_go2_termination(self)
+        update_quadruped_termination(self)
 
     def reset_idx(self, env_ids):
         """ Reset some environments.
@@ -244,7 +253,7 @@ class LeggedRobot(BaseTask):
         Returns:
             [List[gymapi.RigidShapeProperties]]: Modified rigid shape properties
         """
-        return process_go2_rigid_shape_props(self, props, env_id)
+        return process_quadruped_rigid_shape_props(self, props, env_id)
 
     def _process_dof_props(self, props, env_id):
         """ Callback allowing to store/change/randomize the DOF properties of each environment.
@@ -275,13 +284,13 @@ class LeggedRobot(BaseTask):
         return props
 
     def _process_rigid_body_props(self, props, env_id):
-        return process_go2_rigid_body_props(self, props, env_id)
+        return process_quadruped_rigid_body_props(self, props, env_id)
     
     def _post_physics_step_callback(self):
         """ Callback called before computing terminations, rewards, and observations
             Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
         """
-        post_go2_command_step(self)
+        post_quadruped_command_step(self)
 
     def _resample_commands(self, env_ids):
         """ Randommly select commands of some environments
@@ -289,7 +298,7 @@ class LeggedRobot(BaseTask):
         Args:
             env_ids (List[int]): Environments ids for which new commands are needed
         """
-        resample_go2_commands(self, env_ids)
+        resample_quadruped_commands(self, env_ids)
 
     def _compute_torques(self, actions):
         """ Compute torques from actions.
@@ -355,7 +364,7 @@ class LeggedRobot(BaseTask):
     def _push_robots(self):
         """ Random pushes the robots. Emulates an impulse by setting a randomized base velocity. 
         """
-        push_go2_robots(self)
+        push_quadruped_robots(self)
 
    
     
@@ -365,7 +374,7 @@ class LeggedRobot(BaseTask):
         Args:
             env_ids (List[int]): ids of environments being reset
         """
-        update_go2_command_curriculum(self, env_ids)
+        update_quadruped_command_curriculum(self, env_ids)
 
 
     def _get_noise_scale_vec(self, cfg):
@@ -627,19 +636,23 @@ class LeggedRobot(BaseTask):
         self.num_one_step_obs = getattr(cfg.env, "num_one_step_observations", 45)
         self.history_length = getattr(cfg.env, "history_length", 1)
         if self.num_one_step_obs != 45:
-            raise ValueError(f"Go2 one-step observation must be 45, got {self.num_one_step_obs}")
+            raise ValueError(f"Quadruped HIM one-step observation must be 45, got {self.num_one_step_obs}")
         if self.enable_history_obs:
             expected_obs = self.num_one_step_obs * self.history_length
             if self.history_length != 6:
-                raise ValueError(f"Go2 stage 3 expects history_length=6, got {self.history_length}")
-            if getattr(cfg.env, "obs_mode", "go2_history_45x6") != "go2_history_45x6":
-                raise ValueError(f"Go2 history policy expects obs_mode=go2_history_45x6, got {cfg.env.obs_mode}")
+                raise ValueError(f"Quadruped HIM history policy expects history_length=6, got {self.history_length}")
+            obs_mode = getattr(cfg.env, "obs_mode", "quadruped_history_45x6")
+            if obs_mode not in {"quadruped_history_45x6", "go2_history_45x6"}:
+                raise ValueError(
+                    f"Quadruped HIM history policy expects obs_mode=quadruped_history_45x6, got {cfg.env.obs_mode}"
+                )
         else:
             expected_obs = self.num_one_step_obs
-            if getattr(cfg.env, "obs_mode", "go2_45") != "go2_45":
-                raise ValueError(f"Go2 45-dim policy expects obs_mode=go2_45, got {cfg.env.obs_mode}")
+            obs_mode = getattr(cfg.env, "obs_mode", "quadruped_45")
+            if obs_mode not in {"quadruped_45", "go2_45"}:
+                raise ValueError(f"Quadruped HIM one-step policy expects obs_mode=quadruped_45, got {cfg.env.obs_mode}")
         if cfg.env.num_observations != expected_obs:
-            raise ValueError(f"Go2 policy expects {expected_obs} observations, got {cfg.env.num_observations}")
+            raise ValueError(f"Quadruped HIM policy expects {expected_obs} observations, got {cfg.env.num_observations}")
         self.num_privileged_external_force_obs = getattr(
             cfg.env, "num_privileged_external_force_obs", QUADRUPED_PRIVILEGED_EXTERNAL_FORCE_SIZE
         )
@@ -673,10 +686,10 @@ class LeggedRobot(BaseTask):
         self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
 
     def _apply_safety_cfg(self, cfg):
-        apply_go2_safety_cfg(self, cfg)
+        apply_quadruped_safety_cfg(self, cfg)
 
     def _apply_safety_reward_overrides(self):
-        apply_go2_reward_safety_overrides(self.reward_scales, self)
+        apply_quadruped_reward_safety_overrides(self.reward_scales, self)
 
 
     #------------ reward functions----------------

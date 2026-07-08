@@ -1,12 +1,9 @@
-"""Go2 环境入口。
-
-当前阶段沿用稳定的 LeggedRobot 实现，后续 Go2 专用逻辑逐步迁移到本目录。
-"""
+"""Go2 环境适配入口。"""
 
 from quadruped_rl.envs.base.legged_robot import LeggedRobot
 
 
 class Go2Env(LeggedRobot):
-    """Go2-only 训练环境。"""
+    """当前 Go2 任务适配器；通用四足逻辑在 LeggedRobot 中。"""
 
     pass

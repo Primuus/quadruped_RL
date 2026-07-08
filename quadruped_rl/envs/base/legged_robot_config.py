@@ -13,8 +13,8 @@ class LeggedRobotCfg(BaseConfig):
         num_privileged_height_scan = 187  # privileged obs 中的高度采样维度，平地或未启用高度采样时填 0
         num_one_step_privileged_obs = num_one_step_observations + 3 + num_privileged_external_force_obs + num_privileged_height_scan  # critic 特权观测：当前 45 维 + 机身线速度 3 维 + 外力 3 维 + 高度 187 维
         num_privileged_obs = num_one_step_privileged_obs  # critic 输入维度；actor 仍只使用 num_observations
-        num_actions = 12  # 当前 Go2 动作维度；算法应从配置读取，不在算法中硬编码
-        obs_mode = 'go2_history_45x6'  # 当前 Go2 观测模式：6 帧 45 维历史观测，后续可扩展其他机器人模式
+        num_actions = 12  # 当前四足默认动作维度；算法应从配置读取，不在算法中硬编码
+        obs_mode = 'quadruped_history_45x6'  # 四足 HIM 观测模式：6 帧 45 维历史观测
         env_spacing = 3.  # 环境之间的间隔，平地/网格地形时用于避免互相碰撞
         send_timeouts = True  # 是否把超时信息传给算法
         episode_length_s = 20  # 单个 episode 的最大时长 [s]
@@ -115,8 +115,8 @@ class LeggedRobotCfg(BaseConfig):
         enable_height_scan = False  # 是否启用地形高度采样
         enable_command_curriculum = False  # 是否启用速度命令课程学习
         enable_history_obs = True  # 是否启用 45*6 历史观测；阶段 3 开始启用
-        enable_him_actor_critic = False  # 是否启用 HIMActorCritic；Go2 阶段 6 开始启用
-        enable_himppo = False  # 是否启用 HIM-PPO；Go2 阶段 6 开始启用
+        enable_him_actor_critic = False  # 是否启用 HIMActorCritic
+        enable_himppo = False  # 是否启用 HIM-PPO
 
     class rewards:
         class scales:
@@ -129,7 +129,7 @@ class LeggedRobotCfg(BaseConfig):
             dof_acc = -2.5e-7  # 关节加速度惩罚
             joint_power = -0.0  # 关节功率惩罚，安全基线默认关闭
             base_height = -0.0  # 机身高度偏差惩罚，安全基线默认关闭
-            feet_air_time = 0.0  # 足端腾空时长奖励，Go2 walk 默认不额外鼓励跳跃步态
+            feet_air_time = 0.0  # 足端腾空时长奖励，walk 默认不额外鼓励跳跃步态
             foot_clearance = -0.0  # 足端抬脚约束，安全基线默认关闭
             action_rate = -0.01  # 动作变化率惩罚
             smoothness = -0.0  # 二阶动作平滑惩罚，安全基线默认关闭
@@ -235,9 +235,9 @@ class LeggedRobotCfgPPO(BaseConfig):
         max_grad_norm = 1.0  # 梯度裁剪上限
 
     class runner:
-        policy_class_name = 'ActorCritic'  # 策略网络类名；Go2 阶段 6 使用 HIMActorCritic
-        algorithm_class_name = 'PPO'  # 算法类名；Go2 阶段 6 使用 HIMPPO
-        runner_class_name = 'OnPolicyRunner'  # runner 类名；Go2 阶段 6 使用 HIMOnPolicyRunner
+        policy_class_name = 'ActorCritic'  # 策略网络类名；HIM 模式使用 HIMActorCritic
+        algorithm_class_name = 'PPO'  # 算法类名；HIM 模式使用 HIMPPO
+        runner_class_name = 'OnPolicyRunner'  # runner 类名；HIM 模式使用 HIMOnPolicyRunner
         num_steps_per_env = 24  # 每次迭代每个环境采样步数
         max_iterations = 1500  # 最大训练迭代次数
 

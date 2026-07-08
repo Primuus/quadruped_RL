@@ -7,5 +7,5 @@ setup(name='quadruped_rl',
       license="BSD-3-Clause",
       packages=find_packages(),
       author_email='support@unitree.com',
-      description='Go2 reinforcement learning training workspace',
+      description='Quadruped reinforcement learning training workspace',
       install_requires=['isaacgym', 'matplotlib', 'numpy==1.20', 'tensorboard', 'pyyaml'])
