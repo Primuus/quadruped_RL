@@ -12,9 +12,15 @@ from typing import Tuple, Dict
 
 from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from quadruped_rl.envs.base.base_task import BaseTask
+from quadruped_rl.envs.base.observations import (
+    QUADRUPED_PRIVILEGED_EXTERNAL_FORCE_SIZE,
+    QUADRUPED_PRIVILEGED_HEIGHT_SCAN_SIZE,
+    build_him_history_observations,
+    build_him_privileged_observations,
+    reset_observation_history,
+)
 from quadruped_rl.envs.go2.commands import post_go2_command_step, resample_go2_commands, update_go2_command_curriculum
 from quadruped_rl.envs.go2.domain_rand import apply_go2_safety_cfg, process_go2_rigid_body_props, process_go2_rigid_shape_props, push_go2_robots
-from quadruped_rl.envs.go2.observations import build_go2_observations, build_go2_privileged_observations, reset_go2_history
 from quadruped_rl.envs.go2.rewards import apply_go2_reward_safety_overrides
 from quadruped_rl.envs.go2.terminations import update_go2_termination
 from quadruped_rl.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
@@ -114,7 +120,7 @@ class LeggedRobot(BaseTask):
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         if self.privileged_obs_buf is not None:
-            termination_privileged_obs = build_go2_privileged_observations(self)[env_ids].clone()
+            termination_privileged_obs = build_him_privileged_observations(self)[env_ids].clone()
         else:
             termination_privileged_obs = torch.empty(0, device=self.device)
         self.extras["termination_ids"] = env_ids
@@ -168,7 +174,7 @@ class LeggedRobot(BaseTask):
         self.feet_air_time[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
-        reset_go2_history(self, env_ids)
+        reset_observation_history(self, env_ids)
         # fill extras
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
@@ -202,9 +208,9 @@ class LeggedRobot(BaseTask):
     def compute_observations(self):
         """ Computes observations
         """
-        self.obs_buf = build_go2_observations(self)
+        self.obs_buf = build_him_history_observations(self)
         if self.privileged_obs_buf is not None:
-            self.privileged_obs_buf = build_go2_privileged_observations(self, self.current_obs_buf)
+            self.privileged_obs_buf = build_him_privileged_observations(self, self.current_obs_buf)
         # add perceptive inputs if not blind
         # add noise if needed
         if self.add_noise:
@@ -443,6 +449,20 @@ class LeggedRobot(BaseTask):
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self.external_force_obs = torch.zeros(
+            self.num_envs,
+            self.num_privileged_external_force_obs,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
+        self.privileged_height_scan_obs = torch.zeros(
+            self.num_envs,
+            self.num_privileged_height_scan,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False,
+        )
       
 
         # joint positions offsets and PD gains
@@ -620,13 +640,23 @@ class LeggedRobot(BaseTask):
                 raise ValueError(f"Go2 45-dim policy expects obs_mode=go2_45, got {cfg.env.obs_mode}")
         if cfg.env.num_observations != expected_obs:
             raise ValueError(f"Go2 policy expects {expected_obs} observations, got {cfg.env.num_observations}")
-        self.num_one_step_privileged_obs = getattr(cfg.env, "num_one_step_privileged_obs", self.num_one_step_obs + 3)
+        self.num_privileged_external_force_obs = getattr(
+            cfg.env, "num_privileged_external_force_obs", QUADRUPED_PRIVILEGED_EXTERNAL_FORCE_SIZE
+        )
+        self.num_privileged_height_scan = getattr(
+            cfg.env, "num_privileged_height_scan", QUADRUPED_PRIVILEGED_HEIGHT_SCAN_SIZE
+        )
+        expected_privileged_obs = self.num_one_step_obs + 3 + self.num_privileged_external_force_obs + self.num_privileged_height_scan
+        self.num_one_step_privileged_obs = getattr(cfg.env, "num_one_step_privileged_obs", expected_privileged_obs)
         if cfg.env.num_privileged_obs is not None:
-            if self.num_one_step_privileged_obs != self.num_one_step_obs + 3:
-                raise ValueError(f"Go2 stage 6 expects 48 privileged observations, got {self.num_one_step_privileged_obs}")
+            if self.num_one_step_privileged_obs != expected_privileged_obs:
+                raise ValueError(
+                    f"HIM critic expects {expected_privileged_obs} privileged observations, "
+                    f"got {self.num_one_step_privileged_obs}"
+                )
             if cfg.env.num_privileged_obs != self.num_one_step_privileged_obs:
                 raise ValueError(
-                    f"Go2 critic expects {self.num_one_step_privileged_obs} privileged observations, "
+                    f"HIM critic expects {self.num_one_step_privileged_obs} privileged observations, "
                     f"got {cfg.env.num_privileged_obs}"
                 )
 

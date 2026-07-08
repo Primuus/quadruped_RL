@@ -27,7 +27,9 @@ class GO2RoughCfg( LeggedRobotCfg ):
         num_one_step_observations = 45  # 单步观测维度，HIMLoco 风格，不直接输入机身线速度
         history_length = 6  # 历史观测帧数，阶段 6 使用 6 帧
         num_observations = num_one_step_observations * history_length  # policy 输入维度：45*6=270
-        num_one_step_privileged_obs = num_one_step_observations + 3  # critic 特权观测：当前 45 维 + 机身线速度 3 维
+        num_privileged_external_force_obs = 3  # privileged obs 外力/扰动占位维度，未启用扰动时填 0
+        num_privileged_height_scan = 187  # privileged obs 高度采样维度，平地或未启用高度采样时填 0
+        num_one_step_privileged_obs = num_one_step_observations + 3 + num_privileged_external_force_obs + num_privileged_height_scan  # critic 特权观测：45 + base_lin_vel3 + 外力3 + 高度187 = 238
         num_privileged_obs = num_one_step_privileged_obs  # critic 输入维度；actor 仍只使用历史观测
         obs_mode = 'go2_history_45x6'  # 6 帧 45 维历史观测，阶段 6 使用 HIM-PPO
         num_actions = 12  # 动作维度，Go2 一共 12 个关节

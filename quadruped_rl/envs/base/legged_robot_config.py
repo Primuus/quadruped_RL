@@ -6,13 +6,15 @@ from .base_config import BaseConfig
 class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096  # 并行环境数量，越大采样越快，但显存占用也更高
-        num_one_step_observations = 45  # 单步观测维度；Go2 使用 HIMLoco 风格 45 维观测
+        num_one_step_observations = 45  # 单步 actor 观测维度；HIMLoco 四足默认 45 维观测
         history_length = 6  # 历史观测帧数；阶段 6 使用 6 帧历史
         num_observations = num_one_step_observations * history_length  # policy 输入维度：45*6=270
-        num_one_step_privileged_obs = num_one_step_observations + 3  # critic 特权观测：当前 45 维 + 机身线速度 3 维
+        num_privileged_external_force_obs = 3  # privileged obs 中的外力/扰动占位维度，未启用扰动时填 0
+        num_privileged_height_scan = 187  # privileged obs 中的高度采样维度，平地或未启用高度采样时填 0
+        num_one_step_privileged_obs = num_one_step_observations + 3 + num_privileged_external_force_obs + num_privileged_height_scan  # critic 特权观测：当前 45 维 + 机身线速度 3 维 + 外力 3 维 + 高度 187 维
         num_privileged_obs = num_one_step_privileged_obs  # critic 输入维度；actor 仍只使用 num_observations
-        num_actions = 12  # 当前工程的动作维度，四足机器人为 12 个关节
-        obs_mode = 'go2_history_45x6'  # 观测模式：6 帧 45 维历史观测，Go2 阶段 6 使用 HIM-PPO
+        num_actions = 12  # 当前 Go2 动作维度；算法应从配置读取，不在算法中硬编码
+        obs_mode = 'go2_history_45x6'  # 当前 Go2 观测模式：6 帧 45 维历史观测，后续可扩展其他机器人模式
         env_spacing = 3.  # 环境之间的间隔，平地/网格地形时用于避免互相碰撞
         send_timeouts = True  # 是否把超时信息传给算法
         episode_length_s = 20  # 单个 episode 的最大时长 [s]
