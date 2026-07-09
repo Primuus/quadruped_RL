@@ -38,6 +38,10 @@ class GO2RoughCfg( LeggedRobotCfg ):
         enable_him_actor_critic = True  # 阶段 6 启用 HIMActorCritic
         enable_himppo = True  # 阶段 6 启用 HIMPPO
         enable_smoothness = True  # 阶段 7 第一步启用二阶动作平滑惩罚
+        enable_foot_clearance = True  # 启用足端抬脚约束，避免策略长期拖脚
+        enable_rigid_body_state_rewards = True  # foot_clearance 依赖足端刚体位置和速度
+        enable_noise = True  # 启用观测噪声，提高策略鲁棒性
+        enable_domain_rand = True  # 启用基础域随机化，目前只打开摩擦随机化
 
     class commands(LeggedRobotCfg.commands):
         curriculum = False  # 安全基线关闭速度命令课程学习，稳定后再单独启用
@@ -48,7 +52,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
         class ranges(LeggedRobotCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0]  # 前向速度范围 [m/s]
             lin_vel_y = [-1.0, 1.0]  # 侧向速度范围 [m/s]
-            ang_vel_yaw = [-3.14, 3.14]  # 偏航角速度范围 [rad/s]
+            ang_vel_yaw = [-1.0, 1.0]  # 偏航角速度范围 [rad/s]，参考 legged_gym 保持较稳训练
             heading = [-3.14, 3.14]  # 目标朝向范围 [rad]
 
     class control( LeggedRobotCfg.control ):
@@ -69,6 +73,15 @@ class GO2RoughCfg( LeggedRobotCfg ):
         terminate_after_contacts_on = ["base"]  # 机身触地时终止 episode
         self_collisions = 1  # 是否启用自碰撞过滤
 
+    class domain_rand(LeggedRobotCfg.domain_rand):
+        randomize_friction = True  # 随机化地面摩擦，参考 legged_gym 的基础鲁棒性配置
+        friction_range = [0.5, 1.25]  # 地面摩擦系数随机范围
+        randomize_base_mass = False  # 暂不随机化机身质量，避免一次性引入过多变量
+        push_robots = False  # 暂不启用随机外推，等基础步态稳定后再打开
+
+    class noise(LeggedRobotCfg.noise):
+        add_noise = True  # 启用观测噪声；具体噪声幅值沿用 base.noise.noise_scales
+
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9  # 关节软限制比例
         base_height_target = 0.25  # 期望机身相对地面高度，基础 reward 默认不启用
@@ -85,7 +98,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
             joint_power = -0.0  # 关节功率惩罚，安全基线默认关闭
             base_height = -0.0  # 机身高度偏差惩罚，安全基线默认关闭
             feet_air_time = 0.0  # 参考 HIMLoco walk，避免把步态推得过于跳跃
-            foot_clearance = -0.0  # 足端抬脚约束，安全基线默认关闭
+            foot_clearance = -0.01  # 足端抬脚约束，参考 HIMLoco walk/go1/a1 配置
             action_rate = -0.01  # 动作一阶差分惩罚
             smoothness = -0.01  # 二阶动作平滑惩罚，参考 HIMLoco walk 配置
             torques = -0.0002  # 力矩惩罚，安全基线保留基础约束
@@ -94,7 +107,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
             feet_stumble = -0.0  # 足端绊倒惩罚
             stand_still = -0.0  # 静止姿态惩罚
             feet_contact_forces = -0.0  # 足端接触力惩罚
-            dof_pos_limits = -0.0  # 关节位置限制惩罚
+            dof_pos_limits = -10.0  # 关节位置限制惩罚，参考 Unitree Go2 配置
             dof_vel_limits = -0.0  # 关节速度限制惩罚
             torque_limits = -0.0  # 力矩限制惩罚
 
