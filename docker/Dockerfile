@@ -55,7 +55,7 @@ WORKDIR /workspace/quadruped_train
 
 COPY . .
 
-RUN python -m pip install --no-cache-dir numpy==1.20 matplotlib pyyaml tensorboard && \
+RUN python -m pip install --no-cache-dir numpy==1.20 matplotlib "onnx>=1.14,<2" pyyaml tensorboard && \
     python -m pip install --no-cache-dir -e ./rsl_rl --no-deps && \
     python -m pip install --no-cache-dir -e . --no-deps
 

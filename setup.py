@@ -8,4 +8,4 @@ setup(name='quadruped_rl',
       packages=find_packages(),
       author_email='support@unitree.com',
       description='Quadruped reinforcement learning training workspace',
-      install_requires=['isaacgym', 'matplotlib', 'numpy==1.20', 'tensorboard', 'pyyaml'])
+      install_requires=['isaacgym', 'matplotlib', 'numpy==1.20', 'onnx>=1.14,<2', 'tensorboard', 'pyyaml'])

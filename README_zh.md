@@ -1,6 +1,6 @@
 # 四足机器人 HIMLoco 训练工作区
 
-`quadruped_train` 是强化学习训练工作区，负责在 Isaac Gym 中训练四足机器人策略，并导出给本地 `quadruped` 工程使用的 TorchScript 策略。
+`quadruped_train` 是强化学习训练工作区，负责在 Isaac Gym 中训练四足机器人策略，并从同一个部署模型直接导出给本地 `quadruped` 工程使用的 TorchScript 和 ONNX 策略。
 
 当前已经接入的机器人实例是 Go2。框架设计不是 Go2 专用，后续新增其他四足机器人时，应新增机器人配置、资产和任务注册，而不是改 HIM-PPO 主算法。
 
@@ -10,8 +10,8 @@
 quadruped_train
   -> Isaac Gym 并行训练
   -> HIMLoco 风格 actor / estimator / critic
-  -> 导出 estimator + actor TorchScript 策略
-  -> quadruped 本地 MuJoCo 加载策略
+  -> 直接导出 estimator + actor TorchScript / ONNX 策略
+  -> quadruped 本地 MuJoCo 切换推理后端加载策略
 ```
 
 本仓库只负责训练和策略导出，不包含 ROS2 部署链路。部署侧在本地 `quadruped` 工作区。
@@ -55,7 +55,7 @@ critic privileged obs：45 + base_lin_vel3 + external_force3 + height_scan187 = 
 [当前 45 维, 上一帧 45 维, ..., 更早第 5 帧 45 维]
 ```
 
-critic privileged obs 只用于训练 value function 和 estimator，不进入部署侧 TorchScript 外部输入。
+critic privileged obs 只用于训练 value function 和 estimator，不进入部署模型的外部输入。
 
 ## 目录说明
 
@@ -89,6 +89,12 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
    ```
 
 `rsl_rl` 已随本仓库同步，不需要单独克隆。只有确认要更新算法库时，才从官方仓库重新同步。
+
+ONNX 导出依赖 `onnx`。通过 `pip install -e .` 会自动安装；已有环境如果使用 `--no-deps` 安装，需要补充：
+
+```bash
+pip install "onnx>=1.14,<2"
+```
 
 ## Docker 运行
 
@@ -200,7 +206,7 @@ python quadruped_rl/scripts/train_go2.py \
 
 ## 策略导出
 
-训练完成后，用 play 入口加载 checkpoint 并导出 TorchScript：
+训练完成后，用 play 入口加载 checkpoint，并从同一个 `estimator + actor` 部署模块直接导出 TorchScript 和 ONNX：
 
 ```bash
 python quadruped_rl/scripts/play.py --task go2 --headless
@@ -212,10 +218,11 @@ Go2 快捷入口等价于：
 python quadruped_rl/scripts/play_go2.py --headless
 ```
 
-默认导出路径：
+默认同时生成：
 
 ```text
 logs/go2/exported/policies/policy_1.pt
+logs/go2/exported/policies/policy_1.onnx
 ```
 
 指定某个 run 或 checkpoint：
@@ -227,7 +234,15 @@ python quadruped_rl/scripts/play_go2.py \
   --checkpoint 1000
 ```
 
-导出的 TorchScript 内部包含 `estimator + actor`，外部输入维度必须和机器人任务配置一致。当前 Go2 实例保持 270 维历史观测。
+两个模型都直接从当前 PyTorch `estimator + actor` 导出，ONNX 不经过 TorchScript 二次转换。两者外部输入、输出和权重来源一致：
+
+```text
+输入：obs_history，当前 Go2 为 [batch, 270] float32
+输出：actions，当前 Go2 为 [batch, 12] float32
+ONNX opset：17
+```
+
+部署模型外部输入维度必须和机器人任务配置一致。当前 Go2 实例保持 270 维历史观测。
 
 ## 新增四足机器人
 
@@ -251,7 +266,7 @@ python quadruped_rl/scripts/play_go2.py \
 4. 服务器小步训练 2 或 100 iteration
 5. 短训 500 到 1000 iteration
 6. play 观察步态
-7. 导出 JIT 后在 quadruped 中做 MuJoCo 检查
+7. 导出 TorchScript / ONNX 后在 quadruped 中做双后端 MuJoCo 检查
 8. 记录结论并提交
 ```
 
@@ -274,9 +289,9 @@ terrain curriculum / height scan 内容启用
 
 ```text
 quadruped_train 训练
-  -> play_go2.py 导出 logs/go2/exported/policies/policy_1.pt
-  -> 复制到 quadruped/src/controller/rl/models/policy_1.pt
-  -> quadruped 本地 MuJoCo 运行
+  -> play_go2.py 同时导出 policy_1.pt / policy_1.onnx
+  -> 复制到 quadruped/src/controller/rl/models/
+  -> quadruped 本地 MuJoCo 分别运行 TorchScript / ONNX Runtime
 ```
 
 `quadruped_train` 不负责 ROS2 控制和实机链路；`quadruped` 不负责训练。

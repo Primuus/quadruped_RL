@@ -149,17 +149,29 @@ def get_args():
 def export_policy_as_jit(actor_critic, path):
     if hasattr(actor_critic, 'estimator'):
         exporter = PolicyExporterHIM(actor_critic)
-        exporter.export(path)
+        return exporter.export(path)
     elif hasattr(actor_critic, 'memory_a'):
         # assumes LSTM: TODO add GRU
         exporter = PolicyExporterLSTM(actor_critic)
-        exporter.export(path)
+        return exporter.export(path)
     else: 
         os.makedirs(path, exist_ok=True)
         path = os.path.join(path, 'policy_1.pt')
         model = copy.deepcopy(actor_critic.actor).to('cpu')
         traced_script_module = torch.jit.script(model)
         traced_script_module.save(path)
+        return path
+
+
+def export_policy_as_jit_and_onnx(actor_critic, path, opset_version=17):
+    """Directly export the same HIM deployment module to TorchScript and ONNX."""
+    if not hasattr(actor_critic, 'estimator'):
+        raise ValueError('Dual TorchScript/ONNX export currently requires a HIM estimator + actor policy.')
+
+    exporter = PolicyExporterHIM(actor_critic)
+    jit_path = exporter.export(path)
+    onnx_path = exporter.export_onnx(path, opset_version=opset_version)
+    return jit_path, onnx_path
 
 
 class PolicyExporterLSTM(torch.nn.Module):
@@ -189,6 +201,7 @@ class PolicyExporterLSTM(torch.nn.Module):
         self.to('cpu')
         traced_script_module = torch.jit.script(self)
         traced_script_module.save(path)
+        return path
 
 
 class PolicyExporterHIM(torch.nn.Module):
@@ -198,6 +211,7 @@ class PolicyExporterHIM(torch.nn.Module):
         super().__init__()
         self.actor = copy.deepcopy(actor_critic.actor)
         self.estimator = copy.deepcopy(actor_critic.estimator.encoder)
+        self.num_actor_obs = int(actor_critic.num_actor_obs)
         self.num_one_step_obs = int(actor_critic.num_one_step_obs)
         self.num_latent = int(actor_critic.estimator.num_latent)
 
@@ -210,7 +224,38 @@ class PolicyExporterHIM(torch.nn.Module):
     def export(self, path):
         os.makedirs(path, exist_ok=True)
         path = os.path.join(path, 'policy_1.pt')
-        self.to('cpu')
+        self.to('cpu').eval()
         traced_script_module = torch.jit.script(self)
         traced_script_module.save(path)
+        return path
+
+    def export_onnx(self, path, opset_version=17):
+        """Export ONNX directly from this estimator + actor module."""
+        try:
+            import onnx  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError(
+                'ONNX export requires the onnx package. Install it with: pip install "onnx>=1.14,<2"'
+            ) from exc
+
+        os.makedirs(path, exist_ok=True)
+        path = os.path.join(path, 'policy_1.onnx')
+        self.to('cpu').eval()
+        example_obs = torch.zeros(1, self.num_actor_obs, dtype=torch.float32)
+        torch.onnx.export(
+            self,
+            example_obs,
+            path,
+            export_params=True,
+            opset_version=opset_version,
+            do_constant_folding=True,
+            input_names=['obs_history'],
+            output_names=['actions'],
+            dynamic_axes={
+                'obs_history': {0: 'batch_size'},
+                'actions': {0: 'batch_size'},
+            },
+            dynamo=False,
+        )
+        return path
     
