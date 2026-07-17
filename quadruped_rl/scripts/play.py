@@ -3,10 +3,7 @@ import os
 import isaacgym
 from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from quadruped_rl.envs import *
-from quadruped_rl.utils import get_args, export_policy_as_jit_and_onnx, task_registry, Logger
-
-import numpy as np
-import torch
+from quadruped_rl.utils import export_policy_as_jit_and_onnx, get_args, task_registry
 
 
 def play(args):
@@ -37,13 +34,11 @@ def play(args):
         print('Exported TorchScript policy to: ', jit_path)
         print('Exported ONNX policy to: ', onnx_path)
 
-    for i in range(10*int(env.max_episode_length)):
+    for _ in range(10*int(env.max_episode_length)):
         actions = policy(obs.detach())
-        obs, _, rews, dones, infos = env.step(actions.detach())
+        obs, _, _, _, _ = env.step(actions.detach())
 
 if __name__ == '__main__':
     EXPORT_POLICY = True
-    RECORD_FRAMES = False
-    MOVE_CAMERA = False
     args = get_args()
     play(args)

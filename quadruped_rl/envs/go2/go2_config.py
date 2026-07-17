@@ -25,7 +25,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
 
     class env(LeggedRobotCfg.env):
         num_one_step_observations = 45  # 单步观测维度，HIMLoco 风格，不直接输入机身线速度
-        history_length = 6  # 历史观测帧数，阶段 6 使用 6 帧
+        history_length = 6  # 历史观测帧数，当前 HIM policy 固定使用 6 帧
         num_observations = num_one_step_observations * history_length  # policy 输入维度：45*6=270
         num_privileged_external_force_obs = 3  # privileged obs 外力/扰动占位维度，未启用扰动时填 0
         num_privileged_height_scan = 187  # privileged obs 高度采样维度，平地或未启用高度采样时填 0
@@ -34,17 +34,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
         obs_mode = 'quadruped_history_45x6'  # 四足 HIM 观测模式：6 帧 45 维历史观测
         num_actions = 12  # 动作维度，当前 Go2 实例一共 12 个关节
 
-    class safety(LeggedRobotCfg.safety):
-        enable_him_actor_critic = True  # 阶段 6 启用 HIMActorCritic
-        enable_himppo = True  # 阶段 6 启用 HIMPPO
-        enable_smoothness = True  # 阶段 7 第一步启用二阶动作平滑惩罚
-        enable_foot_clearance = True  # 启用足端抬脚约束，避免策略长期拖脚
-        enable_rigid_body_state_rewards = True  # foot_clearance 依赖足端刚体位置和速度
-        enable_noise = True  # 启用观测噪声，提高策略鲁棒性
-        enable_domain_rand = True  # 启用基础域随机化，目前只打开摩擦随机化
-
     class commands(LeggedRobotCfg.commands):
-        curriculum = False  # 安全基线关闭速度命令课程学习，稳定后再单独启用
+        curriculum = False  # 当前关闭速度命令课程学习，稳定后再单独启用
         max_curriculum = 2.0  # 当前机器人 walk 阶段命令课程上限
         resampling_time = 10.0  # 命令重采样周期 [s]
         heading_command = True  # 使用 heading 误差生成偏航速度命令
@@ -58,8 +49,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
     class control( LeggedRobotCfg.control ):
         # PD 参数与训练侧对齐
         control_type = 'P'
-        stiffness = {'joint': 20.}  # [N*m/rad] 安全基线使用保守刚度
-        damping = {'joint': 0.5}  # [N*m*s/rad] 安全基线使用保守阻尼
+        stiffness = {'joint': 20.}  # [N*m/rad] 当前刚度
+        damping = {'joint': 0.5}  # [N*m*s/rad] 当前阻尼
         # target angle = action_scale * action + default_angle
         action_scale = 0.25  # 策略动作到关节角偏移的缩放
         # 一个策略动作在仿真中重复的子步数
@@ -86,7 +77,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
         soft_dof_pos_limit = 0.9  # 关节软限制比例
         base_height_target = 0.25  # 期望机身相对地面高度，基础 reward 默认不启用
         clearance_height_target = -0.20  # 机身坐标系下足端目标高度，启用 foot_clearance 时使用
-        only_positive_rewards = True  # 安全基线裁剪负总奖励，降低早期训练不稳定性
+        only_positive_rewards = True  # 裁剪负总奖励，降低早期训练不稳定性
 
         class scales( LeggedRobotCfg.rewards.scales ):
             tracking_lin_vel = 1.0  # 线速度跟踪奖励
@@ -95,8 +86,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
             ang_vel_xy = -0.05  # 横滚/俯仰角速度惩罚
             orientation = -0.2  # 姿态偏差惩罚
             dof_acc = -2.5e-7  # 关节加速度惩罚
-            joint_power = -0.0  # 关节功率惩罚，安全基线默认关闭
-            base_height = -0.0  # 机身高度偏差惩罚，安全基线默认关闭
+            joint_power = -0.0  # 关节功率惩罚，当前关闭
+            base_height = -0.0  # 机身高度偏差惩罚，当前关闭
             feet_air_time = 0.0  # 参考 HIMLoco walk，避免把步态推得过于跳跃
             foot_clearance = -0.01  # 足端抬脚约束，参考 HIMLoco walk/go1/a1 配置
             action_rate = -0.01  # 动作一阶差分惩罚
@@ -117,9 +108,9 @@ class GO2RoughCfgPPO( LeggedRobotCfgPPO ):
         entropy_coef = 0.01  # 熵奖励系数，保持一定探索
 
     class runner( LeggedRobotCfgPPO.runner ):
-        policy_class_name = 'HIMActorCritic'  # 阶段 6 使用 HIM actor-critic：history -> estimator -> actor
-        algorithm_class_name = 'HIMPPO'  # 阶段 6 使用 HIM-PPO，额外训练 estimator
-        runner_class_name = 'HIMOnPolicyRunner'  # 阶段 6 runner 保存 next privileged obs
+        policy_class_name = 'HIMActorCritic'  # HIM actor-critic：history -> estimator -> actor
+        algorithm_class_name = 'HIMPPO'  # HIM-PPO，额外训练 estimator
+        runner_class_name = 'HIMOnPolicyRunner'  # 保存 estimator 更新所需的 next privileged obs
         max_iterations = 10000  # 最大训练迭代次数
         run_name = 'rough'  # 这次训练的运行名
         experiment_name = 'go2'  # 实验名

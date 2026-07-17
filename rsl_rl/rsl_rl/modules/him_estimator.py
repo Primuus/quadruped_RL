@@ -12,7 +12,7 @@ import torch.nn.functional as F
 class HIMEstimator(nn.Module):
     """HIMLoco 风格的历史观测编码器。
 
-    阶段 6 中由 HIMPPO 调用 update() 训练速度估计和 latent 表征。
+    由 HIMPPO 调用 update() 训练速度估计和 latent 表征。
     """
 
     def __init__(
@@ -76,7 +76,7 @@ class HIMEstimator(nn.Module):
         return vel.detach(), latent.detach()
 
     def update(self, obs_history, next_critic_obs, lr=None):
-        """阶段 6 HIMPPO 使用的 estimator 更新接口。"""
+        """HIMPPO 使用的 estimator 更新接口。"""
         if lr is not None:
             self.learning_rate = lr
             for param_group in self.optimizer.param_groups:

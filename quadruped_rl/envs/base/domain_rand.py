@@ -6,30 +6,6 @@ from isaacgym import gymtorch
 from isaacgym.torch_utils import torch_rand_float
 
 
-def apply_quadruped_safety_cfg(env, cfg):
-    """应用安全开关，默认屏蔽尚未验证的高风险功能。"""
-    safety = getattr(cfg, "safety", None)
-    env.enable_foot_clearance = bool(getattr(safety, "enable_foot_clearance", False))
-    env.use_rigid_body_state = bool(getattr(safety, "enable_rigid_body_state_rewards", False))
-    env.enable_joint_power = bool(getattr(safety, "enable_joint_power", False))
-    env.enable_smoothness = bool(getattr(safety, "enable_smoothness", False))
-    env.enable_noise = bool(getattr(safety, "enable_noise", False))
-    env.enable_domain_rand = bool(getattr(safety, "enable_domain_rand", False))
-    env.enable_push = bool(getattr(safety, "enable_push", False))
-    env.enable_height_scan = bool(getattr(safety, "enable_height_scan", False))
-    env.enable_command_curriculum = bool(getattr(safety, "enable_command_curriculum", False))
-    env.enable_history_obs = bool(getattr(safety, "enable_history_obs", False))
-    env.enable_him_actor_critic = bool(getattr(safety, "enable_him_actor_critic", False))
-    env.enable_himppo = bool(getattr(safety, "enable_himppo", False))
-
-    cfg.noise.add_noise = cfg.noise.add_noise and env.enable_noise
-    cfg.domain_rand.randomize_friction = cfg.domain_rand.randomize_friction and env.enable_domain_rand
-    cfg.domain_rand.randomize_base_mass = cfg.domain_rand.randomize_base_mass and env.enable_domain_rand
-    cfg.domain_rand.push_robots = cfg.domain_rand.push_robots and env.enable_push
-    cfg.terrain.measure_heights = cfg.terrain.measure_heights and env.enable_height_scan
-    cfg.commands.curriculum = cfg.commands.curriculum and env.enable_command_curriculum
-
-
 def process_quadruped_rigid_shape_props(env, props, env_id):
     """按配置随机化地面摩擦。"""
     if env.cfg.domain_rand.randomize_friction:

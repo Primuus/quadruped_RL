@@ -7,8 +7,6 @@ from quadruped_rl.utils import get_args
 
 def main():
     play_module.EXPORT_POLICY = True
-    play_module.RECORD_FRAMES = False
-    play_module.MOVE_CAMERA = False
 
     args = get_args()
     args.task = "go2"

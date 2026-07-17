@@ -18,7 +18,6 @@ from quadruped_rl.envs.base.commands import (
     update_quadruped_command_curriculum,
 )
 from quadruped_rl.envs.base.domain_rand import (
-    apply_quadruped_safety_cfg,
     process_quadruped_rigid_body_props,
     process_quadruped_rigid_shape_props,
     push_quadruped_robots,
@@ -30,7 +29,7 @@ from quadruped_rl.envs.base.observations import (
     build_him_privileged_observations,
     reset_observation_history,
 )
-from quadruped_rl.envs.base.rewards import apply_quadruped_reward_safety_overrides
+from quadruped_rl.envs.base.rewards import reward_requires_rigid_body_state
 from quadruped_rl.envs.base.terminations import update_quadruped_termination
 from quadruped_rl.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
 from quadruped_rl.utils.helpers import class_to_dict
@@ -166,7 +165,7 @@ class LeggedRobot(BaseTask):
         if len(env_ids) == 0:
             return
 
-        if self.cfg.commands.curriculum and self.enable_command_curriculum and (self.common_step_counter % self.max_episode_length == 0):
+        if self.cfg.commands.curriculum and (self.common_step_counter % self.max_episode_length == 0):
             self.update_command_curriculum(env_ids)
         
         # reset robot states
@@ -388,7 +387,7 @@ class LeggedRobot(BaseTask):
             [torch.Tensor]: Vector of scales used to multiply a uniform distribution in [-1, 1]
         """
         one_step_noise_vec = torch.zeros(self.num_one_step_obs, dtype=torch.float, device=self.device)
-        self.add_noise = self.cfg.noise.add_noise and self.enable_noise
+        self.add_noise = bool(self.cfg.noise.add_noise)
         noise_scales = self.cfg.noise.noise_scales
         noise_level = self.cfg.noise.noise_level
         one_step_noise_vec[:3] = 0. # commands
@@ -398,9 +397,7 @@ class LeggedRobot(BaseTask):
         one_step_noise_vec[9+self.num_actions:9+2*self.num_actions] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
         one_step_noise_vec[9+2*self.num_actions:9+3*self.num_actions] = 0. # previous actions
 
-        if self.enable_history_obs:
-            return one_step_noise_vec.repeat(self.history_length)
-        return one_step_noise_vec
+        return one_step_noise_vec.repeat(self.history_length)
 
     #----------------------------------------
     def _init_buffers(self):
@@ -632,25 +629,18 @@ class LeggedRobot(BaseTask):
         self.env_origins[:, 2] = 0.
 
     def _parse_cfg(self, cfg):
-        self._apply_safety_cfg(cfg)
         self.num_one_step_obs = getattr(cfg.env, "num_one_step_observations", 45)
-        self.history_length = getattr(cfg.env, "history_length", 1)
+        self.history_length = getattr(cfg.env, "history_length", 6)
         if self.num_one_step_obs != 45:
             raise ValueError(f"Quadruped HIM one-step observation must be 45, got {self.num_one_step_obs}")
-        if self.enable_history_obs:
-            expected_obs = self.num_one_step_obs * self.history_length
-            if self.history_length != 6:
-                raise ValueError(f"Quadruped HIM history policy expects history_length=6, got {self.history_length}")
-            obs_mode = getattr(cfg.env, "obs_mode", "quadruped_history_45x6")
-            if obs_mode not in {"quadruped_history_45x6", "go2_history_45x6"}:
-                raise ValueError(
-                    f"Quadruped HIM history policy expects obs_mode=quadruped_history_45x6, got {cfg.env.obs_mode}"
-                )
-        else:
-            expected_obs = self.num_one_step_obs
-            obs_mode = getattr(cfg.env, "obs_mode", "quadruped_45")
-            if obs_mode not in {"quadruped_45", "go2_45"}:
-                raise ValueError(f"Quadruped HIM one-step policy expects obs_mode=quadruped_45, got {cfg.env.obs_mode}")
+        if self.history_length != 6:
+            raise ValueError(f"Quadruped HIM history policy expects history_length=6, got {self.history_length}")
+        expected_obs = self.num_one_step_obs * self.history_length
+        obs_mode = getattr(cfg.env, "obs_mode", "quadruped_history_45x6")
+        if obs_mode not in {"quadruped_history_45x6", "go2_history_45x6"}:
+            raise ValueError(
+                f"Quadruped HIM history policy expects obs_mode=quadruped_history_45x6, got {cfg.env.obs_mode}"
+            )
         if cfg.env.num_observations != expected_obs:
             raise ValueError(f"Quadruped HIM policy expects {expected_obs} observations, got {cfg.env.num_observations}")
         self.num_privileged_external_force_obs = getattr(
@@ -676,7 +666,7 @@ class LeggedRobot(BaseTask):
         self.dt = self.cfg.control.decimation * self.sim_params.dt
         self.obs_scales = self.cfg.normalization.obs_scales
         self.reward_scales = class_to_dict(self.cfg.rewards.scales)
-        self._apply_safety_reward_overrides()
+        self.use_rigid_body_state = reward_requires_rigid_body_state(self.reward_scales)
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
      
 
@@ -684,13 +674,6 @@ class LeggedRobot(BaseTask):
         self.max_episode_length = np.ceil(self.max_episode_length_s / self.dt)
 
         self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
-
-    def _apply_safety_cfg(self, cfg):
-        apply_quadruped_safety_cfg(self, cfg)
-
-    def _apply_safety_reward_overrides(self):
-        apply_quadruped_reward_safety_overrides(self.reward_scales, self)
-
 
     #------------ reward functions----------------
     def _reward_lin_vel_z(self):
@@ -721,7 +704,7 @@ class LeggedRobot(BaseTask):
     def _reward_foot_clearance(self):
         # HIMLoco-style clearance: foot height and lateral speed in the body frame.
         if not self.use_rigid_body_state:
-            raise RuntimeError("foot_clearance requires safety.enable_rigid_body_state_rewards=True")
+            raise RuntimeError("foot_clearance requires rigid-body state acquisition")
         num_feet = len(self.feet_indices)
         feet_pos_rel = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
         feet_vel_rel = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1)

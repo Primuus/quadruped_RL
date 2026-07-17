@@ -7,7 +7,7 @@ class LeggedRobotCfg(BaseConfig):
     class env:
         num_envs = 4096  # 并行环境数量，越大采样越快，但显存占用也更高
         num_one_step_observations = 45  # 单步 actor 观测维度；HIMLoco 四足默认 45 维观测
-        history_length = 6  # 历史观测帧数；阶段 6 使用 6 帧历史
+        history_length = 6  # 历史观测帧数；当前 HIM policy 固定使用 6 帧
         num_observations = num_one_step_observations * history_length  # policy 输入维度：45*6=270
         num_privileged_external_force_obs = 3  # privileged obs 中的外力/扰动占位维度，未启用扰动时填 0
         num_privileged_height_scan = 187  # privileged obs 中的高度采样维度，平地或未启用高度采样时填 0
@@ -25,11 +25,11 @@ class LeggedRobotCfg(BaseConfig):
         horizontal_scale = 0.1  # 地形网格水平分辨率 [m]
         vertical_scale = 0.005  # 地形高度分辨率 [m]
         border_size = 25  # 地形边界缓冲区大小 [m]
-        curriculum = False  # 是否启用地形课程学习；安全基线默认关闭
+        curriculum = False  # 是否启用地形课程学习，默认关闭
         static_friction = 1.0  # 静摩擦系数
         dynamic_friction = 1.0  # 动摩擦系数
         restitution = 0.  # 弹性系数
-        measure_heights = False  # 是否在观测中加入地形高度采样；阶段 3 历史观测不使用高度采样
+        measure_heights = False  # 是否生成地形高度采样；actor 历史观测不直接包含高度
         measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]  # 足底前后方向采样点
         measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]  # 足底左右方向采样点
         selected = False  # 是否固定训练某一种地形
@@ -43,7 +43,7 @@ class LeggedRobotCfg(BaseConfig):
         slope_treshold = 0.75  # 斜率阈值，超过后会被修正为垂直表面
 
     class commands:
-        curriculum = False  # 是否启用速度命令课程学习；安全基线默认关闭
+        curriculum = False  # 是否启用速度命令课程学习，默认关闭
         max_curriculum = 2.0  # 命令课程学习上限
         num_commands = 4  # 命令维度：前向速度、侧向速度、偏航角速度、heading
         resampling_time = 10.  # 命令重采样周期 [s]
@@ -95,28 +95,13 @@ class LeggedRobotCfg(BaseConfig):
         thickness = 0.01  # 碰撞几何厚度
 
     class domain_rand:
-        randomize_friction = False  # 是否随机化地面摩擦；安全基线默认关闭
+        randomize_friction = False  # 是否随机化地面摩擦，默认关闭
         friction_range = [0.5, 1.25]  # 地面摩擦系数随机范围
         randomize_base_mass = False  # 是否随机化机身质量
         added_mass_range = [-1., 1.]  # 机身附加质量范围 [kg]
-        push_robots = False  # 是否周期性施加外推扰动；安全基线默认关闭
+        push_robots = False  # 是否周期性施加外推扰动，默认关闭
         push_interval_s = 15  # 外推扰动周期 [s]
         max_push_vel_xy = 1.  # 单次外推对应的最大平面速度增量
-
-    class safety:
-        # 安全基线开关：默认关闭高风险或尚未验证的 HIMLoco 化功能。
-        enable_foot_clearance = False  # 是否启用足端抬脚 reward
-        enable_rigid_body_state_rewards = False  # 是否刷新 rigid body state 并使用足端位姿/速度 reward
-        enable_joint_power = False  # 是否启用关节功率惩罚
-        enable_smoothness = False  # 是否启用二阶动作平滑惩罚
-        enable_noise = False  # 是否启用观测噪声
-        enable_domain_rand = False  # 是否启用域随机化
-        enable_push = False  # 是否启用随机外推
-        enable_height_scan = False  # 是否启用地形高度采样
-        enable_command_curriculum = False  # 是否启用速度命令课程学习
-        enable_history_obs = True  # 是否启用 45*6 历史观测；阶段 3 开始启用
-        enable_him_actor_critic = False  # 是否启用 HIMActorCritic
-        enable_himppo = False  # 是否启用 HIM-PPO
 
     class rewards:
         class scales:
@@ -127,13 +112,13 @@ class LeggedRobotCfg(BaseConfig):
             ang_vel_xy = -0.05  # 横滚/俯仰角速度惩罚
             orientation = -0.2  # 姿态偏差惩罚
             dof_acc = -2.5e-7  # 关节加速度惩罚
-            joint_power = -0.0  # 关节功率惩罚，安全基线默认关闭
-            base_height = -0.0  # 机身高度偏差惩罚，安全基线默认关闭
+            joint_power = -0.0  # 关节功率惩罚，零权重表示关闭
+            base_height = -0.0  # 机身高度偏差惩罚，零权重表示关闭
             feet_air_time = 0.0  # 足端腾空时长奖励，walk 默认不额外鼓励跳跃步态
-            foot_clearance = -0.0  # 足端抬脚约束，安全基线默认关闭
+            foot_clearance = -0.0  # 足端抬脚约束，零权重表示关闭
             action_rate = -0.01  # 动作变化率惩罚
-            smoothness = -0.0  # 二阶动作平滑惩罚，安全基线默认关闭
-            torques = -0.0002  # 力矩惩罚，安全基线保留基础约束
+            smoothness = -0.0  # 二阶动作平滑惩罚，零权重表示关闭
+            torques = -0.0002  # 力矩惩罚
             dof_vel = -0.0  # 关节速度惩罚
             collision = -0.0  # 非预期碰撞惩罚，walk 阶段先不让硬惩罚压制步态探索
             feet_stumble = -0.0  # 足端绊倒惩罚
@@ -164,7 +149,7 @@ class LeggedRobotCfg(BaseConfig):
         clip_actions = 100.  # 动作裁剪上限
 
     class noise:
-        add_noise = False  # 是否在观测中加入噪声；安全基线默认关闭
+        add_noise = False  # 是否在观测中加入噪声，默认关闭
         noise_level = 1.0  # 噪声总倍率
 
         class noise_scales:
@@ -211,7 +196,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         activation = 'elu'  # 激活函数：elu / relu / selu / crelu / lrelu / tanh / sigmoid
         estimator_hidden_dims = [128, 64, 16]  # HIMEstimator encoder 隐藏层，最后一维为 latent 维度
         estimator_target_hidden_dims = [128, 64]  # HIMEstimator target 分支隐藏层
-        estimator_learning_rate = 1.e-3  # HIMEstimator 独立学习率；阶段 6 的 HIMPPO 使用
+        estimator_learning_rate = 1.e-3  # HIMPPO 中 HIMEstimator 的独立学习率
         estimator_max_grad_norm = 10.0  # HIMEstimator 梯度裁剪上限
         estimator_num_prototype = 32  # HIM 对比学习原型数量
         estimator_temperature = 3.0  # HIM 对比学习温度系数

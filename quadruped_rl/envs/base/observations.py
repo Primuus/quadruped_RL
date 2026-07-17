@@ -35,11 +35,9 @@ def build_him_one_step_observations(env):
 
 
 def build_him_history_observations(env):
-    """构造 policy 输入观测；默认是当前 45 维观测加 5 帧历史。"""
+    """构造 policy 输入观测：当前 45 维观测加 5 帧历史。"""
     current_obs = build_him_one_step_observations(env)
     env.current_obs_buf = current_obs
-    if not env.enable_history_obs:
-        return current_obs
 
     env.obs_history_buf = torch.cat(
         (current_obs, env.obs_history_buf[:, :-env.num_one_step_obs]),
@@ -93,5 +91,5 @@ def build_him_privileged_observations(env, current_obs=None):
 
 def reset_observation_history(env, env_ids):
     """重置指定环境的历史观测，避免跨 episode 泄漏。"""
-    if env.enable_history_obs and len(env_ids) > 0:
+    if len(env_ids) > 0:
         env.obs_history_buf[env_ids] = 0.
