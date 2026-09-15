@@ -7,11 +7,6 @@ from typing import Any
 import numpy as np
 import yaml
 
-try:
-    from ament_index_python.packages import get_package_share_directory
-except ImportError:  # pragma: no cover - fallback for source-only usage.
-    get_package_share_directory = None
-
 
 # 新增配置字段时请同步补充中文说明，确保训练/部署配置一致可读。
 
@@ -106,11 +101,6 @@ def _resolve_path(base_dir: Path, value: str | Path) -> Path:
 
 
 def discover_package_root() -> Path:
-    if get_package_share_directory is not None:
-        try:
-            return Path(get_package_share_directory('rl_controller'))
-        except Exception:
-            pass
     return Path(__file__).resolve().parents[2]
 
 

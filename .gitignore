@@ -28,11 +28,9 @@ cmake_install.cmake
 # Python cache
 __pycache__/
 *.pyc
-
-# ROS2 specific
-**/_local_setup_util_*.py
-**/local_setup.*
-**/setup.bash
+*.egg-info/
+.pytest_cache/
+.coverage
 
 # Temporary files
 .DS_Store

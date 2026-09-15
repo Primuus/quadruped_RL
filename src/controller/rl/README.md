@@ -1,6 +1,6 @@
 # RL 本地部署子工程说明
 
-`src/controller/rl` 是 `quadruped` 中的 RL 部署包。它和传统 PD ROS2 控制链路完全隔离，不走 `ros2 launch`。当前可运行入口负责在本地 MuJoCo 中加载 `quadruped_train` 从同一个部署模型直接导出的 TorchScript 或 ONNX 策略；同时已经建立未来自研四足实机部署的公共接口、配置格式和厂商 SDK 集成基础。
+`src/controller/rl` 是 `quadruped` 的纯 Python RL 部署包，不依赖 ROS2、ament 或 `colcon`。当前可运行入口负责在本地 MuJoCo 中加载 `quadruped_train` 从同一个部署模型直接导出的 TorchScript 或 ONNX 策略；同时已经建立未来自研四足实机部署的公共接口、配置格式和厂商 SDK 集成基础。
 
 当前已经接入 MuJoCo 的机器人实例是 Go2；核心代码按四足机器人通用接口组织，新增其他四足机器人时应新增 YAML 配置、物理资源和策略文件，而不是复制部署主循环。本仓库不包含训练代码。实机侧目前完成方案阶段 0–7，具有 Mock 组件、GO-M8010-6 电机后端、YIS130 IMU 后端、状态聚合和 45×6 历史观测，但还没有实机 runner 或可执行入口，默认运行方式不能访问真实设备。
 
@@ -43,10 +43,8 @@ Linux evdev 键盘命令
 ```text
 src/controller/rl/
   README.md
-  package.xml
+  pyproject.toml
   setup.py
-  setup.cfg
-  resource/rl_controller
   config/go2.yaml
   config/real/
     mock.yaml
@@ -92,10 +90,8 @@ src/controller/rl/
 | 文件 | 作用 |
 | --- | --- |
 | `README.md` | 当前说明文档，解释 RL 子工程结构、文件职责和运行方式。 |
-| `package.xml` | ROS2/ament Python 包元数据。虽然 RL 入口主要直接 Python 运行，但保留包信息便于工作区识别和安装。 |
-| `setup.py` | Python 包安装脚本，收集 `config/`、`models/`、`resources/` 等数据文件，并声明 Python 依赖。 |
-| `setup.cfg` | Python entry point 和安装路径相关配置。 |
-| `resource/rl_controller` | ament resource marker，用于 ROS2 包索引识别。 |
+| `pyproject.toml` | 选择 setuptools 构建后端，使该目录可作为标准 Python 工程安装。 |
+| `setup.py` | 纯 Python 包安装脚本，声明运行依赖和测试依赖。配置、模型和资源继续由仓库目录管理。 |
 
 ## 配置文件
 
