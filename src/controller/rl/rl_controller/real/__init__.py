@@ -44,6 +44,7 @@ from .state_machine import (
     RuntimeTransition,
     RuntimeTransitionError,
 )
+from .safety import RealSafetyManager, SafetyViolationError
 from .runner import (
     RealRLRunner,
     RealRunnerError,
@@ -88,11 +89,13 @@ __all__ = [
     'RealRuntimeStateMachine',
     'RealRuntimeConfig',
     'RealSafetyConfig',
+    'RealSafetyManager',
     'RealStateAggregator',
     'RuntimeFault',
     'RuntimeState',
     'RuntimeTransition',
     'RuntimeTransitionError',
+    'SafetyViolationError',
     'StateUnavailableError',
     'UnitreeM8010Backend',
     'YesenseYis130Backend',

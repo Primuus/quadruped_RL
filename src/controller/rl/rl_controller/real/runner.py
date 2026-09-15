@@ -20,6 +20,7 @@ from .hardware import (
 )
 from .observation import RealObservationHistory
 from .policy import PolicyExecutor, load_real_policy
+from .safety import RealSafetyManager, SafetyViolationError
 from .state import RealStateAggregator, StateUnavailableError
 from .state_machine import (
     RealRuntimeStateMachine,
@@ -60,6 +61,7 @@ class RealRLRunner:
         imu_backend: ImuBackend,
         policy: PolicyExecutor,
         clock: Callable[[], float] = time.monotonic,
+        timing_clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         config.validate()
         if not isinstance(motor_backend, MotorBackend):
@@ -83,6 +85,7 @@ class RealRLRunner:
         self.imu_backend = imu_backend
         self.policy = policy
         self._clock = clock
+        self._timing_clock = timing_clock
 
         self.state_machine = RealRuntimeStateMachine(clock=clock)
         self.state_aggregator = RealStateAggregator.from_config(
@@ -93,6 +96,7 @@ class RealRLRunner:
             config,
             clock=clock,
         )
+        self.safety_manager = RealSafetyManager(config, clock=clock)
 
         num_actions = config.robot.num_actions
         self._kp = np.asarray(
@@ -112,11 +116,23 @@ class RealRLRunner:
         self._control_lock = threading.RLock()
         self._lifecycle_lock = threading.Lock()
         self._metrics_lock = threading.Lock()
+        self._motor_io_lock = threading.Lock()
         self._stop_event = threading.Event()
+        self._fault_pending_event = threading.Event()
         self._initial_state_event = threading.Event()
         self._worker_failures: queue.Queue[WorkerFailure] = queue.Queue()
         self._recorded_failures: list[WorkerFailure] = []
         self._worker_iterations = {'motor': 0, 'imu': 0, 'policy': 0}
+        self._worker_cycle_started: dict[str, float | None] = {
+            'motor': None,
+            'imu': None,
+            'policy': None,
+        }
+        self._watchdog_deadlines = {
+            'motor': config.motors.state_timeout_s,
+            'imu': config.imu.state_timeout_s,
+            'policy': 1.0 / config.policy.frequency_hz,
+        }
         self._threads: list[threading.Thread] = []
         self._started = False
         self._shutdown_started = False
@@ -140,6 +156,7 @@ class RealRLRunner:
         mock_action: Any | None = None,
         clock: Callable[[], float] = time.monotonic,
         policy_clock: Callable[[], float] = time.perf_counter,
+        timing_clock: Callable[[], float] = time.perf_counter,
     ) -> 'RealRLRunner':
         if motor_backend is None:
             if config.motors.backend == 'mock':
@@ -187,6 +204,7 @@ class RealRLRunner:
             imu_backend=imu_backend,
             policy=policy,
             clock=clock,
+            timing_clock=timing_clock,
         )
 
     @property
@@ -240,7 +258,9 @@ class RealRLRunner:
             )
             self.state_aggregator.clear()
             self.observation_history.reset('runner startup')
+            self.safety_manager.reset()
             self._stop_event.clear()
+            self._fault_pending_event.clear()
             self._initial_state_event.clear()
 
             try:
@@ -288,6 +308,7 @@ class RealRLRunner:
             raise RealRunnerError(
                 f'Cannot begin default-pose transition: {exc}'
             ) from exc
+        self.safety_manager.validate_robot_state(state)
 
         with self._control_lock:
             self._velocity_command.fill(0.0)
@@ -299,11 +320,11 @@ class RealRLRunner:
             )
             self._move_start_time = self._read_clock()
             self.observation_history.reset('moving to default pose')
+            self.state_machine.begin_move_to_default()
             self._latest_joint_command = self._make_joint_command(
                 self._move_start_position,
                 use_gains=True,
             )
-        self.state_machine.begin_move_to_default()
 
     def set_velocity_command(self, command: Any) -> np.ndarray:
         value = np.asarray(command, dtype=np.float32)
@@ -340,7 +361,8 @@ class RealRLRunner:
             self._velocity_command.fill(0.0)
             self._last_action.fill(0.0)
         try:
-            self.motor_backend.safe_stop()
+            with self._motor_io_lock:
+                self.motor_backend.safe_stop()
         except Exception as exc:
             self.state_machine.fault(f'motor safe_stop failed: {exc}')
 
@@ -356,7 +378,8 @@ class RealRLRunner:
         errors: list[str] = []
         if self._started:
             try:
-                self.motor_backend.safe_stop()
+                with self._motor_io_lock:
+                    self.motor_backend.safe_stop()
             except Exception as exc:
                 errors.append(f'motor safe_stop failed: {exc}')
 
@@ -448,29 +471,63 @@ class RealRLRunner:
             target()
         except Exception as exc:
             if not self._stop_event.is_set():
-                try:
-                    timestamp = self._read_clock()
-                except Exception:
-                    timestamp = time.monotonic()
-                self._worker_failures.put(
-                    WorkerFailure(
-                        worker_name=worker_name,
-                        message=f'{worker_name} failed: {exc}',
-                        timestamp=timestamp,
-                        exception=exc,
-                    )
+                failure = WorkerFailure(
+                    worker_name=worker_name,
+                    message=f'{worker_name} failed: {exc}',
+                    timestamp=self._failure_timestamp(),
+                    exception=exc,
                 )
+                self._fault_pending_event.set()
+                self._worker_failures.put(failure)
+                self._stop_event.set()
 
     def _monitor_loop(self) -> None:
-        while not self._stop_event.is_set():
+        poll_interval_s = min(
+            0.01,
+            min(self._watchdog_deadlines.values()) / 4.0,
+        )
+        while True:
             try:
-                failure = self._worker_failures.get(timeout=0.01)
+                failure = self._worker_failures.get(
+                    timeout=poll_interval_s,
+                )
             except queue.Empty:
-                continue
+                if (
+                    self._stop_event.is_set()
+                    and not self._fault_pending_event.is_set()
+                ):
+                    return
+                failure = self._find_watchdog_failure()
+                if failure is None:
+                    continue
+            self._fault_pending_event.clear()
             with self._metrics_lock:
                 self._recorded_failures.append(failure)
             self.report_fault(failure.message)
             return
+
+    def _find_watchdog_failure(self) -> WorkerFailure | None:
+        now = time.monotonic()
+        with self._metrics_lock:
+            cycle_started = self._worker_cycle_started.copy()
+        for worker_name, started_at in cycle_started.items():
+            if started_at is None:
+                continue
+            deadline_s = self._watchdog_deadlines[worker_name]
+            elapsed_s = now - started_at
+            if elapsed_s <= deadline_s:
+                continue
+            message = (
+                f'real-{worker_name} exceeded {deadline_s:.6f}s '
+                f'watchdog deadline: {elapsed_s:.6f}s'
+            )
+            return WorkerFailure(
+                worker_name=f'real-{worker_name}',
+                message=message,
+                timestamp=self._failure_timestamp(),
+                exception=SafetyViolationError(message),
+            )
+        return None
 
     def _periodic_loop(
         self,
@@ -481,7 +538,13 @@ class RealRLRunner:
         period_s = 1.0 / frequency_hz
         next_deadline = self._read_clock()
         while not self._stop_event.is_set():
-            callback()
+            with self._metrics_lock:
+                self._worker_cycle_started[worker_name] = time.monotonic()
+            try:
+                callback()
+            finally:
+                with self._metrics_lock:
+                    self._worker_cycle_started[worker_name] = None
             with self._metrics_lock:
                 self._worker_iterations[worker_name] += 1
 
@@ -493,25 +556,55 @@ class RealRLRunner:
             self._stop_event.wait(next_deadline - now)
 
     def _motor_step(self) -> None:
-        with self._control_lock:
-            command = self._latest_joint_command
-        state = self.motor_backend.cycle(command)
+        with self._motor_io_lock:
+            if (
+                self._stop_event.is_set()
+                or self._fault_pending_event.is_set()
+            ):
+                return
+            with self._control_lock:
+                runtime_state = self.state
+                command = self._latest_joint_command
 
-        source_timestamps = getattr(
-            self.motor_backend,
-            'last_bus_timestamps',
-            None,
-        )
-        self.state_aggregator.update_joints(
-            state,
-            source_timestamps=(
+            robot_state = None
+            if runtime_state is not RuntimeState.INIT:
+                robot_state = self.state_aggregator.snapshot()
+            self.safety_manager.validate_command_before_send(
+                command,
+                runtime_state,
+                robot_state,
+            )
+
+            started_at = self._read_timing_clock()
+            state = self.motor_backend.cycle(command)
+            cycle_duration = self._read_timing_clock() - started_at
+            self.safety_manager.validate_motor_cycle_duration(cycle_duration)
+
+            source_timestamps = getattr(
+                self.motor_backend,
+                'last_bus_timestamps',
+                None,
+            )
+            source_timestamps = (
                 source_timestamps if source_timestamps else None
-            ),
-        )
-        self._mark_initial_state_if_ready()
+            )
+            self.safety_manager.validate_joint_feedback(
+                state,
+                source_timestamps=source_timestamps,
+            )
+            self.state_aggregator.update_joints(
+                state,
+                source_timestamps=source_timestamps,
+            )
+            self._mark_initial_state_if_ready()
 
     def _imu_step(self) -> None:
-        self.state_aggregator.update_imu(self.imu_backend.read())
+        started_at = self._read_timing_clock()
+        state = self.imu_backend.read()
+        cycle_duration = self._read_timing_clock() - started_at
+        self.safety_manager.validate_imu_cycle_duration(cycle_duration)
+        self.safety_manager.validate_imu_feedback(state)
+        self.state_aggregator.update_imu(state)
         self._mark_initial_state_if_ready()
 
     def _mark_initial_state_if_ready(self) -> None:
@@ -521,11 +614,14 @@ class RealRLRunner:
             self._initial_state_event.set()
 
     def _policy_step(self) -> None:
+        started_at = self._read_timing_clock()
         state = self.state
         if state is RuntimeState.MOVE_TO_DEFAULT:
             self._move_to_default_step()
         elif state is RuntimeState.RL:
             self._rl_step()
+        cycle_duration = self._read_timing_clock() - started_at
+        self.safety_manager.validate_policy_cycle_duration(cycle_duration)
 
     def _move_to_default_step(self) -> None:
         state = self.state_aggregator.snapshot()
@@ -565,7 +661,8 @@ class RealRLRunner:
             )
             if observation is None:
                 return
-            self._apply_policy(observation)
+            if not self._apply_policy(observation):
+                return
             self.state_machine.enter_rl()
 
     def _rl_step(self) -> None:
@@ -582,17 +679,26 @@ class RealRLRunner:
                 )
             self._apply_policy(observation)
 
-    def _apply_policy(self, observation: np.ndarray) -> None:
-        action = self.policy.infer(observation)
+    def _apply_policy(self, observation: np.ndarray) -> bool:
+        action = self.safety_manager.validate_action(
+            self.policy.infer(observation)
+        )
+        if (
+            self._stop_event.is_set()
+            or self.state in {RuntimeState.FAULT, RuntimeState.SHUTDOWN}
+        ):
+            return False
         target = (
             self.config.robot.default_angles
             + action * self.config.robot.action_scale
         ).astype(np.float32)
+        target = self.safety_manager.validate_target_position(target)
         self._last_action = np.array(action, dtype=np.float32, copy=True)
         self._latest_joint_command = self._make_joint_command(
             target,
             use_gains=True,
         )
+        return True
 
     def _make_joint_command(
         self,
@@ -641,6 +747,20 @@ class RealRLRunner:
                 'runner clock must return finite, non-negative time'
             )
         return timestamp
+
+    def _read_timing_clock(self) -> float:
+        timestamp = float(self._timing_clock())
+        if not np.isfinite(timestamp):
+            raise RealRunnerError(
+                'runner timing clock must return finite time'
+            )
+        return timestamp
+
+    def _failure_timestamp(self) -> float:
+        try:
+            return self._read_clock()
+        except Exception:
+            return time.monotonic()
 
     @staticmethod
     def _positive_timeout(value: float) -> float:

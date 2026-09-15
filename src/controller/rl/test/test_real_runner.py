@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 import sys
+import threading
 import time
 import unittest
 
@@ -15,7 +16,7 @@ sys.path.insert(0, str(RL_PACKAGE_ROOT))
 
 from rl_controller.real import RealDeploymentConfig
 from rl_controller.real.hardware import MockMotorBackend
-from rl_controller.real.policy import MockPolicy
+from rl_controller.real.policy import MockPolicy, PolicyExecutor
 from rl_controller.real.runner import (
     RealRLRunner,
     RealRunnerStartupError,
@@ -36,6 +37,24 @@ class FailingImuBackend:
 
     def close(self) -> None:
         self.closed = True
+
+
+class SlowMotorBackend(MockMotorBackend):
+    def cycle(self, command):
+        time.sleep(self.config.state_timeout_s + 0.01)
+        return super().cycle(command)
+
+
+class BlockingPolicy(MockPolicy):
+    def __init__(self, config) -> None:
+        super().__init__(config)
+        self.inference_started = threading.Event()
+        self.release_inference = threading.Event()
+
+    def infer(self, observation):
+        self.inference_started.set()
+        self.release_inference.wait(timeout=1.0)
+        return super().infer(observation)
 
 
 class RealRLRunnerTest(unittest.TestCase):
@@ -65,12 +84,14 @@ class RealRLRunnerTest(unittest.TestCase):
         mock_action: np.ndarray | None = None,
         motor_backend=None,
         imu_backend=None,
+        policy=None,
     ) -> RealRLRunner:
         runner = RealRLRunner.from_config(
             self.config,
             mock_action=mock_action,
             motor_backend=motor_backend,
             imu_backend=imu_backend,
+            policy=policy,
         )
         self.runners.append(runner)
         return runner
@@ -229,6 +250,119 @@ class RealRLRunnerTest(unittest.TestCase):
         ):
             runner.start()
         runner.shutdown()
+        runner.shutdown()
+
+    def test_motor_temperature_and_error_code_trigger_safe_stop(self) -> None:
+        fault_cases = (
+            ('temperature', lambda motor: motor.inject_temperature(81.0, 3)),
+            ('error code 7', lambda motor: motor.inject_error(7, 5)),
+        )
+        for expected_message, inject in fault_cases:
+            with self.subTest(expected_message=expected_message):
+                runner = self.make_runner()
+                runner.start()
+                inject(runner.motor_backend)
+
+                self.assertTrue(
+                    runner.wait_for_state(RuntimeState.FAULT, timeout=1.0)
+                )
+                self.assertIn(expected_message, runner.fault_reason or '')
+                self.assertTrue(runner.motor_backend.safe_stopped)
+                runner.shutdown()
+
+    def test_stale_state_and_excessive_tilt_trigger_safe_stop(self) -> None:
+        runner = self.make_runner()
+        runner.start()
+        runner.motor_backend.inject_stale_state(0.04)
+
+        self.assertTrue(runner.wait_for_state(RuntimeState.FAULT, timeout=1.0))
+        self.assertIn('motor feedback is', runner.fault_reason or '')
+        self.assertTrue(runner.motor_backend.safe_stopped)
+        runner.shutdown()
+
+        tilted_runner = self.make_runner()
+        tilted_runner.start()
+        tilted_runner.imu_backend.inject_fall(roll_rad=1.3)
+
+        self.assertTrue(
+            tilted_runner.wait_for_state(RuntimeState.FAULT, timeout=1.0)
+        )
+        self.assertIn('body tilt exceeds', tilted_runner.fault_reason or '')
+        self.assertTrue(tilted_runner.motor_backend.safe_stopped)
+        tilted_runner.shutdown()
+
+    def test_large_policy_target_step_is_never_sent_repeatedly(self) -> None:
+        runner = self.make_runner()
+        runner.start()
+        runner.enable_rl()
+        self.assertTrue(
+            runner.wait_for_state(RuntimeState.RL, timeout=1.0),
+            runner.fault_reason,
+        )
+        runner.policy.backend.set_action(
+            np.full(self.config.robot.num_actions, 0.4, dtype=np.float32)
+        )
+
+        self.assertTrue(runner.wait_for_state(RuntimeState.FAULT, timeout=1.0))
+        self.assertIn('target step', runner.fault_reason or '')
+        self.assertTrue(runner.motor_backend.safe_stopped)
+        motor_iterations = runner.worker_iterations['motor']
+        time.sleep(0.03)
+        self.assertEqual(
+            runner.worker_iterations['motor'],
+            motor_iterations,
+        )
+        runner.shutdown()
+
+    def test_motor_cycle_deadline_failure_prevents_startup(self) -> None:
+        motor = SlowMotorBackend(
+            self.config.motors,
+            initial_position=self.config.robot.default_angles,
+        )
+        runner = self.make_runner(motor_backend=motor)
+
+        with self.assertRaisesRegex(
+            RealRunnerStartupError,
+            'motor.*exceeded',
+        ):
+            runner.start(ready_timeout_s=1.0)
+
+        self.assertIs(runner.state, RuntimeState.FAULT)
+        self.assertTrue(self.wait_until(lambda: motor.safe_stopped))
+        runner.shutdown()
+
+    def test_policy_watchdog_stops_motors_before_inference_returns(self) -> None:
+        backend = BlockingPolicy(self.config.policy)
+        policy = PolicyExecutor(
+            backend,
+            self.config.policy,
+            max_inference_time_s=1.0,
+        )
+        runner = self.make_runner(policy=policy)
+        runner.start()
+        runner.enable_rl()
+
+        self.assertTrue(backend.inference_started.wait(timeout=1.0))
+        self.assertTrue(runner.wait_for_state(RuntimeState.FAULT, timeout=0.2))
+        self.assertIn('real-policy exceeded', runner.fault_reason or '')
+        self.assertTrue(
+            self.wait_until(lambda: runner.motor_backend.safe_stopped)
+        )
+        np.testing.assert_array_equal(
+            runner.last_action,
+            np.zeros(self.config.robot.num_actions, dtype=np.float32),
+        )
+
+        backend.release_inference.set()
+        self.assertTrue(
+            self.wait_until(
+                lambda: 'real-policy' not in runner.live_thread_names
+            )
+        )
+        np.testing.assert_array_equal(
+            runner.last_action,
+            np.zeros(self.config.robot.num_actions, dtype=np.float32),
+        )
         runner.shutdown()
 
 

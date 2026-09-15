@@ -2,7 +2,7 @@
 
 `src/controller/rl` 是 `quadruped` 的纯 Python RL 部署包，不依赖 ROS2、ament 或 `colcon`。MuJoCo 入口负责加载 `quadruped_train` 从同一个部署模型直接导出的 TorchScript 或 ONNX 策略；独立实机入口负责运行不依赖 MuJoCo 的硬件、状态、观测和策略线程，当前默认使用 Mock 配置完成离线验证。
 
-当前已经接入 MuJoCo 的机器人实例是 Go2；核心代码按四足机器人通用接口组织，新增其他四足机器人时应新增 YAML 配置、物理资源和策略文件，而不是复制部署主循环。本仓库不包含训练代码。实机侧目前完成方案阶段 0–9，具有 Mock 组件、GO-M8010-6 电机后端、YIS130 IMU 后端、状态聚合、45×6 历史观测、严格策略执行层、状态机和多线程 runner。阶段 10 的完整安全规则尚未实现，因此当前只应运行 Mock 模式，不能据此直接连接真实电机。
+当前已经接入 MuJoCo 的机器人实例是 Go2；核心代码按四足机器人通用接口组织，新增其他四足机器人时应新增 YAML 配置、物理资源和策略文件，而不是复制部署主循环。本仓库不包含训练代码。实机侧目前完成方案阶段 0–10，具有 Mock 组件、GO-M8010-6 电机后端、YIS130 IMU 后端、状态聚合、45×6 历史观测、严格策略执行层、状态机、多线程 runner 和发令前安全门。安全阈值仍是 Mock 测试值；在阶段 12 的硬件逐级验收前，不能据此直接连接真实电机。
 
 ## MuJoCo 数据流
 
@@ -36,7 +36,7 @@ Linux evdev 键盘命令
   -> Unitree GO-M8010-6 电机后端
 ```
 
-当前提供不接设备即可导入的公共状态类型、硬件协议、严格配置解析器、Mock 配置、三类 Mock 组件及故障注入、官方 Actuator SDK 的固定源码快照、两个真实硬件后端、完整状态聚合、实机历史观测、统一策略执行层、状态机和线程 runner。真实后端都延迟加载可选依赖，只有实机入口读取非 Mock 配置且显式获得硬件许可时才会调用 `open()`；ONNX Runtime 也只在实际创建 ONNX 后端时导入。
+当前提供不接设备即可导入的公共状态类型、硬件协议、严格配置解析器、Mock 配置、三类 Mock 组件及故障注入、官方 Actuator SDK 的固定源码快照、两个真实硬件后端、完整状态聚合、实机历史观测、统一策略执行层、状态机、线程 runner 和安全管理器。真实后端都延迟加载可选依赖，只有实机入口读取非 Mock 配置且显式获得硬件许可时才会调用 `open()`；ONNX Runtime 也只在实际创建 ONNX 后端时导入。
 
 ## 目录结构
 
@@ -64,6 +64,7 @@ src/controller/rl/
       observation.py
       orientation.py
       runner.py
+      safety.py
       state.py
       state_machine.py
       types.py
@@ -90,6 +91,7 @@ src/controller/rl/
     test_real_interfaces.py
     test_real_policy.py
     test_real_runner.py
+    test_real_safety.py
     test_real_state_machine.py
     test_real_state_observation.py
     test_unitree_m8010_backend.py
@@ -231,7 +233,7 @@ RL 本地部署主入口。
 | `--keyboard-device` | 限定一个本地键盘事件设备。 |
 | `--allow-real-hardware` | 明确允许打开非 Mock 电机或 IMU 后端。 |
 
-阶段 10 完成前，即使存在该显式许可参数也不得连接真实电机。当前入口用于验证 Mock 生命周期、线程退出和键盘到速度命令的连接方式。
+即使存在该显式许可参数，也必须先完成方案阶段 12 的单电机、总线、悬空、IMU 和低增益验收，不能直接连接真实电机运行策略。当前入口主要用于验证 Mock 生命周期、线程退出、安全故障和键盘到速度命令的连接方式。
 
 ## core 模块
 
@@ -367,7 +369,7 @@ input 模块导出文件，供 MuJoCo 与实机两个独立入口复用 `Keyboar
 
 ## real 模块
 
-`rl_controller/real` 是实机运行器依赖的硬件无关层。阶段 0–9 已定义数据契约、配置、离线 Mock 组件、真实硬件后端、完整状态、actor 历史观测、策略执行、状态机和运行线程；只有显式创建并打开真实后端时才会访问串口。
+`rl_controller/real` 是实机运行器依赖的硬件无关层。阶段 0–10 已定义数据契约、配置、离线 Mock 组件、真实硬件后端、完整状态、actor 历史观测、策略执行、状态机、运行线程和安全管理；只有显式创建并打开真实后端时才会访问串口。
 
 ### `rl_controller/real/types.py`
 
@@ -475,7 +477,7 @@ state_aggregator.update_imu(imu_backend.read())
 robot_state = state_aggregator.snapshot()
 ```
 
-`snapshot()` 在状态不完整时抛出 `StateUnavailableError`，`try_snapshot()` 则返回 `None`。非零电机错误码会随快照保留，温度和错误码是否触发停机属于后续安全管理阶段，不由聚合器提前吞掉。
+`snapshot()` 在状态不完整时抛出 `StateUnavailableError`，`try_snapshot()` 则返回 `None`。非零电机错误码会随快照保留；聚合器不提前吞掉温度或错误码，而由安全管理器统一决定是否触发停机。
 
 ### `rl_controller/real/observation.py`
 
@@ -494,7 +496,7 @@ robot_state = state_aggregator.snapshot()
 
 ### `rl_controller/real/policy/mock_policy.py`
 
-实现与现有 `Policy` 协议相同的 `infer(observation)` 结构接口。它检查输入维度和有限性，并返回可配置、确定性的 `float32` 动作副本；不加载 TorchScript、ONNX 或模型文件。动作 NaN 注入用于后续安全层测试。
+实现与现有 `Policy` 协议相同的 `infer(observation)` 结构接口。它检查输入维度和有限性，并返回可配置、确定性的 `float32` 动作副本；不加载 TorchScript、ONNX 或模型文件。动作 NaN 注入用于安全链路故障测试。
 
 ### `rl_controller/real/policy/base.py`
 
@@ -510,7 +512,7 @@ robot_state = state_aggregator.snapshot()
 
 `PolicyExecutor` 是 Mock 和 ONNX 后端共用的安全执行边界。它在调用后端前检查并按 `clip_observations` 裁剪观测，在后端返回后检查并按 `clip_actions` 裁剪动作，同时记录 `last_inference_time_s`。推理超过 `safety.max_policy_inference_time_s` 时，本次动作立即作废并抛出 `PolicyInferenceTimeoutError`。
 
-当前超时检查是同步调用返回后的结果验收，不会强制中断正在执行的 ONNX Runtime 调用。方案阶段 9 的策略线程负责周期调度，阶段 10 的安全管理负责接收该异常并触发锁存停机。
+当前超时检查是同步调用返回后的结果验收，不会强制中断正在执行的 ONNX Runtime 调用。策略线程负责周期调度，该异常会经运行监控线程锁存为 `FAULT` 并触发停机。
 
 ### `rl_controller/real/policy/factory.py`
 
@@ -528,20 +530,35 @@ INIT -> READY -> MOVE_TO_DEFAULT -> RL -> SHUTDOWN
 
 非法跳转会立即报错。`FAULT` 是锁存状态，不能直接回到 READY 或 RL；重复故障会保留全部原因，首个原因作为根故障。状态变化和故障都记录单调时钟时间，可供入口、测试和后续日志模块读取。
 
+### `rl_controller/real/safety.py`
+
+`RealSafetyManager` 是发往电机前的最后软件安全门，只依赖通用状态、命令和 `config/real/*.yaml` 阈值。它负责：
+
+- 拒绝状态、action、目标角或命令中的 NaN/Inf；
+- 拒绝越过关节输出轴限位的目标角；
+- 对比前一次已发送的有效目标，限制每个关节的 `max_target_step_rad`；
+- 拒绝超过 `max_state_age_s` 仍被重复使用的旧有效命令；
+- 仅允许在 `MOVE_TO_DEFAULT` 和 `RL` 状态发送含增益、速度或力矩的有效命令；
+- 检查电机与 IMU 的有效位、时间戳、新鲜度、温度和电机错误码；
+- 从 IMU 四元数计算 roll/pitch，超过 `max_abs_roll_pitch_rad` 时拒绝继续控制；
+- 检查电机 I/O、IMU 读取和完整策略周期的执行时间。
+
+所有 `SafetyViolationError` 都由 runner 的工作线程边界收集，最终进入锁存 `FAULT`。Mock 配置中的限位、温度和姿态数值只用来验证代码分支，不是自研四足机器人的实机安全参数。
+
 ### `rl_controller/real/runner.py`
 
-`RealRLRunner` 组合硬件后端、状态聚合、历史观测和 `PolicyExecutor`，管理以下线程：
+`RealRLRunner` 组合硬件后端、状态聚合、历史观测、`PolicyExecutor` 和 `RealSafetyManager`，管理以下线程：
 
 - `real-motor-io`：按 `motors.io_frequency_hz` 重复发送最新完整 `JointCommand` 并更新关节反馈；Unitree 后端再把一次完整交换分配到各 RS485 总线线程。
 - `real-imu-io`：持续读取机身姿态与角速度并更新 IMU 快照。
 - `real-policy`：按 `policy.frequency_hz` 执行默认站姿插值、连续 6 帧预热和 RL 推理。
-- `real-runtime-monitor`：接收工作线程异常，锁存 `FAULT`、停止调度并调用电机 `safe_stop()`。
+- `real-runtime-monitor`：监视各工作线程的周期心跳，接收线程和安全检查异常，锁存 `FAULT`、停止调度并调用电机 `safe_stop()`。
 
 `start()` 只有得到第一份完整、新鲜且同步的电机与 IMU 状态后才进入 READY。`enable_rl()` 从当前实测关节角平滑移动到 `default_angles`，完成后用零速度命令预热历史，再进入 RL。`set_velocity_command()` 只更新三维速度目标；动作映射仍统一为 `default_angles + action_scale * action`。
 
-当前 monitor 只处理生命周期和线程异常。温度、电机错误码、姿态、目标角限位、单周期目标变化及周期统计属于阶段 10，不应把阶段 9 的 FAULT 传播误认为完整实机安全系统。
+电机线程在每次 `cycle()` 前获取一份一致状态并调用安全门；只有检查通过才能发送目标。发现故障后先停止调度，再在电机 I/O 临界区内调用 `safe_stop()`，从而不会重复发送上一次策略目标。无法从 Python 强制终止已经进入底层 SDK 或 ONNX Runtime 的同步调用，因此实机仍必须使用独立硬件急停，并在台架上验证底层超时。
 
-三个 Mock 组件现在可以通过完整线程 runner 连续运行。真实设备验证、安全管理和长时间故障注入仍按方案后续阶段进行。
+三个 Mock 组件现在可以通过完整线程 runner 连续运行。长时间故障注入、运行记录和回归验收属于阶段 11，真实设备和阈值验收属于阶段 12。
 
 ## third_party 目录
 
@@ -646,7 +663,11 @@ Mock 组件测试，覆盖电机速度限幅、生命周期、`safe_stop`、IMU 
 
 ### `test/test_real_runner.py`
 
-真实启动线程执行 Mock 全链路，验证初始同步状态、默认站姿过渡、6 帧预热、策略动作、命令裁剪、工作线程计数、策略 NaN 故障、重复故障、启动失败回收和正常关闭后无残留线程。
+真实启动线程执行 Mock 全链路，验证初始同步状态、默认站姿过渡、6 帧预热、策略动作、命令裁剪、工作线程计数、策略 NaN、电机过温、错误码、状态过期、倾倒、目标突变、电机周期超时、策略阻塞看门狗、重复故障、启动失败回收和正常关闭后无残留线程。
+
+### `test/test_real_safety.py`
+
+不启动线程或硬件后端，直接验证安全管理器的动作、目标角、关节单步变化、运行状态、增益、命令和反馈新鲜度、温度、错误码、姿态以及电机/IMU/策略周期时限。
 
 ### `test/test_real_entrypoint.py`
 
@@ -719,7 +740,7 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 python3 src/controller/rl/rl_controller/deploy_real_rl.py --duration 30
 ```
 
-按 `F` 后依次进入 MOVE_TO_DEFAULT 和 RL；`W/S/A/D/Q/E` 产生速度命令，Space 清零命令，`I` 关闭控制并触发锁存 FAULT。阶段 10 完成并经过硬件逐级验收前，不运行任何非 Mock 配置。
+按 `F` 后依次进入 MOVE_TO_DEFAULT 和 RL；`W/S/A/D/Q/E` 产生速度命令，Space 清零命令，`I` 关闭控制并触发锁存 FAULT。完成方案阶段 12 的硬件逐级验收前，不运行任何非 Mock 配置。
 
 ### MuJoCo 运行
 
