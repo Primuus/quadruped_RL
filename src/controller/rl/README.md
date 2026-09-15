@@ -2,7 +2,7 @@
 
 `src/controller/rl` 是 `quadruped` 的纯 Python RL 部署包，不依赖 ROS2、ament 或 `colcon`。当前可运行入口负责在本地 MuJoCo 中加载 `quadruped_train` 从同一个部署模型直接导出的 TorchScript 或 ONNX 策略；同时已经建立未来自研四足实机部署的公共接口、配置格式和厂商 SDK 集成基础。
 
-当前已经接入 MuJoCo 的机器人实例是 Go2；核心代码按四足机器人通用接口组织，新增其他四足机器人时应新增 YAML 配置、物理资源和策略文件，而不是复制部署主循环。本仓库不包含训练代码。实机侧目前完成方案阶段 0–7，具有 Mock 组件、GO-M8010-6 电机后端、YIS130 IMU 后端、状态聚合和 45×6 历史观测，但还没有实机 runner 或可执行入口，默认运行方式不能访问真实设备。
+当前已经接入 MuJoCo 的机器人实例是 Go2；核心代码按四足机器人通用接口组织，新增其他四足机器人时应新增 YAML 配置、物理资源和策略文件，而不是复制部署主循环。本仓库不包含训练代码。实机侧目前完成方案阶段 0–8，具有 Mock 组件、GO-M8010-6 电机后端、YIS130 IMU 后端、状态聚合、45×6 历史观测和严格的 Mock/ONNX 策略执行层，但还没有实机 runner 或可执行入口，默认运行方式不能访问真实设备。
 
 ## MuJoCo 数据流
 
@@ -36,7 +36,7 @@ Linux evdev 键盘命令
   -> Unitree GO-M8010-6 电机后端
 ```
 
-当前提供不接设备即可导入的公共状态类型、硬件协议、严格配置解析器、Mock 配置、三类 Mock 组件及故障注入、官方 Actuator SDK 的固定源码快照、两个真实硬件后端、完整状态聚合和实机历史观测。真实后端都延迟加载可选依赖，只有未来实机入口创建并调用 `open()` 时才打开设备。策略后端、Mock runner 和实机入口属于后续阶段。
+当前提供不接设备即可导入的公共状态类型、硬件协议、严格配置解析器、Mock 配置、三类 Mock 组件及故障注入、官方 Actuator SDK 的固定源码快照、两个真实硬件后端、完整状态聚合、实机历史观测和统一策略执行层。真实后端都延迟加载可选依赖，只有未来实机入口创建并调用 `open()` 时才打开设备；ONNX Runtime 也只在实际创建 ONNX 后端时导入。Mock runner、运行线程、状态机和实机入口属于后续阶段。
 
 ## 目录结构
 
@@ -71,7 +71,11 @@ src/controller/rl/
         unitree_m8010.py
         yesense_yis130.py
       policy/
+        base.py
+        executor.py
+        factory.py
         mock_policy.py
+        onnx_policy.py
   test/
     compare_policy_backends.py
     deploy_mujoco_rl_debug.py
@@ -80,6 +84,7 @@ src/controller/rl/
     test_mock_backends.py
     test_real_config.py
     test_real_interfaces.py
+    test_real_policy.py
     test_real_state_observation.py
     test_unitree_m8010_backend.py
     test_yesense_yis130_backend.py
@@ -467,7 +472,27 @@ robot_state = state_aggregator.snapshot()
 
 实现与现有 `Policy` 协议相同的 `infer(observation)` 结构接口。它检查输入维度和有限性，并返回可配置、确定性的 `float32` 动作副本；不加载 TorchScript、ONNX 或模型文件。动作 NaN 注入用于后续安全层测试。
 
-三个 Mock 组件当前用于单元级和手工单周期集成验证，不代表完整实机运行器。线程、状态机、观测历史和安全管理仍按方案后续阶段实现。
+### `rl_controller/real/policy/base.py`
+
+定义实机策略后端的最小协议和统一异常层级。后端必须公开输入维度、动作维度、后端名称以及 `infer()`；`require_float32_vector()` 对 shape、`float32` dtype 和 NaN/Inf 做严格检查，并返回隔离的连续数组。任何策略契约或推理错误都会抛出异常，不允许上层继续使用无效或上一次的动作。
+
+### `rl_controller/real/policy/onnx_policy.py`
+
+实现实机使用的 CPU ONNX Runtime actor 后端。构造时要求模型恰好具有一个输入和一个输出，两者都必须是二维 `tensor(float)`；batch 维可以为 `1` 或动态值，特征维必须分别等于 YAML 中配置的 `num_observations` 和 `num_actions`。每次推理再次检查输入和运行时输出的 shape、dtype 与有限性。
+
+该模块顶层不会导入 ONNX Runtime。只有 `policy.backend: onnx` 并实际构造 `OnnxPolicy` 时才加载依赖和模型，因此没有 ONNX 文件或运行库不会阻塞 Mock 链路。
+
+### `rl_controller/real/policy/executor.py`
+
+`PolicyExecutor` 是 Mock 和 ONNX 后端共用的安全执行边界。它在调用后端前检查并按 `clip_observations` 裁剪观测，在后端返回后检查并按 `clip_actions` 裁剪动作，同时记录 `last_inference_time_s`。推理超过 `safety.max_policy_inference_time_s` 时，本次动作立即作废并抛出 `PolicyInferenceTimeoutError`。
+
+当前超时检查是同步调用返回后的结果验收，不会强制中断正在执行的 ONNX Runtime 调用。方案阶段 9 的策略线程负责周期调度，阶段 10 的安全管理负责接收该异常并触发锁存停机。
+
+### `rl_controller/real/policy/factory.py`
+
+`load_real_policy()` 根据 `RealDeploymentConfig.policy.backend` 创建 Mock 或 ONNX 后端，并统一包装为 `PolicyExecutor`。未来 runner 只依赖该工厂和执行器，不需要感知 ONNX Runtime session 或 Mock 实现细节。
+
+三个 Mock 组件当前用于单元级和手工单周期集成验证，不代表完整实机运行器。线程、状态机和安全管理仍按方案后续阶段实现。
 
 ## third_party 目录
 
@@ -561,6 +586,10 @@ Mock 组件测试，覆盖电机速度限幅、生命周期、`safe_stop`、IMU 
 ### `test/test_real_state_observation.py`
 
 验证完整 12 关节门槛、多总线与 IMU 时间同步、状态新鲜度、无效/非有限状态拒绝、45 维各切片顺序、重力投影、6 帧连续预热、最新帧优先、观测裁剪和时间中断后重置。最后使用 Mock 电机与 IMU 连续生成 6 帧状态，确认能够得到稳定的 270 维输入并通过 Mock actor 接口。
+
+### `test/test_real_policy.py`
+
+使用内存伪 ONNX Runtime 验证实机策略层，不需要真实 ONNX 文件或运行库。覆盖模型输入输出数量、名称、rank、dtype、动态 batch、270/12 特征维，运行时输入输出契约、NaN/Inf、观测与动作裁剪、后端异常、推理超时、Mock/ONNX 工厂选择和 Mock 链路的可选依赖隔离。
 
 ### `test/compare_policy_backends.py`
 
