@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 import ctypes
+from dataclasses import dataclass
 import importlib
 import platform
 from pathlib import Path
@@ -20,6 +22,12 @@ from .base import (
     BackendError,
     BackendUnavailableError,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _BusCycleResult:
+    feedback: tuple[tuple[int, float, float, float, float, int], ...]
+    timestamp: float
 
 
 class UnitreeM8010Backend:
@@ -80,6 +88,7 @@ class UnitreeM8010Backend:
 
         self._lock = threading.RLock()
         self._ports: dict[str, Any] = {}
+        self._bus_executor: ThreadPoolExecutor | None = None
         self._motor_type: Any | None = None
         self._foc_mode: Any | None = None
         self._brake_mode: Any | None = None
@@ -169,17 +178,31 @@ class UnitreeM8010Backend:
                     f'Failed to open Unitree motor bus: {exc}'
                 ) from exc
 
+            try:
+                foc_mode = sdk.queryMotorMode(
+                    motor_type,
+                    sdk.MotorMode.FOC,
+                )
+                brake_mode = sdk.queryMotorMode(
+                    motor_type,
+                    sdk.MotorMode.BRAKE,
+                )
+                bus_executor = ThreadPoolExecutor(
+                    max_workers=len(self._buses),
+                    thread_name_prefix='unitree-rs485',
+                )
+            except Exception as exc:
+                self._close_ports(ports)
+                raise BackendUnavailableError(
+                    f'Failed to initialize Unitree motor bus workers: {exc}'
+                ) from exc
+
             self._sdk = sdk
             self._motor_type = motor_type
-            self._foc_mode = sdk.queryMotorMode(
-                motor_type,
-                sdk.MotorMode.FOC,
-            )
-            self._brake_mode = sdk.queryMotorMode(
-                motor_type,
-                sdk.MotorMode.BRAKE,
-            )
+            self._foc_mode = foc_mode
+            self._brake_mode = brake_mode
             self._ports = ports
+            self._bus_executor = bus_executor
             self._is_open = True
             self._safe_stopped = False
             self._last_complete_state_timestamp = None
@@ -196,52 +219,74 @@ class UnitreeM8010Backend:
                     'before sending FOC commands'
                 )
 
+            executor = self._bus_executor
+            if executor is None:
+                raise BackendError('Unitree motor bus workers are unavailable')
+
+            cycle_start = self._read_clock()
+            futures = {
+                bus_name: executor.submit(
+                    self._exchange_bus,
+                    bus_name,
+                    indexed_joints,
+                    command,
+                )
+                for bus_name, indexed_joints in self._joints_by_bus.items()
+            }
+            results: dict[str, _BusCycleResult] = {}
+            failures: list[str] = []
+            for bus_name, future in futures.items():
+                try:
+                    results[bus_name] = future.result()
+                    self._bus_errors[bus_name] = None
+                except BackendCommunicationError as exc:
+                    message = f'Bus {bus_name!r} communication failed: {exc}'
+                    self._bus_errors[bus_name] = message
+                    failures.append(message)
+                except Exception as exc:
+                    message = f'Bus {bus_name!r} communication failed: {exc}'
+                    self._bus_errors[bus_name] = message
+                    failures.append(message)
+            if failures:
+                raise BackendCommunicationError(' | '.join(failures))
+
             position = np.empty(self._num_joints, dtype=np.float32)
             velocity = np.empty(self._num_joints, dtype=np.float32)
             torque = np.empty(self._num_joints, dtype=np.float32)
             temperature = np.empty(self._num_joints, dtype=np.float32)
             error = np.empty(self._num_joints, dtype=np.int64)
             cycle_bus_timestamps: dict[str, float] = {}
-
-            for bus_name, indexed_joints in self._joints_by_bus.items():
-                try:
-                    port = self._ports[bus_name]
-                    for index, joint in indexed_joints:
-                        data = self._exchange_joint(
-                            port,
-                            joint,
-                            command,
-                            index,
-                        )
-                        feedback = self._feedback_to_joint(data, joint)
-                        position[index], velocity[index], torque[index] = feedback
-                        temperature[index] = float(data.temp)
-                        error[index] = int(data.merror)
-                    cycle_bus_timestamps[bus_name] = self._read_clock()
-                    self._bus_errors[bus_name] = None
-                except BackendCommunicationError as exc:
-                    self._bus_errors[bus_name] = str(exc)
-                    raise
-                except Exception as exc:
-                    message = f'Bus {bus_name!r} communication failed: {exc}'
-                    self._bus_errors[bus_name] = message
-                    raise BackendCommunicationError(message) from exc
+            for bus_name, result in results.items():
+                cycle_bus_timestamps[bus_name] = result.timestamp
+                for values in result.feedback:
+                    index, q, dq, tau, temp, motor_error = values
+                    position[index] = q
+                    velocity[index] = dq
+                    torque[index] = tau
+                    temperature[index] = temp
+                    error[index] = motor_error
 
             now = self._read_clock()
             oldest_timestamp = min(cycle_bus_timestamps.values())
             state_age = now - oldest_timestamp
-            if state_age < 0.0:
+            cycle_duration = now - cycle_start
+            if state_age < 0.0 or cycle_duration < 0.0:
                 raise BackendCommunicationError('Motor backend clock moved backwards')
+            if cycle_duration > self.config.state_timeout_s:
+                message = (
+                    f'Complete motor cycle took {cycle_duration:.6f}s; '
+                    f'limit is {self.config.state_timeout_s:.6f}s'
+                )
+                for bus_name in cycle_bus_timestamps:
+                    self._bus_errors[bus_name] = message
+                raise BackendCommunicationError(message)
             if state_age > self.config.state_timeout_s:
                 message = (
                     f'Complete motor state is already {state_age:.6f}s old; '
                     f'limit is {self.config.state_timeout_s:.6f}s'
                 )
-                oldest_bus = min(
-                    cycle_bus_timestamps,
-                    key=cycle_bus_timestamps.__getitem__,
-                )
-                self._bus_errors[oldest_bus] = message
+                for bus_name in cycle_bus_timestamps:
+                    self._bus_errors[bus_name] = message
                 raise BackendCommunicationError(message)
 
             self._last_complete_bus_timestamps = cycle_bus_timestamps
@@ -261,20 +306,27 @@ class UnitreeM8010Backend:
             if not self._is_open or self._safe_stopped:
                 return
             self._safe_stopped = True
+            executor = self._bus_executor
+            if executor is None:
+                raise BackendError('Unitree motor bus workers are unavailable')
+            futures = {
+                bus_name: executor.submit(
+                    self._brake_bus,
+                    bus_name,
+                    indexed_joints,
+                )
+                for bus_name, indexed_joints in self._joints_by_bus.items()
+            }
             failures: list[str] = []
-            for bus_name, indexed_joints in self._joints_by_bus.items():
-                bus_failures: list[str] = []
-                port = self._ports[bus_name]
-                for _, joint in indexed_joints:
-                    try:
-                        self._exchange_brake(port, joint)
-                    except Exception as exc:
-                        bus_failures.append(
-                            f'motor {joint.motor_id} ({joint.joint_name}): {exc}'
-                        )
+            for bus_name, future in futures.items():
+                try:
+                    bus_failures = future.result()
+                except Exception as exc:
+                    bus_failures = [f'bus worker failed: {exc}']
                 if bus_failures:
-                    message = f'Bus {bus_name!r} safe-stop failed: ' + '; '.join(
-                        bus_failures
+                    message = (
+                        f'Bus {bus_name!r} safe-stop failed: '
+                        + '; '.join(bus_failures)
                     )
                     self._bus_errors[bus_name] = message
                     failures.append(message)
@@ -293,6 +345,8 @@ class UnitreeM8010Backend:
             except BackendCommunicationError as exc:
                 stop_error = exc
             finally:
+                executor = self._bus_executor
+                self._bus_executor = None
                 self._close_ports(self._ports)
                 self._ports = {}
                 self._is_open = False
@@ -301,8 +355,52 @@ class UnitreeM8010Backend:
                 self._motor_type = None
                 self._foc_mode = None
                 self._brake_mode = None
+                if executor is not None:
+                    executor.shutdown(wait=True, cancel_futures=True)
             if stop_error is not None:
                 raise stop_error
+
+    def _exchange_bus(
+        self,
+        bus_name: str,
+        indexed_joints: list[tuple[int, MotorJointConfig]],
+        command: JointCommand,
+    ) -> _BusCycleResult:
+        port = self._ports[bus_name]
+        feedback: list[tuple[int, float, float, float, float, int]] = []
+        for index, joint in indexed_joints:
+            data = self._exchange_joint(port, joint, command, index)
+            q, dq, tau = self._feedback_to_joint(data, joint)
+            feedback.append(
+                (
+                    index,
+                    q,
+                    dq,
+                    tau,
+                    float(data.temp),
+                    int(data.merror),
+                )
+            )
+        return _BusCycleResult(
+            feedback=tuple(feedback),
+            timestamp=self._read_clock(),
+        )
+
+    def _brake_bus(
+        self,
+        bus_name: str,
+        indexed_joints: list[tuple[int, MotorJointConfig]],
+    ) -> list[str]:
+        failures: list[str] = []
+        port = self._ports[bus_name]
+        for _, joint in indexed_joints:
+            try:
+                self._exchange_brake(port, joint)
+            except Exception as exc:
+                failures.append(
+                    f'motor {joint.motor_id} ({joint.joint_name}): {exc}'
+                )
+        return failures
 
     def _exchange_joint(
         self,

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
-import sys
-import unittest
 from pathlib import Path
+import sys
+import threading
+import time
+import unittest
 from typing import Any
 
 import numpy as np
@@ -26,12 +28,15 @@ from rl_controller.real.hardware import (
 class FakeClock:
     def __init__(self, initial_time: float = 100.0) -> None:
         self.current_time = float(initial_time)
+        self._lock = threading.Lock()
 
     def __call__(self) -> float:
-        return self.current_time
+        with self._lock:
+            return self.current_time
 
     def advance(self, duration_s: float) -> None:
-        self.current_time += float(duration_s)
+        with self._lock:
+            self.current_time += float(duration_s)
 
 
 class FakeUnitreeSdk:
@@ -54,10 +59,12 @@ class FakeUnitreeSdk:
         clock: FakeClock,
         gear_ratio: float = 6.33,
         advance_per_send_s: float = 0.0,
+        wall_delay_per_send_s: float = 0.0,
     ) -> None:
         self.clock = clock
         self.gear_ratio = float(gear_ratio)
         self.advance_per_send_s = float(advance_per_send_s)
+        self.wall_delay_per_send_s = float(wall_delay_per_send_s)
         self.calls: list[dict[str, Any]] = []
         self.ports: dict[str, Any] = {}
         self.behavior: dict[tuple[str, int], str] = {}
@@ -71,6 +78,8 @@ class FakeUnitreeSdk:
                 sdk.ports[path] = self
 
             def sendRecv(self, cmd: Any, data: Any) -> bool:
+                if sdk.wall_delay_per_send_s > 0.0:
+                    time.sleep(sdk.wall_delay_per_send_s)
                 sdk.clock.advance(sdk.advance_per_send_s)
                 call = {
                     'path': self.path,
@@ -82,6 +91,7 @@ class FakeUnitreeSdk:
                     'kp': float(cmd.kp),
                     'kd': float(cmd.kd),
                     'tau': float(cmd.tau),
+                    'thread_name': threading.current_thread().name,
                 }
                 sdk.calls.append(call)
                 behavior = sdk.behavior.get((self.path, int(cmd.id)), 'ok')
@@ -154,6 +164,14 @@ class UnitreeM8010BackendTest(unittest.TestCase):
             joints=tuple(joints),
             state_timeout_s=0.03,
         )
+        self.backends: list[UnitreeM8010Backend] = []
+
+    def tearDown(self) -> None:
+        for backend in reversed(self.backends):
+            try:
+                backend.close()
+            except Exception:
+                pass
 
     def make_command(self) -> JointCommand:
         position = np.linspace(-0.2, 0.2, 12, dtype=np.float32)
@@ -168,11 +186,13 @@ class UnitreeM8010BackendTest(unittest.TestCase):
         )
 
     def make_backend(self) -> UnitreeM8010Backend:
-        return UnitreeM8010Backend(
+        backend = UnitreeM8010Backend(
             self.config,
             sdk_module=self.sdk,
             clock=self.clock,
         )
+        self.backends.append(backend)
+        return backend
 
     def test_converts_joint_commands_and_feedback(self) -> None:
         self.sdk.advance_per_send_s = 0.001
@@ -184,7 +204,11 @@ class UnitreeM8010BackendTest(unittest.TestCase):
         state = backend.cycle(command)
 
         ratio = self.sdk.gear_ratio
-        first = self.sdk.calls[0]
+        first = next(
+            call
+            for call in self.sdk.calls
+            if call['path'] == '/dev/fake-left' and call['id'] == 0
+        )
         self.assertEqual(first['path'], '/dev/fake-left')
         self.assertEqual(first['id'], 0)
         self.assertAlmostEqual(first['q'], -(0.1 - 0.25) * ratio, places=6)
@@ -203,10 +227,45 @@ class UnitreeM8010BackendTest(unittest.TestCase):
 
         timestamps = backend.last_bus_timestamps
         self.assertEqual(set(timestamps), {'left_bus', 'right_bus'})
-        self.assertAlmostEqual(state.timestamp, 100.006, places=6)
-        self.assertAlmostEqual(backend.last_bus_time_skew_s, 0.006, places=6)
-        self.assertAlmostEqual(backend.last_state_age_s, 0.006, places=6)
-        self.assertTrue(all(value is None for value in backend.last_bus_errors.values()))
+        self.assertGreaterEqual(state.timestamp, 100.006)
+        self.assertLessEqual(state.timestamp, 100.012)
+        self.assertGreaterEqual(backend.last_bus_time_skew_s, 0.0)
+        self.assertLessEqual(backend.last_bus_time_skew_s, 0.006001)
+        self.assertGreaterEqual(backend.last_state_age_s, 0.0)
+        self.assertLessEqual(backend.last_state_age_s, 0.006001)
+        self.assertTrue(
+            all(value is None for value in backend.last_bus_errors.values())
+        )
+
+    def test_exchanges_independent_buses_on_worker_threads(self) -> None:
+        self.sdk.wall_delay_per_send_s = 0.002
+        backend = self.make_backend()
+        backend.open()
+
+        backend.cycle(self.make_command())
+
+        worker_by_path = {
+            path: {
+                call['thread_name']
+                for call in self.sdk.calls
+                if call['path'] == path
+            }
+            for path in ('/dev/fake-left', '/dev/fake-right')
+        }
+        self.assertTrue(
+            all(
+                len(worker_names) == 1
+                for worker_names in worker_by_path.values()
+            )
+        )
+        worker_names = {
+            next(iter(worker_names))
+            for worker_names in worker_by_path.values()
+        }
+        self.assertEqual(len(worker_names), 2)
+        self.assertTrue(
+            all(name.startswith('unitree-rs485') for name in worker_names)
+        )
 
     def test_uses_duplicate_motor_ids_on_independent_buses(self) -> None:
         backend = self.make_backend()
@@ -248,11 +307,11 @@ class UnitreeM8010BackendTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             BackendCommunicationError,
-            'Complete motor state is already',
+            'Complete motor cycle took',
         ):
             backend.cycle(self.make_command())
 
-        self.assertIn('already', backend.last_bus_errors['left_bus'])
+        self.assertIn('cycle took', backend.last_bus_errors['left_bus'])
         self.assertIsNone(backend.last_state_age_s)
 
     def test_safe_stop_brakes_every_motor_and_latches(self) -> None:

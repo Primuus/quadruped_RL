@@ -1,8 +1,8 @@
 # RL 本地部署子工程说明
 
-`src/controller/rl` 是 `quadruped` 的纯 Python RL 部署包，不依赖 ROS2、ament 或 `colcon`。当前可运行入口负责在本地 MuJoCo 中加载 `quadruped_train` 从同一个部署模型直接导出的 TorchScript 或 ONNX 策略；同时已经建立未来自研四足实机部署的公共接口、配置格式和厂商 SDK 集成基础。
+`src/controller/rl` 是 `quadruped` 的纯 Python RL 部署包，不依赖 ROS2、ament 或 `colcon`。MuJoCo 入口负责加载 `quadruped_train` 从同一个部署模型直接导出的 TorchScript 或 ONNX 策略；独立实机入口负责运行不依赖 MuJoCo 的硬件、状态、观测和策略线程，当前默认使用 Mock 配置完成离线验证。
 
-当前已经接入 MuJoCo 的机器人实例是 Go2；核心代码按四足机器人通用接口组织，新增其他四足机器人时应新增 YAML 配置、物理资源和策略文件，而不是复制部署主循环。本仓库不包含训练代码。实机侧目前完成方案阶段 0–8，具有 Mock 组件、GO-M8010-6 电机后端、YIS130 IMU 后端、状态聚合、45×6 历史观测和严格的 Mock/ONNX 策略执行层，但还没有实机 runner 或可执行入口，默认运行方式不能访问真实设备。
+当前已经接入 MuJoCo 的机器人实例是 Go2；核心代码按四足机器人通用接口组织，新增其他四足机器人时应新增 YAML 配置、物理资源和策略文件，而不是复制部署主循环。本仓库不包含训练代码。实机侧目前完成方案阶段 0–9，具有 Mock 组件、GO-M8010-6 电机后端、YIS130 IMU 后端、状态聚合、45×6 历史观测、严格策略执行层、状态机和多线程 runner。阶段 10 的完整安全规则尚未实现，因此当前只应运行 Mock 模式，不能据此直接连接真实电机。
 
 ## MuJoCo 数据流
 
@@ -36,7 +36,7 @@ Linux evdev 键盘命令
   -> Unitree GO-M8010-6 电机后端
 ```
 
-当前提供不接设备即可导入的公共状态类型、硬件协议、严格配置解析器、Mock 配置、三类 Mock 组件及故障注入、官方 Actuator SDK 的固定源码快照、两个真实硬件后端、完整状态聚合、实机历史观测和统一策略执行层。真实后端都延迟加载可选依赖，只有未来实机入口创建并调用 `open()` 时才打开设备；ONNX Runtime 也只在实际创建 ONNX 后端时导入。Mock runner、运行线程、状态机和实机入口属于后续阶段。
+当前提供不接设备即可导入的公共状态类型、硬件协议、严格配置解析器、Mock 配置、三类 Mock 组件及故障注入、官方 Actuator SDK 的固定源码快照、两个真实硬件后端、完整状态聚合、实机历史观测、统一策略执行层、状态机和线程 runner。真实后端都延迟加载可选依赖，只有实机入口读取非 Mock 配置且显式获得硬件许可时才会调用 `open()`；ONNX Runtime 也只在实际创建 ONNX 后端时导入。
 
 ## 目录结构
 
@@ -56,13 +56,16 @@ src/controller/rl/
     build_unitree_actuator_sdk.sh
   rl_controller/
     deploy_mujoco_rl.py
+    deploy_real_rl.py
     core/
     input/
     real/
       config.py
       observation.py
       orientation.py
+      runner.py
       state.py
+      state_machine.py
       types.py
       hardware/
         base.py
@@ -83,8 +86,11 @@ src/controller/rl/
     test_keyboard_controller.py
     test_mock_backends.py
     test_real_config.py
+    test_real_entrypoint.py
     test_real_interfaces.py
     test_real_policy.py
+    test_real_runner.py
+    test_real_state_machine.py
     test_real_state_observation.py
     test_unitree_m8010_backend.py
     test_yesense_yis130_backend.py
@@ -208,6 +214,24 @@ RL 本地部署主入口。
 | `--debug-steps N` | 打印前 `N` 次 policy 推理的状态、动作和力矩信息，默认不打印。 |
 | `--keyboard-device` | 手动限制为一个 Linux 键盘 event 设备；默认自动识别并监听所有合格键盘。 |
 | `--no-keyboard` | 禁用 evdev 输入，改用 YAML 或 `--command` 固定命令。 |
+
+### `rl_controller/deploy_real_rl.py`
+
+与 MuJoCo 完全隔离的实机软件链路入口，不导入 MuJoCo。默认读取 `config/real/mock.yaml`，只有非 Mock 电机或 IMU 配置同时显式传入 `--allow-real-hardware` 时才允许打开设备。
+
+主要参数：
+
+| 参数 | 作用 |
+| --- | --- |
+| `--config` | 指定 `config/real/*.yaml` 配置，默认使用 Mock。 |
+| `--duration` | 运行秒数，`0` 表示持续到 Ctrl+C 或故障。 |
+| `--no-keyboard` | 不打开 evdev，适合服务器和自动测试。 |
+| `--auto-enable` | 不等待 `F`，直接进入默认站姿过渡。 |
+| `--command VX VY YAW_RATE` | 无键盘模式下使用的固定速度命令。 |
+| `--keyboard-device` | 限定一个本地键盘事件设备。 |
+| `--allow-real-hardware` | 明确允许打开非 Mock 电机或 IMU 后端。 |
+
+阶段 10 完成前，即使存在该显式许可参数也不得连接真实电机。当前入口用于验证 Mock 生命周期、线程退出和键盘到速度命令的连接方式。
 
 ## core 模块
 
@@ -339,11 +363,11 @@ Linux 键盘设备读取层。
 
 ### `rl_controller/input/__init__.py`
 
-input 模块导出文件，供 `deploy_mujoco_rl.py` 导入 `KeyboardInput` 和 `KeyboardCommandController`。
+input 模块导出文件，供 MuJoCo 与实机两个独立入口复用 `KeyboardInput` 和 `KeyboardCommandController`。
 
 ## real 模块
 
-`rl_controller/real` 是未来实机运行器依赖的硬件无关层。阶段 0–7 已定义数据契约、配置、离线 Mock 组件、真实硬件后端、完整状态和 actor 历史观测；只有显式创建并打开真实后端时才会访问串口。
+`rl_controller/real` 是实机运行器依赖的硬件无关层。阶段 0–9 已定义数据契约、配置、离线 Mock 组件、真实硬件后端、完整状态、actor 历史观测、策略执行、状态机和运行线程；只有显式创建并打开真实后端时才会访问串口。
 
 ### `rl_controller/real/types.py`
 
@@ -388,7 +412,7 @@ input 模块导出文件，供 `deploy_mujoco_rl.py` 导入 `KeyboardInput` 和 
 
 ### `rl_controller/real/hardware/unitree_m8010.py`
 
-封装官方 Unitree Actuator SDK 的 GO-M8010-6 后端。它按配置管理一条或多条 USB-RS485 总线，同一 Motor ID 可以在不同总线上重复，但每个 `(bus, motor_id)` 地址必须唯一。每次 `cycle()` 必须收到全部关节的有效响应才会发布一个 `JointState`；任一串口异常、错误 ID、无效帧、非有限反馈或跨总线完成过慢都会使整轮失败。
+封装官方 Unitree Actuator SDK 的 GO-M8010-6 后端。它按配置管理一条或多条 USB-RS485 总线，同一 Motor ID 可以在不同总线上重复，但每个 `(bus, motor_id)` 地址必须唯一。每条总线在持久线程池中执行独立交换，同一总线上的电机保持串行通信；所有总线完成后才聚合策略关节顺序下的完整反馈。每次 `cycle()` 必须收到全部关节的有效响应才会发布一个 `JointState`；任一串口异常、错误 ID、无效帧、非有限反馈或完整周期超时都会使整轮失败。
 
 配置中的 `zero_offset_rad` 定义为电机输出轴零角对应的机器人关节角，因而统一关系为：
 
@@ -490,9 +514,34 @@ robot_state = state_aggregator.snapshot()
 
 ### `rl_controller/real/policy/factory.py`
 
-`load_real_policy()` 根据 `RealDeploymentConfig.policy.backend` 创建 Mock 或 ONNX 后端，并统一包装为 `PolicyExecutor`。未来 runner 只依赖该工厂和执行器，不需要感知 ONNX Runtime session 或 Mock 实现细节。
+`load_real_policy()` 根据 `RealDeploymentConfig.policy.backend` 创建 Mock 或 ONNX 后端，并统一包装为 `PolicyExecutor`。实机 runner 只依赖该工厂和执行器，不需要感知 ONNX Runtime session 或 Mock 实现细节。
 
-三个 Mock 组件当前用于单元级和手工单周期集成验证，不代表完整实机运行器。线程、状态机和安全管理仍按方案后续阶段实现。
+### `rl_controller/real/state_machine.py`
+
+定义线程安全且不可逆的运行状态机：
+
+```text
+INIT -> READY -> MOVE_TO_DEFAULT -> RL -> SHUTDOWN
+  \        \             \          \
+   +--------+-------------+-----------> FAULT -> SHUTDOWN
+```
+
+非法跳转会立即报错。`FAULT` 是锁存状态，不能直接回到 READY 或 RL；重复故障会保留全部原因，首个原因作为根故障。状态变化和故障都记录单调时钟时间，可供入口、测试和后续日志模块读取。
+
+### `rl_controller/real/runner.py`
+
+`RealRLRunner` 组合硬件后端、状态聚合、历史观测和 `PolicyExecutor`，管理以下线程：
+
+- `real-motor-io`：按 `motors.io_frequency_hz` 重复发送最新完整 `JointCommand` 并更新关节反馈；Unitree 后端再把一次完整交换分配到各 RS485 总线线程。
+- `real-imu-io`：持续读取机身姿态与角速度并更新 IMU 快照。
+- `real-policy`：按 `policy.frequency_hz` 执行默认站姿插值、连续 6 帧预热和 RL 推理。
+- `real-runtime-monitor`：接收工作线程异常，锁存 `FAULT`、停止调度并调用电机 `safe_stop()`。
+
+`start()` 只有得到第一份完整、新鲜且同步的电机与 IMU 状态后才进入 READY。`enable_rl()` 从当前实测关节角平滑移动到 `default_angles`，完成后用零速度命令预热历史，再进入 RL。`set_velocity_command()` 只更新三维速度目标；动作映射仍统一为 `default_angles + action_scale * action`。
+
+当前 monitor 只处理生命周期和线程异常。温度、电机错误码、姿态、目标角限位、单周期目标变化及周期统计属于阶段 10，不应把阶段 9 的 FAULT 传播误认为完整实机安全系统。
+
+三个 Mock 组件现在可以通过完整线程 runner 连续运行。真实设备验证、安全管理和长时间故障注入仍按方案后续阶段进行。
 
 ## third_party 目录
 
@@ -577,7 +626,7 @@ Mock 组件测试，覆盖电机速度限幅、生命周期、`safe_stop`、IMU 
 
 ### `test/test_unitree_m8010_backend.py`
 
-完全使用伪 SDK 验证 GO-M8010-6 后端，不打开实际串口。覆盖关节侧与转子侧位置、速度、增益和力矩换算，多总线及重复 ID、完整反馈时间戳、状态年龄、无响应/坏帧/错误 ID/NaN/串口异常、跨总线超时、减速比核对以及全电机 BRAKE。
+完全使用伪 SDK 验证 GO-M8010-6 后端，不打开实际串口。覆盖关节侧与转子侧位置、速度、增益和力矩换算，多总线独立工作线程及重复 ID、完整反馈时间戳、状态年龄、无响应/坏帧/错误 ID/NaN/串口异常、完整周期超时、减速比核对以及全电机 BRAKE。
 
 ### `test/test_yesense_yis130_backend.py`
 
@@ -590,6 +639,18 @@ Mock 组件测试，覆盖电机速度限幅、生命周期、`safe_stop`、IMU 
 ### `test/test_real_policy.py`
 
 使用内存伪 ONNX Runtime 验证实机策略层，不需要真实 ONNX 文件或运行库。覆盖模型输入输出数量、名称、rank、dtype、动态 batch、270/12 特征维，运行时输入输出契约、NaN/Inf、观测与动作裁剪、后端异常、推理超时、Mock/ONNX 工厂选择和 Mock 链路的可选依赖隔离。
+
+### `test/test_real_state_machine.py`
+
+验证完整正常状态路径、非法跳转、FAULT 锁存、重复故障原因和状态等待接口。
+
+### `test/test_real_runner.py`
+
+真实启动线程执行 Mock 全链路，验证初始同步状态、默认站姿过渡、6 帧预热、策略动作、命令裁剪、工作线程计数、策略 NaN 故障、重复故障、启动失败回收和正常关闭后无残留线程。
+
+### `test/test_real_entrypoint.py`
+
+验证独立入口参数、短时无键盘 Mock 运行、真实硬件显式许可门槛，以及入口导入时不加载 MuJoCo、ONNX Runtime、串口和 Unitree SDK。
 
 ### `test/compare_policy_backends.py`
 
@@ -630,6 +691,37 @@ CPU 版安装会包含 `onnxruntime`。如果只补装依赖：
 ```bash
 pip install mujoco torch numpy pyyaml pyserial evdev "onnxruntime>=1.16,<2"
 ```
+
+### 实机软件链路 Mock 运行
+
+不访问键盘、串口、SDK、ONNX 或 MuJoCo，自动进入默认站姿过渡并运行 3 秒：
+
+```bash
+python3 src/controller/rl/rl_controller/deploy_real_rl.py \
+  --no-keyboard \
+  --auto-enable \
+  --duration 3
+```
+
+使用固定速度命令进行 Mock 线程验证：
+
+```bash
+python3 src/controller/rl/rl_controller/deploy_real_rl.py \
+  --no-keyboard \
+  --auto-enable \
+  --command 0.2 0.0 0.0 \
+  --duration 5
+```
+
+接入本机键盘进行 Mock 验证：
+
+```bash
+python3 src/controller/rl/rl_controller/deploy_real_rl.py --duration 30
+```
+
+按 `F` 后依次进入 MOVE_TO_DEFAULT 和 RL；`W/S/A/D/Q/E` 产生速度命令，Space 清零命令，`I` 关闭控制并触发锁存 FAULT。阶段 10 完成并经过硬件逐级验收前，不运行任何非 Mock 配置。
+
+### MuJoCo 运行
 
 再把训练直接导出的两个策略放到：
 
