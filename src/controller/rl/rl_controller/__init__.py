@@ -7,7 +7,7 @@ from .core.observer import (
     build_observation,
     build_one_step_observation,
 )
-from .core.pd import compute_torques
+from .core.pd import compute_pd_torques, compute_target_positions, compute_torques
 from .core.policy import (
     OnnxRuntimePolicy,
     Policy,

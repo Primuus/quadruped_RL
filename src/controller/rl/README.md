@@ -115,7 +115,7 @@ MuJoCo 正式入口和主循环，负责：
 - 读取仿真状态并构造 45×6 历史观测；
 - 按训练契约裁剪完整的 270 维观测；
 - 执行 TorchScript/ONNX 推理；
-- 通过 PD 计算 actuator 力矩；
+- 策略周期更新目标关节角，并在每个 MuJoCo 物理步按最新状态重算 PD 力矩；
 - 读取电脑键盘速度命令；
 - 根据机身高度和重力投影检测跌倒，跌倒后停止力矩但保留仿真；
 - 使用 `--debug-steps N` 输出前 N 次策略周期的状态、原始动作、裁剪动作、目标角和力矩。
@@ -134,7 +134,7 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 
 ### `rl_controller/core/config.py`
 
-定义 `RobotRLConfig` 和 MuJoCo 默认配置。加载 YAML 后检查观测维度、历史长度、关节/执行器数量、PD 数组、命令范围和模型/资源路径。`Go2Config` 仅作为兼容别名，主接口是 `RobotRLConfig`。
+定义 `RobotRLConfig` 和 MuJoCo 默认配置。加载 YAML 后检查观测维度、历史长度、关节/执行器数量、时步、PD 数组、命令范围、有限值和模型/资源路径。
 
 ### `rl_controller/core/observer.py`
 
@@ -146,7 +146,7 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 
 ### `rl_controller/core/pd.py`
 
-执行仿真侧动作映射和 PD：
+执行仿真侧动作映射和 PD。策略动作在控制周期内保持不变，但力矩会在每个物理步按最新关节状态重新计算：
 
 ```text
 target = default_angles + action * action_scale

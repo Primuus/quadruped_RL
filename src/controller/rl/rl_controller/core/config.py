@@ -94,6 +94,16 @@ def _as_float_array(value: Any, expected_size: int, default: np.ndarray) -> np.n
     return array
 
 
+def _require_finite_array(value: np.ndarray, field_name: str) -> None:
+    if not np.all(np.isfinite(value)):
+        raise ValueError(f'{field_name} must contain only finite values')
+
+
+def _require_positive_finite(value: float, field_name: str) -> None:
+    if not np.isfinite(value) or value <= 0.0:
+        raise ValueError(f'{field_name} must be finite and positive')
+
+
 def _resolve_path(base_dir: Path, value: str | Path) -> Path:
     path = Path(value).expanduser()
     if path.is_absolute():
@@ -238,6 +248,20 @@ class RobotRLConfig:
         return cfg
 
     def validate(self) -> None:
+        if not self.robot_name.strip():
+            raise ValueError('robot_name must not be empty')
+        if not self.policy_path.is_file():
+            raise ValueError(f'policy_path does not exist: {self.policy_path}')
+        if not self.xml_path.is_file():
+            raise ValueError(f'xml_path does not exist: {self.xml_path}')
+        _require_positive_finite(self.simulation_duration, 'simulation_duration')
+        _require_positive_finite(self.simulation_dt, 'simulation_dt')
+        if self.control_decimation <= 0:
+            raise ValueError('control_decimation must be positive')
+        if self.num_actions <= 0:
+            raise ValueError('num_actions must be positive')
+        if self.history_length <= 0:
+            raise ValueError('history_length must be positive')
         expected_one_step_obs = 9 + 3 * self.num_actions
         if self.num_one_step_obs != expected_one_step_obs:
             raise ValueError(
@@ -266,12 +290,52 @@ class RobotRLConfig:
             )
         if len(self.joint_names) != self.num_actions:
             raise ValueError('joint_names length must match num_actions')
+        if len(set(self.joint_names)) != len(self.joint_names):
+            raise ValueError('joint_names must contain unique names')
         if len(self.actuator_names) != self.num_actions:
             raise ValueError('actuator_names length must match num_actions')
-        if not np.isfinite(self.clip_observations) or self.clip_observations <= 0.0:
-            raise ValueError('clip_observations must be finite and positive')
-        if not np.isfinite(self.clip_actions) or self.clip_actions <= 0.0:
-            raise ValueError('clip_actions must be finite and positive')
+        if len(set(self.actuator_names)) != len(self.actuator_names):
+            raise ValueError('actuator_names must contain unique names')
+
+        for field_name, values in (
+            ('kps', self.kps),
+            ('kds', self.kds),
+            ('default_angles', self.default_angles),
+            ('command_init', self.command_init),
+            ('command_limits', self.command_limits),
+            ('command_scale', self.command_scale),
+            ('initial_base_pos', self.initial_base_pos),
+            ('initial_base_quat', self.initial_base_quat),
+        ):
+            _require_finite_array(values, field_name)
+        if np.any(self.kps < 0.0) or np.any(self.kds < 0.0):
+            raise ValueError('kps and kds must be non-negative')
+        _require_positive_finite(self.action_scale, 'action_scale')
+        _require_positive_finite(self.clip_observations, 'clip_observations')
+        _require_positive_finite(self.clip_actions, 'clip_actions')
+        if np.any(self.command_limits <= 0.0):
+            raise ValueError('command_limits must be positive')
+        if np.any(self.command_scale <= 0.0):
+            raise ValueError('command_scale must be positive')
+        if np.any(np.abs(self.command_init) > self.command_limits):
+            raise ValueError('command_init must be within command_limits')
+        for field_name, value in (
+            ('obs_scale_lin_vel', self.obs_scale_lin_vel),
+            ('obs_scale_ang_vel', self.obs_scale_ang_vel),
+            ('obs_scale_dof_pos', self.obs_scale_dof_pos),
+            ('obs_scale_dof_vel', self.obs_scale_dof_vel),
+        ):
+            _require_positive_finite(value, field_name)
+        if not np.isfinite(self.fall_height_threshold):
+            raise ValueError('fall_height_threshold must be finite')
+        if (
+            not np.isfinite(self.fall_gravity_z_threshold)
+            or not -1.0 <= self.fall_gravity_z_threshold <= 1.0
+        ):
+            raise ValueError('fall_gravity_z_threshold must be in [-1, 1]')
+        quaternion_norm = float(np.linalg.norm(self.initial_base_quat))
+        if not np.isclose(quaternion_norm, 1.0, rtol=0.0, atol=1e-4):
+            raise ValueError('initial_base_quat must be normalized')
         missing_keyboard_actions = set(DEFAULT_KEYBOARD_BINDINGS) - set(self.keyboard_bindings)
         if missing_keyboard_actions:
             raise ValueError(

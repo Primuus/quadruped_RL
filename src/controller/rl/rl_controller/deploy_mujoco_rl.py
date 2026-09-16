@@ -15,7 +15,7 @@ import numpy as np
 
 from rl_controller.core.config import RobotRLConfig, default_config_path
 from rl_controller.core.observer import ObservationHistory, RobotState, quat_rotate_inverse
-from rl_controller.core.pd import compute_torques
+from rl_controller.core.pd import compute_pd_torques, compute_torques
 from rl_controller.core.policy import load_policy
 from rl_controller.input import KeyboardCommandController, KeyboardInput
 
@@ -163,6 +163,19 @@ class MujocoRLRunner:
         self.current_torque = torques
         self.target_joint_pos = target_joint_pos
 
+    def _refresh_pd_output(self) -> None:
+        if self.is_fallen:
+            self.current_torque.fill(0.0)
+            return
+        state = self._read_state()
+        self.current_torque = compute_pd_torques(
+            self.target_joint_pos,
+            state.joint_pos,
+            state.joint_vel,
+            self.cfg,
+            self.actuator_torque_limits,
+        )
+
     def _print_debug_snapshot(
         self,
         state: RobotState,
@@ -276,6 +289,8 @@ class MujocoRLRunner:
             self._process_keyboard_input()
             if step % decimation == 0:
                 self._compute_policy_output()
+            else:
+                self._refresh_pd_output()
 
             self._write_control()
             mujoco.mj_step(self.model, self.data)
@@ -352,6 +367,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.command is not None:
         command = np.asarray(args.command, dtype=np.float32)
         cfg = replace(cfg, command_init=np.clip(command, -cfg.command_limits, cfg.command_limits))
+    cfg.validate()
 
     keyboard_input = None
     keyboard_controller = None
@@ -390,10 +406,6 @@ def main(argv: list[str] | None = None) -> None:
     finally:
         if keyboard_input is not None:
             keyboard_input.close()
-
-
-Go2MujocoRunner = MujocoRLRunner
-
 
 if __name__ == '__main__':
     main()
