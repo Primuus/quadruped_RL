@@ -1,978 +1,403 @@
-# RL 本地部署子工程说明
+# RL 部署子工程说明
 
-`src/controller/rl` 是 `quadruped` 的纯 Python RL 部署包，不依赖 ROS2、ament 或 `colcon`。MuJoCo 入口负责加载 `quadruped_train` 从同一个部署模型直接导出的 TorchScript 或 ONNX 策略；独立实机入口负责运行不依赖 MuJoCo 的硬件、状态、观测和策略线程，当前默认使用 Mock 配置完成离线验证。
+`src/controller/rl` 是纯 Python 四足机器人 RL 部署包，不依赖 ROS2、ament 或 `colcon`。它包含两条正式运行链路：
 
-当前已经接入 MuJoCo 的机器人实例是 Go2；核心代码按四足机器人通用接口组织，新增其他四足机器人时应新增 YAML 配置、物理资源和策略文件，而不是复制部署主循环。本仓库不包含训练代码。实机侧目前完成方案阶段 0–11，具有 Mock 组件、GO-M8010-6 电机后端、YIS130 IMU 后端、状态聚合、45×6 历史观测、严格策略执行层、状态机、多线程 runner、发令前安全门及离线集成验收工具。安全阈值仍是 Mock 测试值；在阶段 12 的硬件逐级验收前，不能据此直接连接真实电机。
+- MuJoCo：读取机器人模型和 TorchScript/ONNX 策略，在本地完成闭环仿真；
+- 实机：读取真实机器人配置，通过电机和 IMU 构造 45×6 actor 观测，执行 ONNX 策略并发送目标关节角。
 
-## MuJoCo 数据流
+当前 MuJoCo 示例使用 Go2。实机配置模板面向后续自研四足机器人，当前电机和 IMU 实现分别为 Unitree GO-M8010-6 与 Yesense YIS130。公共运行器不包含 Go2 专有分支。
 
-```text
-MuJoCo state
-  -> RobotState
-  -> 45 维单帧观测
-  -> history buffer，形成 num_obs 维 policy 输入
-  -> policy backend：TorchScript / ONNX Runtime
-  -> estimator + actor
-  -> num_actions 维 action
-  -> action_scale + default_angles，得到目标关节角
-  -> PD 计算力矩
-  -> MuJoCo actuator
-```
+## 总体数据契约
 
-训练侧 critic 使用的 privileged obs 不进入这里的策略输入。部署侧只负责按 YAML 配置构造历史观测并调用所选推理后端；更换 TorchScript / ONNX 后端不会改变观测、动作裁剪、PD、MuJoCo 或键盘输入逻辑。
+单帧 actor 观测固定为 45 维：
 
-## 实机链路当前状态
+| 切片 | 维度 | 内容 |
+| --- | ---: | --- |
+| `[0:3]` | 3 | 速度命令 `[vx, vy, yaw_rate]` 及缩放 |
+| `[3:6]` | 3 | 机身坐标系角速度及缩放 |
+| `[6:9]` | 3 | 重力方向在机身坐标系的投影 |
+| `[9:21]` | 12 | `(joint_pos - default_angles) * dof_pos_scale` |
+| `[21:33]` | 12 | `joint_vel * dof_vel_scale` |
+| `[33:45]` | 12 | 上一帧策略动作 |
 
-未来实机链路采用 Python、ONNX Runtime、YESENSE YIS130 IMU 和工程内固定版本的 Unitree Actuator SDK。目标数据流为：
+历史缓存采用最新帧在前的顺序：
 
 ```text
-Linux evdev 键盘命令
-  + 电机 q/dq 反馈
-  + 机身 IMU
-  -> 45 维单帧观测
-  -> 6 帧历史，形成 270 维输入
-  -> ONNX policy，输出 12 维 action
-  -> 目标关节角与安全检查
-  -> Unitree GO-M8010-6 电机后端
+[obs_t, obs_t-1, obs_t-2, obs_t-3, obs_t-4, obs_t-5]
 ```
 
-当前提供不接设备即可导入的公共状态类型、硬件协议、严格配置解析器、Mock 配置、三类 Mock 组件及故障注入、官方 Actuator SDK 的固定源码快照、两个真实硬件后端、完整状态聚合、实机历史观测、统一策略执行层、状态机、线程 runner 和安全管理器。真实后端都延迟加载可选依赖，只有实机入口读取非 Mock 配置且显式获得硬件许可时才会调用 `open()`；ONNX Runtime 也只在实际创建 ONNX 后端时导入。
+因此 actor 输入为 `45 * 6 = 270` 维，输出为 12 维 action：
+
+```text
+target_joint_position = default_angles + action_scale * action
+```
+
+训练 critic 使用的 privileged observations 不进入部署侧。
 
 ## 目录结构
 
 ```text
 src/controller/rl/
-  README.md
-  pyproject.toml
-  setup.py
-  config/go2.yaml
-  config/real/
-    mock.yaml
-    custom_quadruped.example.yaml
-  models/
-  resources/robots/go2/
-  third_party/
-    unitree_actuator_sdk/
-    build_unitree_actuator_sdk.sh
-  rl_controller/
-    deploy_mujoco_rl.py
-    deploy_real_rl.py
-    core/
-    input/
-    real/
-      acceptance.py
-      config.py
-      observation.py
-      orientation.py
-      runner.py
-      safety.py
-      state.py
-      state_machine.py
-      types.py
-      hardware/
-        base.py
-        mock_motor.py
-        mock_imu.py
-        unitree_m8010.py
-        yesense_yis130.py
-      policy/
-        base.py
-        executor.py
-        factory.py
-        mock_policy.py
-        onnx_policy.py
-  test/
-    compare_policy_backends.py
-    deploy_mujoco_rl_debug.py
-    deploy_mujoco_rl_keyboard_debug.py
-    run_real_mock_acceptance.py
-    test_keyboard_controller.py
-    test_mock_backends.py
-    test_real_config.py
-    test_real_entrypoint.py
-    test_real_interfaces.py
-    test_real_policy.py
-    test_real_acceptance.py
-    test_real_runner.py
-    test_real_safety.py
-    test_real_state_machine.py
-    test_real_state_observation.py
-    test_unitree_m8010_backend.py
-    test_yesense_yis130_backend.py
+├── config/
+│   ├── go2.yaml
+│   └── real/custom_quadruped.example.yaml
+├── models/
+├── resources/robots/go2/
+├── rl_controller/
+│   ├── deploy_mujoco_rl.py
+│   ├── deploy_real_rl.py
+│   ├── core/
+│   ├── input/
+│   └── real/
+├── third_party/
+├── tools/compare_policy_backends.py
+├── pyproject.toml
+└── setup.py
 ```
 
 ## 顶层文件
 
-| 文件 | 作用 |
-| --- | --- |
-| `README.md` | 当前说明文档，解释 RL 子工程结构、文件职责和运行方式。 |
-| `pyproject.toml` | 选择 setuptools 构建后端，使该目录可作为标准 Python 工程安装。 |
-| `setup.py` | 纯 Python 包安装脚本，声明运行依赖和测试依赖。配置、模型和资源继续由仓库目录管理。 |
+### `setup.py`
 
-## 配置文件
+定义 Python 包、Python 版本和运行依赖。依赖包含 NumPy、PyYAML、pyserial、evdev、PyTorch、MuJoCo 和 ONNX Runtime，不包含 ROS2 或测试框架。
+
+### `pyproject.toml`
+
+指定 setuptools 构建后端，使本目录可以通过以下命令进行 editable 安装：
+
+```bash
+python3 -m pip install -e src/controller/rl
+```
 
 ### `config/go2.yaml`
 
-当前 Go2 机器人实例的部署配置。它是部署侧最重要的配置文件，负责把训练侧和 MuJoCo 部署侧对齐。新增其他四足机器人时，建议复制一份新的 YAML，例如 `config/<robot>.yaml`，并替换 `robot_name`、`xml_path`、关节顺序、actuator 顺序、默认角、PD 和策略路径。
-
-主要内容：
-
-- 策略文件路径：`policy_path`
-- MuJoCo 场景路径：`xml_path`
-- 仿真时长和步长：`simulation_duration`、`simulation_dt`
-- 控制降频：`control_decimation`
-- 观测维度：`num_one_step_obs`、`history_length`、`num_obs`
-- 训练侧 critic 对齐信息：`num_one_step_privileged_obs`、`num_privileged_obs`
-- 关节顺序：`joint_names`
-- actuator 顺序：`actuator_names`
-- PD 参数：`kps`、`kds`
-- 默认关节角：`default_angles`
-- 动作缩放和动作裁剪：`action_scale`、`clip_actions`
-- 初始速度命令和命令限制：`command_init`、`command_limits`
-- Linux 键盘映射和三档速度：`keyboard.bindings`、`keyboard.speed_levels`
-- 跌倒检测阈值：`fall_height_threshold`、`fall_gravity_z_threshold`。`fall_height_threshold <= 0` 表示禁用机身高度检查。
-- 观测缩放：`obs_scale_*`
-- 初始机身位姿：`initial_base_pos`、`initial_base_quat`
-
-修改原则：
-
-- 训练侧改了 PD、默认角、action scale、clip actions 或观测缩放时，这里要同步。
-- 部署侧 policy 外部输入必须和训练导出的模型输入维度一致。
-- privileged obs 只用于配置对齐和检查，不会输入部署 policy。
-
-### `config/real/mock.yaml`
-
-完整且可解析的实机链路离线配置。它使用 Mock 策略、Mock 电机和 Mock IMU，不加载模型、不导入 Unitree SDK、也不打开串口。配置中的关节限位、增益和安全阈值只用于后续故障测试，不能作为真实机器人的默认值。
+Go2 MuJoCo 示例配置，负责策略路径、XML、关节/执行器顺序、PD、动作缩放、观测缩放、仿真频率、跌倒阈值和键盘参数。它只服务 MuJoCo，不应被复制为自研实机参数。
 
 ### `config/real/custom_quadruped.example.yaml`
 
-未来自研四足的真实配置模板。已知的接口契约保留为 12 维动作、45 维单帧观测、6 帧历史和 270 维输入；机械零位、方向、Motor ID、总线设备、关节限位、增益、IMU 安装旋转、安全阈值和 ONNX 路径等未知值保持 `null`。模板本身应当解析失败，目的是防止未标定参数被误用于实机。
-
-## 策略文件
+真实四足机器人配置格式模板。模板中的 `null` 表示必须通过机械设计、训练配置、硬件手册或实机标定确定；解析器会拒绝未填写模板，从而避免带着占位参数启动硬件。
 
 ### `models/`
 
-默认策略目录。仓库不内置训练好的策略，训练完成后把从同一个 `estimator + actor` 直接导出的两个模型放到：
+存放本地策略文件。通常包括：
 
 ```text
-models/policy_1.pt
-models/policy_1.onnx
+policy_1.pt
+policy_1.onnx
 ```
 
-相关文件：
+模型默认不提交到 Git。实机入口只接受 ONNX；MuJoCo 可接受 TorchScript 或 ONNX。
 
-- `models/.gitignore`：避免误提交模型权重。
-- `models/README.md`：说明模型目录的用途。
+### `resources/robots/<robot>/`
 
-`policy_1.pt` 是过渡期的 TorchScript 基准，`policy_1.onnx` 是 ONNX Runtime 模型。两者权重来源、外部输入和动作输出应一致；ONNX 必须从 PyTorch `estimator + actor` 直接导出，不经过 TorchScript 二次转换。当前 Go2 策略输入为 270 维历史观测，输出为 12 维动作。
+存放 MuJoCo XML、URDF 和网格资源。当前 `go2/scene.xml` 是仿真场景入口，`go2/go2.xml` 定义机器人本体。
 
-## MuJoCo 资源
+### `tools/compare_policy_backends.py`
 
-### `resources/robots/go2/scene.xml`
-
-当前 Go2 实例的 MuJoCo 场景入口文件。通常包含地面、光照、相机和 robot include。
-
-### `resources/robots/go2/go2.xml`
-
-当前 Go2 实例的 MuJoCo robot 模型文件。部署代码会根据 YAML 中的关节名和 actuator 名称，从这个模型中解析 qpos/qvel 地址和 actuator id。
-
-### `resources/robots/go2/urdf/`、`resources/robots/go2/obj/`
-
-当前 Go2 实例的机器人资产文件。用于模型几何、mesh 或 URDF 资源保留。新增机器人时应放到 `resources/robots/<robot>/` 下。
-
-## Python 包入口
-
-### `rl_controller/deploy_mujoco_rl.py`
-
-RL 本地部署主入口。
-
-负责内容：
-
-- 读取机器人 YAML 配置，默认是 `go2.yaml`。
-- 加载 MuJoCo 模型。
-- 根据模型扩展名或 `--policy-backend` 加载 TorchScript / ONNX policy。
-- 解析关节和 actuator 索引。
-- 初始化仿真状态。
-- 每隔 `control_decimation` 个 MuJoCo step 计算一次 policy action。
-- 把 action 转成 PD 力矩。
-- 写入 MuJoCo actuator。
-- 默认接入当前 Linux 主机可见的本地键盘，也可用 `--no-keyboard` 运行固定命令。
-- 检测摔倒后停止输出力矩，但不退出仿真。
-
-主要类：
-
-- `MujocoRLRunner`：封装 MuJoCo 仿真、策略推理、PD 输出和键盘输入。
-- `Go2MujocoRunner`：兼容旧导入的别名，新代码优先使用 `MujocoRLRunner`。
-
-常用命令行参数：
-
-| 参数 | 作用 |
-| --- | --- |
-| `--config` | 指定 YAML 配置文件。 |
-| `--policy-path` | 覆盖策略文件路径。 |
-| `--policy-backend` | 推理后端：`auto`、`torchscript` 或 `onnx`；默认按模型扩展名选择。 |
-| `--xml-path` | 覆盖 MuJoCo XML 路径。 |
-| `--duration` | 覆盖仿真时长。 |
-| `--command VX VY WZ` | 指定固定速度命令，需要同时使用 `--no-keyboard`。 |
-| `--device` | 指定推理设备，如 `cpu` 或 `cuda:0`。ONNX 使用 CUDA 时需安装匹配的 `onnxruntime-gpu`。 |
-| `--headless` | 不打开 MuJoCo viewer。 |
-| `--debug-steps N` | 打印前 `N` 次 policy 推理的状态、动作和力矩信息，默认不打印。 |
-| `--keyboard-device` | 手动限制为一个 Linux 键盘 event 设备；默认自动识别并监听所有合格键盘。 |
-| `--no-keyboard` | 禁用 evdev 输入，改用 YAML 或 `--command` 固定命令。 |
-
-### `rl_controller/deploy_real_rl.py`
-
-与 MuJoCo 完全隔离的实机软件链路入口，不导入 MuJoCo。默认读取 `config/real/mock.yaml`，只有非 Mock 电机或 IMU 配置同时显式传入 `--allow-real-hardware` 时才允许打开设备。
-
-主要参数：
-
-| 参数 | 作用 |
-| --- | --- |
-| `--config` | 指定 `config/real/*.yaml` 配置，默认使用 Mock。 |
-| `--duration` | 运行秒数，`0` 表示持续到 Ctrl+C 或故障。 |
-| `--no-keyboard` | 不打开 evdev，适合服务器和自动测试。 |
-| `--auto-enable` | 不等待 `F`，直接进入默认站姿过渡。 |
-| `--command VX VY YAW_RATE` | 无键盘模式下使用的固定速度命令。 |
-| `--keyboard-device` | 限定一个本地键盘事件设备。 |
-| `--allow-real-hardware` | 明确允许打开非 Mock 电机或 IMU 后端。 |
-
-即使存在该显式许可参数，也必须先完成方案阶段 12 的单电机、总线、悬空、IMU 和低增益验收，不能直接连接真实电机运行策略。当前入口主要用于验证 Mock 生命周期、线程退出、安全故障和键盘到速度命令的连接方式。
-
-## core 模块
-
-### `rl_controller/core/config.py`
-
-配置加载和校验模块。
-
-负责内容：
-
-- 定义 `RobotRLConfig` dataclass。
-- 从 YAML 读取部署配置。
-- 解析相对路径为绝对路径。
-- 提供默认关节顺序、默认 PD、默认观测维度等常量。
-- 校验动作维度、观测维度、history 长度、关节数量、actuator 数量。
-
-这个文件是部署侧配置一致性的第一道检查。训练侧如果改变和部署有关的配置，应同步更新对应机器人 YAML 和这里的默认值或校验逻辑。`Go2Config` 目前保留为 `RobotRLConfig` 的兼容别名。
-
-### `rl_controller/core/observer.py`
-
-观测构造模块。
-
-负责内容：
-
-- 定义 `RobotState`，保存 MuJoCo 中读出的机身和关节状态。
-- 提供四元数旋转工具：`quat_rotate`、`quat_rotate_inverse`。
-- 按配置构造单帧 actor 观测。
-- 维护 history buffer，输出 policy 输入。
-
-当前 45 维观测顺序必须和 `quadruped_train` 保持一致：
-
-```text
-[0:3]   速度命令 vx, vy, yaw_rate
-[3:6]   机身角速度
-[6:9]   重力方向在机身坐标系下的投影
-[9:21]  12 个关节位置偏差
-[21:33] 12 个关节速度
-[33:45] 上一次策略动作
-```
-
-### `rl_controller/core/policy.py`
-
-策略推理后端模块。MuJoCo runner 只依赖统一的 `infer(observation)` 接口，不直接依赖具体模型格式。
-
-负责内容：
-
-- `Policy`：统一推理协议。
-- `TorchScriptPolicy`：加载 `.pt` 并执行 PyTorch/TorchScript 推理。
-- `OnnxRuntimePolicy`：加载 `.onnx` 并执行 ONNX Runtime 推理。
-- `resolve_policy_backend()`：在 `auto` 模式下根据 `.pt` / `.onnx` 扩展名选择后端。
-- `load_policy()`：创建对应后端实例。
-- 将输入统一转换为连续的单帧 `float32` numpy 向量，并将输出统一转换为一维 `float32` action。
-
-TorchScript 输出如果是 tuple/list，会取第一个输出作为 action。ONNX 模型必须只有一个输入，部署侧使用第一个输出作为 action。
-
-### `rl_controller/core/pd.py`
-
-action 到力矩的转换模块。
-
-负责内容：
-
-- 将 policy 输出 action 按配置中的 `clip_actions` 裁剪后映射为目标关节角：
-
-  ```text
-  target_pos = default_angles + action * action_scale
-  ```
-
-- 用 PD 计算关节力矩：
-
-  ```text
-  torque = kp * (target_pos - joint_pos) - kd * joint_vel
-  ```
-
-- 按 MuJoCo actuator torque limit 裁剪输出。
-
-这个文件里的控制逻辑必须和训练侧 action scale、clip actions、默认角、PD 设定保持一致。当前 Go2 部署配置中 `clip_actions: 100.0`，对应训练侧 `normalization.clip_actions = 100`。
-
-### `rl_controller/core/__init__.py`
-
-core 模块导出文件，方便外部直接导入 `RobotRLConfig`、`RobotState`、`ObservationHistory` 等核心类型。`Go2Config`、`Go2State`、`Go2ObservationHistory` 仍作为旧名称别名保留。
-
-## input 模块
-
-RL 仿真输入直接读取运行主机可见的 Linux 键盘 event 设备，不依赖终端焦点或 MuJoCo viewer。它支持笔记本内置键盘以及连接到当前主机的 USB、蓝牙键盘；SSH 客户端按键不会自动成为远端主机的 evdev 事件。
-
-### `rl_controller/input/keyboard_input.py`
-
-Linux 键盘设备读取层。
-
-负责内容：
-
-- 优先查找 `/dev/input/by-path/*-event-kbd`。
-- 按配置中的 `KEY_*` 能力筛选键盘，自动模式同时监听所有合格设备。
-- 支持 `--keyboard-device` 手动限制为一个设备。
-- 后台线程读取 `EV_KEY` 的按下、松开和长按事件。
-- 线程安全地保存当前按键集合，并单独记录功能键的按下边沿。
-- `F` 使能时通过 `EVIOCGRAB` 独占键盘，避免控制键同时触发 MuJoCo Viewer 快捷键；`I` 禁用时释放。
-- 设备断开或读取异常时清空按键，供主循环禁用控制并清零命令。
-- 程序退出时停止线程并关闭输入设备。
-
-用户必须拥有 event 设备读取权限。可执行 `sudo usermod -aG input "$USER"` 并注销后重新登录，或者配置 udev 规则；不要用 root 运行完整 RL 控制程序。
-
-### `rl_controller/input/keyboard_controller.py`
-
-与具体输入设备、MuJoCo 和策略完全解耦的命令映射层。
-
-负责内容：
-
-- 将按住的方向键转换为 `[vx, vy, yaw_rate]`。
-- 支持多方向组合和同轴反向键抵消。
-- 应用 YAML 中配置的 25%、50%、100% 三档速度。
-- 根据使能状态输出命令，并按 `command_limits` 裁剪。
-- 处理停止、重新使能、MuJoCo 重置和状态打印等边沿事件。
-
-键盘控制启动时默认禁用，需要先按 `F`。默认绑定如下：
-
-| 按键 | 作用 |
-| --- | --- |
-| `W` / `S` | 前进 / 后退 |
-| `A` / `D` | 左移 / 右移 |
-| `Q` / `E` | 左转 / 右转 |
-| `Space` | 清零运动命令；已按住的方向键释放前保持停止 |
-| `F` | 使能；从禁用状态恢复时重置 history 和 `last_action` |
-| `I` | 禁用并清零命令 |
-| `1` / `2` / `3` | 低速 / 中速 / 高速 |
-| `R` | 重置 MuJoCo 仿真 |
-| `P` | 打印按键、档位和当前命令 |
-
-普通方向键的按下和松开只改变 command，不重置 history、`last_action` 或策略状态。
-
-### `rl_controller/input/__init__.py`
-
-input 模块导出文件，供 MuJoCo 与实机两个独立入口复用 `KeyboardInput` 和 `KeyboardCommandController`。
-
-## real 模块
-
-`rl_controller/real` 是实机运行器依赖的硬件无关层。阶段 0–10 已定义数据契约、配置、离线 Mock 组件、真实硬件后端、完整状态、actor 历史观测、策略执行、状态机、运行线程和安全管理；只有显式创建并打开真实后端时才会访问串口。
-
-### `rl_controller/real/types.py`
-
-定义 `JointState`、`ImuState`、`JointCommand` 和 `RealRobotState`。所有数值数组统一复制为只读 `float32` 快照，错误码使用 `int64`，时间戳使用非负的单调时钟秒；构造时会检查每组关节数组的维度一致性。
-
-### `rl_controller/real/hardware/base.py`
-
-定义 `MotorBackend` 和 `ImuBackend` 协议，以及后端不可用、通信失败等公共异常。上层运行器只依赖这些协议，不接触 Unitree、YIS130 或 MuJoCo 专有类型。
-
-### `rl_controller/real/config.py`
-
-读取并严格校验 `config/real/*.yaml`，主要检查：
-
-- schema 版本、字段缺失和字段拼写；
-- 45×6=270 观测契约及 12 维动作；
-- 策略关节顺序与电机映射顺序；
-- 总线名称和同一总线 Motor ID 的唯一性；
-- 方向、减速比、零位、关节限位、目标角步长和 PD 增益；
-- 默认角是否位于对应输出轴限位内；
-- IMU 四元数顺序、安装旋转和角速度单位；
-- 策略、电机、日志频率以及状态和推理超时；
-- 真实电机后端与 Mock 策略等危险组合；
-- 真实设备路径、ONNX 文件和待填写字段。
-
-该模块只依赖 NumPy 和 PyYAML，可以在未构建 Unitree SDK、未安装 MuJoCo、未连接硬件时导入。
-
-### `rl_controller/real/hardware/mock_motor.py`
-
-实现 `MotorBackend` 协议的确定性关节空间模拟后端。调用 `open()` 后，每次 `cycle()` 根据经过的单调时钟时间，以受限速度从当前关节角跟随 `JointCommand.position`。默认速度上限由每个关节的 `max_target_step_rad * io_frequency_hz` 得到，也可以在测试中显式覆盖。
-
-后端支持：
-
-- 检查命令关节数量和所有命令数组的有限性；
-- 将模拟状态约束在输出轴关节限位内；
-- `safe_stop()` 锁存停止状态，保持位置并清零速度和力矩；
-- 注入通信异常、过期时间戳、NaN、高温、电机错误码和无效状态；
-- `clear_faults()` 清除故障，但不会解除已经触发的 `safe_stop()`。
-
-### `rl_controller/real/hardware/mock_imu.py`
-
-实现 `ImuBackend` 协议，输出机身坐标系下的 `[w, x, y, z]` 四元数和 `rad/s` 角速度。可设置正常状态，也可注入过期时间戳、NaN、无效状态，以及由 roll/pitch/yaw 构造的倾倒姿态。
-
-### `rl_controller/real/hardware/unitree_m8010.py`
-
-封装官方 Unitree Actuator SDK 的 GO-M8010-6 后端。它按配置管理一条或多条 USB-RS485 总线，同一 Motor ID 可以在不同总线上重复，但每个 `(bus, motor_id)` 地址必须唯一。每条总线在持久线程池中执行独立交换，同一总线上的电机保持串行通信；所有总线完成后才聚合策略关节顺序下的完整反馈。每次 `cycle()` 必须收到全部关节的有效响应才会发布一个 `JointState`；任一串口异常、错误 ID、无效帧、非有限反馈或完整周期超时都会使整轮失败。
-
-配置中的 `zero_offset_rad` 定义为电机输出轴零角对应的机器人关节角，因而统一关系为：
-
-```text
-joint_position = direction * motor_output_position + zero_offset_rad
-motor_output_position = direction * (joint_position - zero_offset_rad)
-
-rotor_position = motor_output_position * gear_ratio
-rotor_velocity = motor_output_velocity * gear_ratio
-rotor_kp / rotor_kd = output_kp / output_kd ÷ gear_ratio²
-rotor_torque = output_torque ÷ gear_ratio
-```
-
-反馈执行逆变换并回到策略关节顺序。后端还提供最近完整周期的 `last_bus_timestamps`、`last_bus_time_skew_s`、`last_state_age_s` 和 `last_bus_errors`，供后续状态聚合与安全层使用。`safe_stop()` 会尝试向所有电机发送 BRAKE，即使中途某个电机通信失败也会继续处理其余地址，并锁存停止状态。
-
-### `rl_controller/real/hardware/yesense_yis130.py`
-
-实现 YESENSE YIS130 的 YIS 私有 UART 协议和 `ImuBackend`：
-
-- 从带噪声或分段到达的字节流中查找 `0x59 0x53` 帧头；
-- 校验 TID、payload 长度和 CK1/CK2 双累加校验；
-- 按 TLV 读取 `0x20` 角速度和 `0x41` 四元数，拒绝缺失、重复、错误长度或非有限数据；
-- 将原始小端有符号整数按 `1e-6` 缩放，并按配置将 `deg/s` 统一为 `rad/s`；
-- 将原始四元数统一为 `[w, x, y, z]` 并归一化；
-- 坏帧后自动重新查找帧头，报告校验错误数、丢弃字节数、最近 TID、状态年龄和错误原因；
-- 在 `state_timeout_s` 内收不到同时包含姿态和角速度的完整帧时关闭本次读取。
-
-标准 YIS UART 输出中 q0 为四元数实部，因此真实模板使用 `quaternion_order: wxyz`；角速度原始单位为 `deg/s`。若设备固件输出配置与此不同，必须以该设备实际协议为准更新 YAML，不能在后端外重复换算。
-
-### `rl_controller/real/orientation.py`
-
-提供实机链路共用的四元数归一化、乘法、共轭和向量旋转。配置中的 `mounting_quaternion_wxyz` 明确定义为“传感器坐标向量旋转到机身坐标”的 `q_body_from_sensor`。后端执行：
-
-```text
-q_world_from_body = q_world_from_sensor * conjugate(q_body_from_sensor)
-angular_velocity_body = rotate(q_body_from_sensor, angular_velocity_sensor)
-```
-
-安装四元数必须通过实物安装方向验证；单位四元数只适用于 IMU 轴与机身轴完全同向的情况。
-
-### `rl_controller/real/state.py`
-
-`RealStateAggregator` 在线程之间汇合 `JointState` 和 `ImuState`，只发布符合以下条件的 `RealRobotState`：
-
-- 电机反馈恰好包含配置要求的全部关节，当前四足接口为 12 个；
-- 电机和 IMU 的 `valid` 均为真，数值中没有 NaN/Inf，IMU 四元数范数有效；
-- 每条电机总线时间戳、IMU 时间戳都未超过 `safety.max_state_age_s`；
-- 所有来源的最大时间差不超过电机与 IMU `state_timeout_s` 中的较小值；
-- `JointState.timestamp` 等于本轮所有电机总线中最早的时间戳。
-
-GO-M8010-6 后端接入时，应把同一轮的 `last_bus_timestamps` 一并传入：
-
-```python
-joint_state = motor_backend.cycle(command)
-state_aggregator.update_joints(
-    joint_state,
-    source_timestamps=motor_backend.last_bus_timestamps,
-)
-state_aggregator.update_imu(imu_backend.read())
-robot_state = state_aggregator.snapshot()
-```
-
-`snapshot()` 在状态不完整时抛出 `StateUnavailableError`，`try_snapshot()` 则返回 `None`。`feedback_ages()` 不要求当前快照继续有效，可读取最近电机、IMU、最老来源及各电机总线的状态年龄，供运行记录和故障分析使用。非零电机错误码会随快照保留；聚合器不提前吞掉温度或错误码，而由安全管理器统一决定是否触发停机。
-
-### `rl_controller/real/observation.py`
-
-`build_real_one_step_observation()` 构造与训练侧完全同序的 45 维当前帧：
-
-```text
-[0:3]   command * command_scale
-[3:6]   body angular velocity * angular_velocity_scale
-[6:9]   projected_gravity
-[9:21]  (joint_position - default_angles) * dof_position_scale
-[21:33] joint_velocity * dof_velocity_scale
-[33:45] previous clipped action
-```
-
-`RealObservationHistory` 按 `[当前帧, 前1帧, ..., 前5帧]` 堆叠。状态时间戳必须严格递增；重复、倒退、过期会失败，帧间隔过大时会清空旧历史并从当前帧重新预热。只有连续帧数达到 `runtime.history_warmup_frames` 后 `update()` 才返回输入，否则返回 `None`。当前配置要求至少 6 帧，最终输出为连续 `float32` 的 270 维向量，并按 `policy.clip_observations` 执行与训练侧相同的裁剪。
-
-### `rl_controller/real/policy/mock_policy.py`
-
-实现与现有 `Policy` 协议相同的 `infer(observation)` 结构接口。它检查输入维度和有限性，并返回可配置、确定性的 `float32` 动作副本；不加载 TorchScript、ONNX 或模型文件。动作 NaN 注入用于安全链路故障测试。
-
-### `rl_controller/real/policy/base.py`
-
-定义实机策略后端的最小协议和统一异常层级。后端必须公开输入维度、动作维度、后端名称以及 `infer()`；`require_float32_vector()` 对 shape、`float32` dtype 和 NaN/Inf 做严格检查，并返回隔离的连续数组。任何策略契约或推理错误都会抛出异常，不允许上层继续使用无效或上一次的动作。
-
-### `rl_controller/real/policy/onnx_policy.py`
-
-实现实机使用的 CPU ONNX Runtime actor 后端。构造时要求模型恰好具有一个输入和一个输出，两者都必须是二维 `tensor(float)`；batch 维可以为 `1` 或动态值，特征维必须分别等于 YAML 中配置的 `num_observations` 和 `num_actions`。每次推理再次检查输入和运行时输出的 shape、dtype 与有限性。
-
-该模块顶层不会导入 ONNX Runtime。只有 `policy.backend: onnx` 并实际构造 `OnnxPolicy` 时才加载依赖和模型，因此没有 ONNX 文件或运行库不会阻塞 Mock 链路。
-
-### `rl_controller/real/policy/executor.py`
-
-`PolicyExecutor` 是 Mock 和 ONNX 后端共用的安全执行边界。它在调用后端前检查并按 `clip_observations` 裁剪观测，在后端返回后检查并按 `clip_actions` 裁剪动作，同时记录 `last_inference_time_s`。推理超过 `safety.max_policy_inference_time_s` 时，本次动作立即作废并抛出 `PolicyInferenceTimeoutError`。
-
-当前超时检查是同步调用返回后的结果验收，不会强制中断正在执行的 ONNX Runtime 调用。策略线程负责周期调度，该异常会经运行监控线程锁存为 `FAULT` 并触发停机。
-
-### `rl_controller/real/policy/factory.py`
-
-`load_real_policy()` 根据 `RealDeploymentConfig.policy.backend` 创建 Mock 或 ONNX 后端，并统一包装为 `PolicyExecutor`。实机 runner 只依赖该工厂和执行器，不需要感知 ONNX Runtime session 或 Mock 实现细节。
-
-### `rl_controller/real/state_machine.py`
-
-定义线程安全且不可逆的运行状态机：
-
-```text
-INIT -> READY -> MOVE_TO_DEFAULT -> RL -> SHUTDOWN
-  \        \             \          \
-   +--------+-------------+-----------> FAULT -> SHUTDOWN
-```
-
-非法跳转会立即报错。`FAULT` 是锁存状态，不能直接回到 READY 或 RL；重复故障会保留全部原因，首个原因作为根故障。状态变化和故障都记录单调时钟时间，可供入口、测试和后续日志模块读取。
-
-### `rl_controller/real/safety.py`
-
-`RealSafetyManager` 是发往电机前的最后软件安全门，只依赖通用状态、命令和 `config/real/*.yaml` 阈值。它负责：
-
-- 拒绝状态、action、目标角或命令中的 NaN/Inf；
-- 拒绝越过关节输出轴限位的目标角；
-- 对比前一次已发送的有效目标，限制每个关节的 `max_target_step_rad`；
-- 拒绝超过 `max_state_age_s` 仍被重复使用的旧有效命令；
-- 仅允许在 `MOVE_TO_DEFAULT` 和 `RL` 状态发送含增益、速度或力矩的有效命令；
-- 检查电机与 IMU 的有效位、时间戳、新鲜度、温度和电机错误码；
-- 从 IMU 四元数计算 roll/pitch，超过 `max_abs_roll_pitch_rad` 时拒绝继续控制；
-- 检查电机 I/O、IMU 读取和完整策略周期的执行时间。
-
-所有 `SafetyViolationError` 都由 runner 的工作线程边界收集，最终进入锁存 `FAULT`。Mock 配置中的限位、温度和姿态数值只用来验证代码分支，不是自研四足机器人的实机安全参数。
-
-### `rl_controller/real/runner.py`
-
-`RealRLRunner` 组合硬件后端、状态聚合、历史观测、`PolicyExecutor` 和 `RealSafetyManager`，管理以下线程：
-
-- `real-motor-io`：按 `motors.io_frequency_hz` 重复发送最新完整 `JointCommand` 并更新关节反馈；Unitree 后端再把一次完整交换分配到各 RS485 总线线程。
-- `real-imu-io`：持续读取机身姿态与角速度并更新 IMU 快照。
-- `real-policy`：按 `policy.frequency_hz` 执行默认站姿插值、连续 6 帧预热和 RL 推理。
-- `real-runtime-monitor`：监视各工作线程的周期心跳，接收线程和安全检查异常，锁存 `FAULT`、停止调度并调用电机 `safe_stop()`。
-
-`start()` 只有得到第一份完整、新鲜且同步的电机与 IMU 状态后才进入 READY。`enable_rl()` 从当前实测关节角平滑移动到 `default_angles`，完成后用零速度命令预热历史，再进入 RL。`set_velocity_command()` 只更新三维速度目标；动作映射仍统一为 `default_angles + action_scale * action`。
-
-电机线程在每次 `cycle()` 前获取一份一致状态并调用安全门；只有检查通过才能发送目标。发现故障后先停止调度，再在电机 I/O 临界区内调用 `safe_stop()`，从而不会重复发送上一次策略目标。无法从 Python 强制终止已经进入底层 SDK 或 ONNX Runtime 的同步调用，因此实机仍必须使用独立硬件急停，并在台架上验证底层超时。
-
-`telemetry()` 返回一份只读 `RuntimeTelemetry`，记录当前状态、各工作线程迭代次数、最近/最大周期耗时、电机与 IMU 状态年龄、速度命令、策略动作、目标关节角、推理耗时和锁存故障原因。该接口只读取运行状态，不改变控制周期。
-
-三个 Mock 组件现在可以通过完整线程 runner 连续运行，并由阶段 11 的离线验收工具自动完成稳态浸泡、故障注入、运行记录和资源回收检查。真实设备和安全阈值验收属于阶段 12。
-
-### `rl_controller/real/acceptance.py`
-
-`MockAcceptanceSuite` 是实机链路的离线集成验收编排器，只接受电机、IMU 和策略均为 Mock 的配置。每个场景创建独立 runner，先完整进入 RL，再依次执行：
-
-- `nominal_soak`：在 RL 状态持续运行指定时间；
-- `motor_communication_fault`：注入电机通信异常；
-- `imu_nonfinite_fault`：注入 IMU 非有限数据；
-- `policy_nonfinite_fault`：注入策略 NaN；
-- `target_step_fault`：注入超过单周期目标变化限制的动作。
-
-每个场景都记录周期、状态年龄、命令、动作、目标角和故障原因，并在结束后验证状态进入 `SHUTDOWN`、全部 runner 线程退出、Mock 后端关闭且电机保持 `safe_stop`。即使长时间浸泡被 `Ctrl+C` 中断，当前 runner 也会先执行关闭和安全停机再向上传递中断。`write_acceptance_report()` 将完整结果写成严格 JSON，拒绝写入 NaN/Inf。
-
-## third_party 目录
-
-### `third_party/unitree_actuator_sdk/`
-
-Unitree 官方 `unitree_actuator_sdk` 的固定源码快照，版本和上游提交号记录在 `third_party/unitree_actuator_sdk.version`。第三方源码保持原样，关节映射、机械零位、方向、输出轴换算和安全检查将在自己的硬件后端中实现。
-
-无硬件构建当前主机对应的 Python 绑定和 GO-M8010-6 官方示例：
+模型发布工具。它把同一批 270 维输入分别送入 TorchScript 和 ONNX，报告平均误差、最大误差、最大误差位置及 `allclose` 结果：
 
 ```bash
-bash src/controller/rl/third_party/build_unitree_actuator_sdk.sh
-```
-
-脚本只编译并导入模块，不打开 RS485 串口，也不会发送电机命令。当前 Python ABI 的生成模块和 `build/` 目录均被 Git 忽略。
-
-## test 目录
-
-### `test/deploy_mujoco_rl_debug.py`
-
-MuJoCo RL 部署调试脚本。
-
-默认参数：
-
-```text
---no-keyboard
---command 0.0 0.0 0.0
---duration 5
---debug-steps 100
-```
-
-它不会改变部署逻辑，只是调用 `deploy_mujoco_rl.py` 的正式入口并打开调试输出。适合排查以下问题：
-
-- Isaac Gym play 可以走，但 MuJoCo 中不稳定或不动。
-- 初始姿态后很快触发摔倒检测。
-- policy 原始输出过大，或者裁剪后的 action 很快接近 `clip_actions` 上限。
-- PD 力矩长期顶到 actuator 限幅。
-- 关节角、目标角和训练侧默认角不一致。
-
-调试输出包含：
-
-```text
-base_z
-projected_gravity
-command
-joint_pos
-raw_action
-clipped_action
-torques
-target_joint_pos
-```
-
-其中 `raw_action` 是当前推理后端的原始输出，`clipped_action` 是部署侧按 YAML 中 `clip_actions` 裁剪后实际送入 PD 的动作。当前 Go2 为 `clip_actions: 100.0`，正常情况下二者应基本一致；如果训练侧修改了 `normalization.clip_actions`，部署侧也要同步。
-
-### `test/deploy_mujoco_rl_keyboard_debug.py`
-
-带 Linux 本地键盘输入的 MuJoCo RL 调试脚本。
-
-默认参数：
-
-```text
---duration 30
---debug-steps 200
-```
-
-脚本默认自动识别并监听当前主机上的所有合格键盘，适合观察按键命令、策略输入和动作是否连续变化。必要时可传入 `--keyboard-device /dev/input/by-path/...-event-kbd` 限制为单个设备。
-
-### `test/test_keyboard_controller.py`
-
-不访问实际键盘和 MuJoCo 的命令映射单元测试，覆盖初始禁用、使能、组合键、反向抵消、三档速度、Space 停止锁存、禁用清零和仿真重置事件。
-
-### `test/test_real_interfaces.py`
-
-不访问设备的实机公共接口测试，覆盖状态数组的类型、维度、只读快照、时间戳和硬件协议结构。
-
-### `test/test_mock_backends.py`
-
-Mock 组件测试，覆盖电机速度限幅、生命周期、`safe_stop`、IMU 状态、策略输入输出以及各类故障注入。测试还手工执行一次 `270 维输入 -> 12 维动作 -> JointCommand -> 电机/IMU反馈 -> RealRobotState` 周期，确认不连接设备、不构建 Unitree SDK、不提供 ONNX 也能完成离线链路。
-
-### `test/test_real_config.py`
-
-实机配置解析测试，覆盖完整 Mock 配置、真实模板待填写错误、schema 和观测维度、重复 Motor ID、非法方向、未知总线、越界默认角、危险后端组合，以及配置模块不导入 MuJoCo 或 Unitree SDK。
-
-### `test/test_unitree_m8010_backend.py`
-
-完全使用伪 SDK 验证 GO-M8010-6 后端，不打开实际串口。覆盖关节侧与转子侧位置、速度、增益和力矩换算，多总线独立工作线程及重复 ID、完整反馈时间戳、状态年龄、无响应/坏帧/错误 ID/NaN/串口异常、完整周期超时、减速比核对以及全电机 BRAKE。
-
-### `test/test_yesense_yis130_backend.py`
-
-使用内存串口和 YIS 协议样例帧验证 YIS130 后端，不打开设备。覆盖分段帧、流重同步、CK1/CK2、TLV 数据、四元数顺序、角速度单位、安装旋转、缺失数据、串口异常和状态超时。
-
-### `test/test_real_state_observation.py`
-
-验证完整 12 关节门槛、多总线与 IMU 时间同步、状态新鲜度、无效/非有限状态拒绝、45 维各切片顺序、重力投影、6 帧连续预热、最新帧优先、观测裁剪和时间中断后重置。最后使用 Mock 电机与 IMU 连续生成 6 帧状态，确认能够得到稳定的 270 维输入并通过 Mock actor 接口。
-
-### `test/test_real_policy.py`
-
-使用内存伪 ONNX Runtime 验证实机策略层，不需要真实 ONNX 文件或运行库。覆盖模型输入输出数量、名称、rank、dtype、动态 batch、270/12 特征维，运行时输入输出契约、NaN/Inf、观测与动作裁剪、后端异常、推理超时、Mock/ONNX 工厂选择和 Mock 链路的可选依赖隔离。
-
-### `test/test_real_state_machine.py`
-
-验证完整正常状态路径、非法跳转、FAULT 锁存、重复故障原因和状态等待接口。
-
-### `test/test_real_runner.py`
-
-真实启动线程执行 Mock 全链路，验证初始同步状态、默认站姿过渡、6 帧预热、策略动作、命令裁剪、工作线程计数、策略 NaN、电机过温、错误码、状态过期、倾倒、目标突变、电机周期超时、策略阻塞看门狗、重复故障、启动失败回收和正常关闭后无残留线程。
-
-### `test/test_real_safety.py`
-
-不启动线程或硬件后端，直接验证安全管理器的动作、目标角、关节单步变化、运行状态、增益、命令和反馈新鲜度、温度、错误码、姿态以及电机/IMU/策略周期时限。
-
-### `test/test_real_entrypoint.py`
-
-验证独立入口参数、短时无键盘 Mock 运行、真实硬件显式许可门槛，以及入口导入时不加载 MuJoCo、ONNX Runtime、串口和 Unitree SDK。
-
-### `test/run_real_mock_acceptance.py`
-
-阶段 11 的可执行离线验收入口。默认执行 60 秒稳态浸泡和四类故障场景，并把 JSON 报告写入被 Git 忽略的 `src/controller/rl/log/`。`--soak-duration` 可改为数小时，`--sample-interval` 控制记录间隔，`--output` 可指定报告路径；`--move-to-default-duration` 只用于缩短 Mock 验收等待，不修改 YAML。
-
-### `test/test_real_acceptance.py`
-
-用短时参数回归完整稳态与故障矩阵，检查遥测可序列化、动作和目标维度正确、线程与后端资源全部回收，并确认导入验收模块不会加载 MuJoCo、ONNX Runtime、串口、Unitree SDK 或训练包。
-
-### `test/compare_policy_backends.py`
-
-TorchScript / ONNX 离线输出一致性检查脚本。它向两个模型输入完全相同的 `float32` 历史观测，打印平均绝对误差、最大绝对误差和 `allclose` 结果；比较失败时退出码为 1。
-
-默认随机生成 128 组 `num_obs` 维输入，也可以用 `--observations observations.npy` 输入真实 MuJoCo 观测。该脚本只检查模型推理，不运行 MuJoCo，也不改变部署配置。
-
-常用命令：
-
-```bash
-python3 src/controller/rl/test/deploy_mujoco_rl_keyboard_debug.py
-```
-
-覆盖键盘设备或打印步数：
-
-```bash
-python3 src/controller/rl/test/deploy_mujoco_rl_keyboard_debug.py \
-  --keyboard-device /dev/input/by-path/<设备名>-event-kbd \
-  --debug-steps 300
-```
-
-运行命令映射测试：
-
-```bash
-python3 -m unittest src/controller/rl/test/test_keyboard_controller.py -v
-```
-
-## 运行方式
-
-先安装部署依赖：
-
-```bash
-pip install -e src/controller/rl
-```
-
-CPU 版安装会包含 `onnxruntime`。如果只补装依赖：
-
-```bash
-pip install mujoco torch numpy pyyaml pyserial evdev "onnxruntime>=1.16,<2"
-```
-
-### 实机软件链路 Mock 运行
-
-不访问键盘、串口、SDK、ONNX 或 MuJoCo，自动进入默认站姿过渡并运行 3 秒：
-
-```bash
-python3 src/controller/rl/rl_controller/deploy_real_rl.py \
-  --no-keyboard \
-  --auto-enable \
-  --duration 3
-```
-
-使用固定速度命令进行 Mock 线程验证：
-
-```bash
-python3 src/controller/rl/rl_controller/deploy_real_rl.py \
-  --no-keyboard \
-  --auto-enable \
-  --command 0.2 0.0 0.0 \
-  --duration 5
-```
-
-接入本机键盘进行 Mock 验证：
-
-```bash
-python3 src/controller/rl/rl_controller/deploy_real_rl.py --duration 30
-```
-
-按 `F` 后依次进入 MOVE_TO_DEFAULT 和 RL；`W/S/A/D/Q/E` 产生速度命令，Space 清零命令，`I` 关闭控制并触发锁存 FAULT。完成方案阶段 12 的硬件逐级验收前，不运行任何非 Mock 配置。
-
-### 阶段 11 离线集成验收
-
-运行默认 60 秒稳态浸泡和完整故障矩阵：
-
-```bash
-python3 src/controller/rl/test/run_real_mock_acceptance.py
-```
-
-执行一小时浸泡、每秒记录一次，并指定报告文件：
-
-```bash
-python3 src/controller/rl/test/run_real_mock_acceptance.py \
-  --soak-duration 3600 \
-  --sample-interval 1 \
-  --output /tmp/real_mock_acceptance.json
-```
-
-快速检查验收入口可使用：
-
-```bash
-python3 src/controller/rl/test/run_real_mock_acceptance.py \
-  --soak-duration 1 \
-  --sample-interval 0.1 \
-  --move-to-default-duration 0.05
-```
-
-命令仅允许全 Mock 配置，不会打开真实电机、IMU、MuJoCo 或模型运行库。退出码 `0` 表示五个场景全部通过，`1` 表示至少一个场景未达到预期状态或资源未完整释放。JSON 中每个 `samples` 项包含：
-
-- `last_cycle_duration_s` / `max_cycle_duration_s`：电机、IMU、策略最近和最大执行耗时；
-- `feedback_age_s`：最近电机、IMU、最老来源及总线状态年龄；
-- `worker_iterations`：三个周期线程的累计次数；
-- `velocity_command`、`action`、`target_position`：当前控制数据；
-- `state`、`fault_reason`：采样时的状态和锁存故障。
-
-### MuJoCo 运行
-
-再把训练直接导出的两个策略放到：
-
-```text
-src/controller/rl/models/policy_1.pt
-src/controller/rl/models/policy_1.onnx
-```
-
-从 `quadruped` 仓库根目录运行：
-
-```bash
-python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py --headless
-```
-
-打开 MuJoCo viewer：
-
-```bash
-python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py
-```
-
-指定策略和模型：
-
-```bash
-python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
-  --policy-path src/controller/rl/models/policy_1.pt \
-  --xml-path src/controller/rl/resources/robots/go2/scene.xml \
-  --device cpu
-```
-
-运行 ONNX Runtime 后端：
-
-```bash
-python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
-  --policy-path src/controller/rl/models/policy_1.onnx \
-  --device cpu
-```
-
-默认 `--policy-backend auto`：`.pt` 选择 TorchScript，`.onnx` 选择 ONNX Runtime。需要排查模型命名问题时可显式传入 `--policy-backend torchscript` 或 `--policy-backend onnx`。
-
-指定速度命令：
-
-```bash
-python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
-  --no-keyboard \
-  --command 0.5 0.0 0.0 \
-  --duration 30
-```
-
-默认自动查找并监听所有合格的本地 Linux 键盘。限制为单个键盘设备：
-
-```bash
-python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
-  --keyboard-device /dev/input/by-path/<设备名>-event-kbd
-```
-
-控制默认禁用。按 `F` 后程序独占已监听的键盘，MuJoCo Viewer 不再收到控制按键；按 `I` 后清零命令并释放键盘。独占期间需要先按 `I`，再在终端使用 `Ctrl+C`。
-
-打印前 100 次 policy 推理的调试信息：
-
-```bash
-python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
-  --no-keyboard \
-  --command 0.0 0.0 0.0 \
-  --duration 5 \
-  --debug-steps 100
-```
-
-使用调试脚本：
-
-```bash
-python3 src/controller/rl/test/deploy_mujoco_rl_debug.py
-```
-
-使用键盘调试脚本：
-
-```bash
-python3 src/controller/rl/test/deploy_mujoco_rl_keyboard_debug.py
-```
-
-比较两个模型的离线动作输出：
-
-```bash
-python3 src/controller/rl/test/compare_policy_backends.py \
+python3 src/controller/rl/tools/compare_policy_backends.py \
   --torchscript-path src/controller/rl/models/policy_1.pt \
   --onnx-path src/controller/rl/models/policy_1.onnx
 ```
 
-用保存的真实观测比较：
+该工具不参与 MuJoCo 或实机运行时导入。
+
+## MuJoCo 模块
+
+### `rl_controller/deploy_mujoco_rl.py`
+
+MuJoCo 正式入口和主循环，负责：
+
+- 加载 `RobotRLConfig`、策略和 XML；
+- 建立 MuJoCo 关节、执行器和配置顺序映射；
+- 读取仿真状态并构造 45×6 历史观测；
+- 执行 TorchScript/ONNX 推理；
+- 通过 PD 计算 actuator 力矩；
+- 读取电脑键盘速度命令；
+- 根据机身高度和重力投影检测跌倒，跌倒后停止力矩但保留仿真；
+- 使用 `--debug-steps N` 输出前 N 次策略周期的状态、原始动作、裁剪动作、目标角和力矩。
+
+主要命令：
 
 ```bash
-python3 src/controller/rl/test/compare_policy_backends.py \
-  --observations observations.npy
+python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py
+
+python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
+  --headless --no-keyboard --command 0.5 0.0 0.0 --duration 30
+
+python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
+  --no-keyboard --duration 5 --debug-steps 100
 ```
 
-完成离线输出比较后，应使用相同 YAML、初始状态和速度命令分别运行 `.pt` 与 `.onnx`，确认 MuJoCo 闭环行为一致。未来实机链路使用 Python + ONNX Runtime，并通过工程内 Unitree Actuator SDK 直接控制 GO-M8010-6，不使用 Go2 SDK2。
+### `rl_controller/core/config.py`
 
-## 和训练侧的同步关系
+定义 `RobotRLConfig` 和 MuJoCo 默认配置。加载 YAML 后检查观测维度、历史长度、关节/执行器数量、PD 数组、命令范围和模型/资源路径。`Go2Config` 仅作为兼容别名，主接口是 `RobotRLConfig`。
 
-训练侧改动后，需要同步部署侧的情况：
+### `rl_controller/core/observer.py`
 
-- 改了 `num_one_step_obs`、`history_length` 或 `num_obs`。
-- 改了 45 维观测顺序。
-- 改了 action 维度或关节顺序。
-- 改了 `default_angles`。
-- 改了 `action_scale`。
-- 改了 `normalization.clip_actions`。
-- 改了 PD 参数。
-- 改了命令缩放或观测缩放。
-- 改了导出策略的外部输入格式。
-- 改了 estimator 或 actor 的部署结构，必须重新直接导出 `.pt` 和 `.onnx`，不能由其中一种格式转换另一种。
+定义 MuJoCo 侧 `RobotState`、四元数旋转、45 维单帧观测和 6 帧历史缓存。这里的切片顺序必须与训练 actor 和实机 `real/observation.py` 完全一致。
 
-训练侧只改 critic privileged obs 内容、reward 权重、噪声、域随机化时，通常不需要改部署推理逻辑；但配置说明应保持一致。
+### `rl_controller/core/policy.py`
 
-## 摔倒处理
+包含 `TorchScriptPolicy`、`OnnxRuntimePolicy` 和后端自动选择逻辑。MuJoCo 根据模型后缀或 `--policy-backend` 选择后端，并根据 `--device` 使用 CPU 或可用的 CUDA Execution Provider。
 
-部署主循环会根据机身高度和重力方向投影判断是否摔倒。当前 Go2 配置中 `fall_height_threshold: 0.0`，表示不再因为机身高度过低直接停力矩；重力方向检查仍保留。判定摔倒后：
+### `rl_controller/core/pd.py`
 
-- policy 不再输出有效 action。
-- 当前力矩清零。
-- history buffer 重置。
-- MuJoCo 仿真继续运行。
-- 键盘按 `R` 可以重置仿真。
-
-## 常用检查
-
-语法检查：
-
-```bash
-python3 -m py_compile src/controller/rl/rl_controller/deploy_mujoco_rl.py
-python3 -m py_compile src/controller/rl/rl_controller/core/config.py
-python3 -m py_compile src/controller/rl/rl_controller/core/observer.py
-python3 -m py_compile src/controller/rl/rl_controller/core/pd.py
-python3 -m py_compile src/controller/rl/rl_controller/core/policy.py
-python3 -m py_compile src/controller/rl/rl_controller/input/keyboard_input.py
-python3 -m py_compile src/controller/rl/rl_controller/input/keyboard_controller.py
-python3 -m py_compile src/controller/rl/rl_controller/real/config.py
-python3 -m compileall -q src/controller/rl/rl_controller/real
-PYTHONPATH=src/controller/rl python3 -m unittest discover \
-  -s src/controller/rl/test -p 'test_*.py' -v
-```
-
-配置读取检查：
-
-```bash
-PYTHONPATH=src/controller/rl python3 - <<'PY'
-from rl_controller.core.config import RobotRLConfig
-cfg = RobotRLConfig.from_yaml('src/controller/rl/config/go2.yaml')
-print(cfg.robot_name, cfg.num_obs, cfg.num_one_step_privileged_obs, cfg.num_privileged_obs)
-PY
-```
-
-期望输出：
+执行仿真侧动作映射和 PD：
 
 ```text
-go2 270 238 238
+target = default_angles + action * action_scale
+torque = kp * (target - joint_pos) - kd * joint_vel
 ```
 
-实机 Mock 配置读取检查：
+可按 MuJoCo actuator 能力进一步裁剪力矩。
 
-```bash
-PYTHONPATH=src/controller/rl python3 - <<'PY'
-from rl_controller.real import RealDeploymentConfig
-cfg = RealDeploymentConfig.from_yaml('src/controller/rl/config/real/mock.yaml')
-print(cfg.robot.name, cfg.robot.num_obs, cfg.policy.backend, cfg.motors.backend)
-PY
-```
+## 键盘模块
 
-期望输出：
+### `rl_controller/input/keyboard_input.py`
+
+使用 Linux evdev 枚举和读取实体键盘，维护按键快照与按下事件，并支持独占/释放设备。指定设备时应使用 `/dev/input/by-path/` 稳定路径。
+
+### `rl_controller/input/keyboard_controller.py`
+
+把 Linux `KEY_*` 映射成速度命令和控制事件。它负责三档速度、组合键、清零、使能、停机、重置和状态输出，不直接访问 MuJoCo 或电机。
+
+默认按键：
+
+| 按键 | 作用 |
+| --- | --- |
+| `F` | 使能并重置策略历史 |
+| `I` | MuJoCo 中禁用控制；实机中请求正常安全停机 |
+| `W/S` | 前进/后退 |
+| `A/D` | 左移/右移 |
+| `Q/E` | 左转/右转 |
+| `Space` | 清零速度命令 |
+| `1/2/3` | 低/中/高速档 |
+| `R` | 仿真重置 |
+| `P` | 输出状态 |
+
+## 实机配置与状态
+
+### `rl_controller/real/config.py`
+
+定义全部实机配置 dataclass 和严格 YAML 解析器。启动时一次性检查：
+
+- schema 和未知字段；
+- 关节顺序、默认角、观测/动作维度和历史长度；
+- ONNX 路径、后缀和文件存在性；
+- 电机总线、ID、方向、减速比、限位、最大目标步长和 PD；
+- YIS130 设备、波特率、四元数顺序、安装旋转和角速度单位；
+- 状态、推理、温度、倾角和关闭超时；
+- 键盘映射、命令范围和速度档位。
+
+当前正式后端为 `onnx`、`unitree_m8010` 和 `yesense_yis130`。配置通过后，内部模块按可信强类型配置运行，不重复解析 YAML。
+
+### `rl_controller/real/types.py`
+
+定义不可变的数据契约：
+
+- `JointState`：完整关节位置、速度、力矩、温度、错误码和时间戳；
+- `ImuState`：机身坐标系四元数、角速度和时间戳；
+- `JointCommand`：输出轴目标位置、速度、KP、KD、前馈力矩和时间戳；
+- `RealRobotState`：同步后的关节与 IMU 快照。
+
+数组在构造时复制并设为只读，防止线程之间修改同一状态对象。
+
+### `rl_controller/real/orientation.py`
+
+提供四元数归一化、乘法、逆旋转和 IMU 安装旋转。YIS130 原始姿态与角速度在硬件边界统一转换到机器人机身坐标系。
+
+### `rl_controller/real/state.py`
+
+`RealStateAggregator` 只负责状态聚合：
+
+- 等待完整电机与 IMU 状态；
+- 保证 12 关节完整；
+- 检查状态年龄；
+- 检查多电机总线与 IMU 的时间偏差；
+- 发布一个不可变的同步快照。
+
+协议、CRC、单位和有限值由硬件后端负责，聚合器不重复解析硬件数据。
+
+### `rl_controller/real/observation.py`
+
+根据同步状态构造与训练侧一致的 45 维单帧观测，并维护 6 帧最新帧优先历史。它负责历史预热、时间戳递增、帧间断重置和固定切片顺序；观测有限值与裁剪由策略边界统一处理。
+
+## 实机硬件
+
+### `rl_controller/real/hardware/base.py`
+
+定义 `MotorBackend` 和 `ImuBackend` Protocol，以及设备不可用、通信失败等统一异常。运行器只依赖协议，不依赖具体机器人名称。
+
+### `rl_controller/real/hardware/unitree_m8010.py`
+
+GO-M8010-6 多总线后端，负责：
+
+- 延迟加载固定版本 Unitree Actuator SDK；
+- 检查 SDK API 和减速比；
+- 并行执行多条 RS485 总线；
+- 校验返回帧、CRC 和 motor ID；
+- 把电机转子侧位置、速度、力矩转换为关节输出轴单位；
+- 确保每次反馈包含全部配置关节；
+- 记录各总线时间戳和错误；
+- 使用 BRAKE 模式实现幂等 `safe_stop()`；
+- 在关闭串口前再次执行安全停机。
+
+### `rl_controller/real/hardware/yesense_yis130.py`
+
+YIS130 私有 UART 后端，负责：
+
+- 从含噪字节流中寻找帧头；
+- 校验长度、校验和和 TLV 数据字段；
+- 解析角速度和四元数；
+- 将 `deg/s` 转换为 `rad/s`；
+- 根据配置的安装四元数转换到机身坐标系；
+- 拒绝不完整、非有限或超时数据；
+- 发布带单调时间戳的 `ImuState`。
+
+## 实机策略
+
+### `rl_controller/real/policy/base.py`
+
+定义策略 Protocol、加载/契约/推理/超时异常，以及严格的 float32 一维张量检查。
+
+### `rl_controller/real/policy/onnx_policy.py`
+
+加载 ONNX Runtime CPU session，并在启动时检查：
+
+- 恰好一个输入和一个输出；
+- 输入/输出名称有效；
+- rank 为 2；
+- batch 为 1 或动态；
+- dtype 为 `tensor(float)`；
+- 特征维分别为 270 和 12。
+
+运行时检查 ONNX 输出 batch、维度和 dtype。
+
+### `rl_controller/real/policy/executor.py`
+
+策略调用的唯一动态边界：
+
+- 检查 270 维 float32 观测及 NaN/Inf；
+- 按训练契约裁剪观测；
+- 测量 ONNX 推理耗时并作废迟到结果；
+- 检查 12 维 float32 动作及 NaN/Inf；
+- 按 `clip_actions` 饱和动作；
+- 第一次发生动作饱和时输出明确警告，并记录原始动作和累计次数。
+
+### `rl_controller/real/policy/factory.py`
+
+根据已验证实机配置创建 `OnnxPolicy + PolicyExecutor`。当前实机链路不接受 TorchScript；TorchScript 只用于 MuJoCo 和导出对比。
+
+## 状态机、安全和运行器
+
+### `rl_controller/real/state_machine.py`
+
+定义不可逆生命周期：
 
 ```text
-mock_quadruped 270 mock mock
+INIT -> READY -> MOVE_TO_DEFAULT -> RL
+  \       \             \          \
+   +-------+-------------+----------> FAULT -> SHUTDOWN
 ```
 
-`custom_quadruped.example.yaml` 保留了未标定的 `null`，因此当前读取失败属于预期行为。
+FAULT 锁存第一个 `FaultRecord` 作为根因，后续停机错误进入 `secondary_faults`，不会覆盖根因。记录包含：
+
+```text
+code, source, message, timestamp, runtime_state,
+state_age_s, command, raw_action, target_position, cycle_duration_s
+```
+
+故障分类包括配置、硬件、策略、实时性、安全、输入、内部错误和关闭错误。
+
+### `rl_controller/real/safety.py`
+
+`RealSafetyManager` 只负责动态健康与最终输出授权：
+
+- 电机温度和错误码；
+- 机身 roll/pitch 倾倒阈值；
+- 当前状态机是否允许主动命令；
+- 目标关节角有限值和机械硬限位；
+- 主动命令时间戳；
+- 相邻目标关节角最大变化。
+
+静态 PD、方向、减速比和配置维度只在启动配置边界检查。协议和反馈有限值由硬件后端检查，避免同一数组在多层重复扫描。
+
+### `rl_controller/real/runner.py`
+
+`RealRLRunner` 组织四个线程：
+
+- motor：按 `motors.io_frequency_hz` 执行最终安全门、电机发送和反馈聚合；
+- imu：读取、转换和聚合 YIS130 状态；
+- policy：按 `policy.frequency_hz` 完成站姿过渡、历史观测和 ONNX 推理；
+- monitor：检测阻塞的硬件或策略调用。
+
+runner 负责：
+
+- 只有第一份完整、新鲜、同步状态到达后才进入 READY；
+- 从实测姿态平滑过渡到 `default_angles`；
+- 历史预热完成后才进入 RL；
+- 任意线程异常直接锁存 FAULT；
+- 故障后停止新命令并执行幂等 `safe_stop()`；
+- 正常停止和故障停止都关闭线程、电机、IMU 和输入资源；
+- FAULT 后禁止自动恢复，必须重启并从 INIT 初始化。
+
+### `rl_controller/deploy_real_rl.py`
+
+实机正式 CLI。它不会提供默认机器人配置，必须显式传入完成后的 YAML 和硬件许可：
+
+```bash
+python3 src/controller/rl/rl_controller/deploy_real_rl.py \
+  --config src/controller/rl/config/real/<robot>.yaml \
+  --allow-real-hardware
+```
+
+常用参数：
+
+| 参数 | 作用 |
+| --- | --- |
+| `--config` | 必填，真实机器人 YAML |
+| `--allow-real-hardware` | 必填，确认允许打开电机与 IMU |
+| `--duration` | 指定运行秒数，`0` 表示直到停止或故障 |
+| `--keyboard-device` | 指定 evdev 键盘设备 |
+| `--no-keyboard` | 不打开键盘，配合固定命令使用 |
+| `--command VX VY YAW_RATE` | 无键盘时的固定命令 |
+| `--auto-enable` | 启动后自动进入站姿过渡 |
+
+正常的 `I`、`Ctrl+C` 和 duration 到期走正常安全停机。运行故障打印一次完整根因快照并返回非零退出码。
+
+## 边界原则
+
+正式链路按以下五个边界分工：
+
+1. **启动配置边界**：一次性拒绝错误、缺失和占位参数；
+2. **硬件输入边界**：拒绝坏帧、错 ID、错误单位、不完整反馈和非有限值；
+3. **策略边界**：拒绝错误 ONNX、观测、动作和迟到结果；
+4. **最终输出边界**：每次发送前检查运行状态、最新状态、目标限位和电机健康；
+5. **故障退出边界**：锁存根因、停止输出、`safe_stop()`、关闭资源并要求重新初始化。
+
+内部模块只消费经过边界校验的数据，不使用默认值、旧状态或上一帧动作掩盖外部故障。
+
+## 新增四足机器人
+
+### MuJoCo
+
+1. 在 `resources/robots/<robot>/` 放入 XML、URDF 和网格；
+2. 新建 `config/<robot>.yaml`；
+3. 填写关节与 actuator 顺序、默认角、PD、动作缩放和观测缩放；
+4. 放入与该配置严格匹配的策略；
+5. 运行 MuJoCo 并使用 `--debug-steps` 核对状态、动作、目标角和力矩。
+
+### 实机
+
+1. 复制 `config/real/custom_quadruped.example.yaml` 为独立机器人配置；
+2. 根据真实机械结构填写关节顺序、ID、方向、零位、减速比和硬限位；
+3. 根据训练配置填写 ONNX、默认角、动作/观测缩放和命令范围；
+4. 标定 YIS130 安装旋转；
+5. 根据硬件能力确定 PD、温度、倾角、时限和目标步长；
+6. 若更换电机或 IMU，在 `hardware/base.py` Protocol 下增加新后端，并在配置和工厂中显式注册；
+7. 由用户依次执行单电机、单总线、悬空关节、IMU、默认站姿、零命令和低速落地验证。
+
+实机前必须具备独立物理急停和驱动器底层通信超时。Python watchdog 与 `safe_stop()` 不能替代硬件急停。
