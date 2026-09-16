@@ -204,7 +204,7 @@ torque = kp * (target - joint_pos) - kd * joint_vel
 - `JointCommand`：输出轴目标位置、速度、KP、KD、前馈力矩和时间戳；
 - `RealRobotState`：同步后的关节与 IMU 快照。
 
-数组在构造时复制并设为只读，防止线程之间修改同一状态对象。
+所有浮点数组在构造时检查 `NaN/Inf`，随后复制并设为只读，防止非法数据进入内部链路或在线程之间修改同一状态对象。
 
 ### `rl_controller/real/orientation.py`
 
@@ -224,7 +224,7 @@ torque = kp * (target - joint_pos) - kd * joint_vel
 
 ### `rl_controller/real/observation.py`
 
-根据同步状态构造与训练侧一致的 45 维单帧观测，并维护 6 帧最新帧优先历史。它负责历史预热、时间戳递增、帧间断重置和固定切片顺序；观测有限值与裁剪由策略边界统一处理。
+根据同步状态构造与训练侧一致的 45 维单帧观测，并维护 6 帧最新帧优先历史。它负责历史预热、时间戳连续性、帧间断重置和固定切片顺序。相同状态时间戳表示策略线程再次读到同一份硬件快照，此时复用历史且不重复移帧；时间倒退仍立即报错。观测有限值与裁剪由状态/策略边界共同保证。
 
 ## 实机硬件
 
@@ -324,7 +324,7 @@ state_age_s, command, raw_action, target_position, cycle_duration_s
 - 主动命令时间戳；
 - 相邻目标关节角最大变化。
 
-静态 PD、方向、减速比和配置维度只在启动配置边界检查。协议和反馈有限值由硬件后端检查，避免同一数组在多层重复扫描。
+静态 PD、方向、减速比和配置维度只在启动配置边界检查。不可变数据类型拒绝非有限值，最终安全门在输出前再次核对全部命令向量，确保外部输入和电机输出两端都有明确边界。
 
 ### `rl_controller/real/runner.py`
 
@@ -341,8 +341,9 @@ runner 负责：
 - 从实测姿态平滑过渡到 `default_angles`；
 - 历史预热完成后才进入 RL；
 - 任意线程异常直接锁存 FAULT；
-- 故障后停止新命令并执行幂等 `safe_stop()`；
-- 正常停止和故障停止都关闭线程、电机、IMU 和输入资源；
+- 电机线程独占运行期电机 I/O，并在正常或故障退出路径执行幂等 `safe_stop()`；
+- 其他线程只锁存故障并发出停止信号，不等待电机 I/O 锁；
+- 等待工作线程退出后才关闭其设备；线程超时仍存活时明确报错且不并发关闭设备；
 - FAULT 后禁止自动恢复，必须重启并从 INIT 初始化。
 
 ### `rl_controller/deploy_real_rl.py`
@@ -355,6 +356,17 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
   --allow-real-hardware
 ```
 
+固定命令运行格式：
+
+```bash
+python3 src/controller/rl/rl_controller/deploy_real_rl.py \
+  --config src/controller/rl/config/real/<robot>.yaml \
+  --allow-real-hardware \
+  --no-keyboard --auto-enable --command 0.2 0.0 0.0
+```
+
+`enable_rl()` 会先清除旧命令，CLI 随后写入 `--command`；站姿过渡使用零命令构造观测，进入 RL 后固定命令持续生效。
+
 常用参数：
 
 | 参数 | 作用 |
@@ -364,7 +376,7 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 | `--duration` | 指定运行秒数，`0` 表示直到停止或故障 |
 | `--keyboard-device` | 指定 evdev 键盘设备 |
 | `--no-keyboard` | 不打开键盘，配合固定命令使用 |
-| `--command VX VY YAW_RATE` | 无键盘时的固定命令 |
+| `--command VX VY YAW_RATE` | 无键盘时的固定命令，必须与 `--no-keyboard` 同用 |
 | `--auto-enable` | 启动后自动进入站姿过渡 |
 
 正常的 `I`、`Ctrl+C` 和 duration 到期走正常安全停机。运行故障打印一次完整根因快照并返回非零退出码。

@@ -10,6 +10,8 @@ def _readonly_float_vector(value: Any, size: int, field_name: str) -> np.ndarray
     vector = np.asarray(value, dtype=np.float32)
     if vector.shape != (size,):
         raise ValueError(f'{field_name} must have shape ({size},), got {vector.shape}')
+    if not np.all(np.isfinite(vector)):
+        raise ValueError(f'{field_name} must contain only finite values')
     result = np.array(vector, dtype=np.float32, copy=True)
     result.setflags(write=False)
     return result

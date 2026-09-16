@@ -64,6 +64,12 @@ class RealSafetyManager:
                 f'motor feedback has {state.num_joints} joints, '
                 f'expected {self._num_joints}'
             )
+        self._require_finite_vectors(
+            ('motor position', state.position),
+            ('motor velocity', state.velocity),
+            ('motor torque', state.torque),
+            ('motor temperature', state.temperature),
+        )
 
         hot = np.flatnonzero(
             state.temperature
@@ -89,6 +95,10 @@ class RealSafetyManager:
         """Check the configured body-tilt limit after IMU normalization."""
         if not isinstance(state, ImuState):
             raise TypeError('state must be an ImuState')
+        self._require_finite_vectors(
+            ('IMU quaternion', state.quaternion_wxyz),
+            ('IMU angular velocity', state.angular_velocity),
+        )
         roll, pitch = self._quaternion_to_roll_pitch(
             state.quaternion_wxyz
         )
@@ -120,11 +130,14 @@ class RealSafetyManager:
                 f'expected {self._num_joints}'
             )
 
+        self._require_finite_vectors(
+            ('command position', command.position),
+            ('command velocity', command.velocity),
+            ('command kp', command.kp),
+            ('command kd', command.kd),
+            ('command torque', command.torque),
+        )
         target = np.asarray(command.position, dtype=np.float32)
-        if not np.all(np.isfinite(target)):
-            raise SafetyViolationError(
-                'target position must contain only finite values'
-            )
         violating = np.flatnonzero(
             (target < self._position_min) | (target > self._position_max)
         )
@@ -166,6 +179,7 @@ class RealSafetyManager:
             if self._last_active_target is None
             else self._last_active_target
         )
+        self._require_finite_vectors(('target-step reference', reference))
         delta = np.abs(target - reference)
         violating = np.flatnonzero(delta > self._max_target_step + 1e-6)
         if violating.size:
@@ -176,6 +190,16 @@ class RealSafetyManager:
                 f'limit is {self._max_target_step[index]:.6f} rad'
             )
         self._last_active_target = target.copy()
+
+    @staticmethod
+    def _require_finite_vectors(
+        *named_vectors: tuple[str, np.ndarray],
+    ) -> None:
+        for name, values in named_vectors:
+            if not np.all(np.isfinite(values)):
+                raise SafetyViolationError(
+                    f'{name} must contain only finite values'
+                )
 
     def _validate_command_age(self, timestamp: float) -> None:
         now = time.monotonic()

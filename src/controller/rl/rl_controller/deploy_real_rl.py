@@ -60,7 +60,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         type=float,
         nargs=3,
         metavar=('VX', 'VY', 'YAW_RATE'),
-        default=(0.0, 0.0, 0.0),
+        default=None,
         help='Fixed command used with --no-keyboard.',
     )
     parser.add_argument(
@@ -77,6 +77,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             'Real RL startup failed: --keyboard-device cannot be used with '
             '--no-keyboard',
+            file=sys.stderr,
+        )
+        return 2
+    if args.command is not None and not args.no_keyboard:
+        print(
+            'Real RL startup failed: --command requires --no-keyboard',
             file=sys.stderr,
         )
         return 2
@@ -110,7 +116,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
         runner.start()
-        runner.set_velocity_command(args.command)
         if args.auto_enable:
             if keyboard is not None and keyboard_controller is not None:
                 enable_effect = keyboard_controller.apply_key(
@@ -119,6 +124,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if enable_effect.exclusive_input:
                     keyboard.set_exclusive(True)
             runner.enable_rl()
+        fixed_command = (
+            (0.0, 0.0, 0.0)
+            if args.command is None
+            else args.command
+        )
+        runner.set_velocity_command(fixed_command)
 
         print(
             f'Real RL runner started: robot={config.robot.name}, '

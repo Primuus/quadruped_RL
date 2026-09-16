@@ -235,6 +235,7 @@ class YesenseYis130Backend:
                 return
             factory = _load_serial_factory()
             serial_timeout = min(self.config.state_timeout_s, 0.005)
+            serial_port = None
             try:
                 serial_port = factory(
                     port=self.config.device,
@@ -245,8 +246,19 @@ class YesenseYis130Backend:
                 if callable(reset_input):
                     reset_input()
             except Exception as exc:
+                close_error: Exception | None = None
+                if serial_port is not None:
+                    close = getattr(serial_port, 'close', None)
+                    if callable(close):
+                        try:
+                            close()
+                        except Exception as cleanup_exc:
+                            close_error = cleanup_exc
+                detail = f': {exc}'
+                if close_error is not None:
+                    detail += f'; cleanup also failed: {close_error}'
                 raise BackendUnavailableError(
-                    f'Failed to open YIS130 serial port {self.config.device}: {exc}'
+                    f'Failed to open YIS130 serial port {self.config.device}{detail}'
                 ) from exc
 
             self._serial = serial_port

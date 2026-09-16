@@ -205,6 +205,17 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
   --allow-real-hardware
 ```
 
+不使用键盘、自动进入站姿过渡并保持固定速度命令时：
+
+```bash
+python3 src/controller/rl/rl_controller/deploy_real_rl.py \
+  --config src/controller/rl/config/real/<robot>.yaml \
+  --allow-real-hardware \
+  --no-keyboard --auto-enable --command 0.2 0.0 0.0
+```
+
+固定命令在 `enable_rl()` 清空旧命令之后写入，站姿过渡期间不参与观测，进入 RL 后持续生效。
+
 `--allow-real-hardware` 是必须显式提供的启动许可。它不是安全认证，也不能替代物理急停、驱动器底层超时、吊架测试和单电机验证。
 
 ## 辅助文档
@@ -217,9 +228,11 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 运行时异常统一锁存为 FAULT：
 
 ```text
-FAULT -> safe_stop -> 停止线程 -> 关闭IMU/电机/键盘 -> 非零退出码
+FAULT -> 禁止新命令 -> 电机线程 safe_stop -> 等待线程退出 -> 关闭设备 -> 非零退出码
 ```
 
 终端会输出故障类别、来源、状态、状态年龄、速度命令、原始策略动作、目标关节角和周期耗时。第一个故障作为根因保留，停机阶段错误单独列出。FAULT 后不会自动恢复策略输出；排除原因后必须重新启动并从 INIT 初始化。
+
+电机工作线程是运行期电机 I/O 的唯一所有者。若底层 SDK 调用超过关闭时限，程序会明确报告仍存活的线程，并保留对应设备不做并发关闭；这种情况必须依靠驱动器通信超时和物理急停，不能依赖 Python 强制终止原生调用。
 
 正常的 `I`、`Ctrl+C` 或运行时长结束不记为 FAULT，但同样执行 `safe_stop()` 和资源关闭。

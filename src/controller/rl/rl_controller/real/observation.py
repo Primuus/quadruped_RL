@@ -13,7 +13,7 @@ GRAVITY_VECTOR = np.asarray([0.0, 0.0, -1.0], dtype=np.float32)
 
 
 class ObservationContinuityError(RuntimeError):
-    """Raised when history receives a duplicate or backwards state timestamp."""
+    """Raised when history receives a backwards state timestamp."""
 
 
 def build_real_one_step_observation(
@@ -117,9 +117,13 @@ class RealObservationHistory:
         previous_timestamp = self._last_state_timestamp
         if previous_timestamp is not None:
             frame_gap = state.timestamp - previous_timestamp
-            if frame_gap <= 0.0:
+            if frame_gap < 0.0:
                 self.reset('state timestamps must increase for every history frame')
                 raise ObservationContinuityError(self._last_reset_reason)
+            if frame_gap == 0.0:
+                if not self.ready:
+                    return None
+                return self._buffer.copy()
             if frame_gap > self._max_frame_gap_s:
                 self.reset(
                     f'state frame gap {frame_gap:.6f}s exceeds '
@@ -149,4 +153,6 @@ def _vector(value: Any, size: int, field_name: str) -> np.ndarray:
     vector = np.asarray(value, dtype=np.float32)
     if vector.shape != (size,):
         raise ValueError(f'{field_name} must have shape ({size},), got {vector.shape}')
+    if not np.all(np.isfinite(vector)):
+        raise ValueError(f'{field_name} must contain only finite values')
     return np.array(vector, dtype=np.float32, copy=True)

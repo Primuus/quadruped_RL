@@ -112,7 +112,6 @@ class RealRLRunner:
         self._control_lock = threading.RLock()
         self._lifecycle_lock = threading.Lock()
         self._watchdog_lock = threading.Lock()
-        self._motor_io_lock = threading.Lock()
         self._fault_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._initial_state_event = threading.Event()
@@ -322,16 +321,6 @@ class RealRLRunner:
         with self._control_lock:
             self._velocity_command.fill(0.0)
             self._last_action.fill(0.0)
-        try:
-            with self._motor_io_lock:
-                self.motor_backend.safe_stop()
-        except Exception as exc:
-            self._latch_fault(
-                FaultCode.HARDWARE,
-                'operator-stop',
-                f'motor safe_stop failed: {exc}',
-                stop_motor=False,
-            )
 
     def report_exception(
         self,
@@ -360,7 +349,6 @@ class RealRLRunner:
             source,
             message,
             cycle_duration_s=cycle_duration_s,
-            stop_motor=True,
         )
 
     def shutdown(self, reason: str = 'shutdown requested') -> None:
@@ -374,12 +362,6 @@ class RealRLRunner:
 
         errors: list[tuple[str, str]] = []
         if self._started:
-            try:
-                with self._motor_io_lock:
-                    self.motor_backend.safe_stop()
-            except Exception as exc:
-                errors.append(('shutdown.safe_stop', str(exc)))
-
             deadline = time.monotonic() + self.config.runtime.shutdown_timeout_s
             current_thread = threading.current_thread()
             for thread in self._threads:
@@ -396,11 +378,23 @@ class RealRLRunner:
                         + ', '.join(live_threads),
                     )
                 )
+        else:
+            live_threads = ()
 
-        for source, close in (
-            ('shutdown.imu', self.imu_backend.close),
-            ('shutdown.motor', self.motor_backend.close),
-        ):
+        live_thread_set = set(live_threads)
+        close_operations: tuple[tuple[str, str, Callable[[], None]], ...] = (
+            ('shutdown.imu', 'real-imu', self.imu_backend.close),
+            ('shutdown.motor', 'real-motor', self.motor_backend.close),
+        )
+        for source, owner_thread, close in close_operations:
+            if owner_thread in live_thread_set:
+                errors.append(
+                    (
+                        source,
+                        f'resource left open because {owner_thread} is still running',
+                    )
+                )
+                continue
             try:
                 close()
             except Exception as exc:
@@ -411,7 +405,6 @@ class RealRLRunner:
                 FaultCode.SHUTDOWN,
                 source,
                 message,
-                stop_motor=False,
             )
 
         self.state_machine.shutdown(reason)
@@ -434,11 +427,7 @@ class RealRLRunner:
             ('monitor', self._monitor_loop),
             (
                 'motor',
-                lambda: self._periodic_loop(
-                    'motor',
-                    self.config.motors.io_frequency_hz,
-                    self._motor_step,
-                ),
+                self._motor_loop,
             ),
             (
                 'imu',
@@ -554,35 +543,65 @@ class RealRLRunner:
                 continue
             self._stop_event.wait(next_deadline - now)
 
+    def _motor_loop(self) -> None:
+        primary_error: Exception | None = None
+        try:
+            self._periodic_loop(
+                'motor',
+                self.config.motors.io_frequency_hz,
+                self._motor_step,
+            )
+        except Exception as exc:
+            primary_error = exc
+
+        if primary_error is not None and not self._stop_event.is_set():
+            self.report_exception(
+                'motor',
+                primary_error,
+                cycle_duration_s=self._last_cycle_duration_s.get('motor'),
+            )
+
+        stop_error: Exception | None = None
+        try:
+            self.motor_backend.safe_stop()
+        except Exception as exc:
+            stop_error = exc
+
+        if stop_error is not None:
+            self._record_secondary_fault(
+                FaultCode.SHUTDOWN,
+                'motor.safe_stop',
+                f'motor safe_stop failed: {stop_error}',
+            )
+
     def _motor_step(self) -> None:
-        with self._motor_io_lock:
-            if self._stop_event.is_set():
-                return
-            with self._control_lock:
-                runtime_state = self.state
-                command = self._latest_joint_command
+        if self._stop_event.is_set():
+            return
+        with self._control_lock:
+            runtime_state = self.state
+            command = self._latest_joint_command
 
-            robot_state = None
-            if runtime_state is not RuntimeState.INIT:
-                robot_state = self.state_aggregator.snapshot()
-            self.safety_manager.authorize_command(
-                command,
-                runtime_state,
-                robot_state,
-            )
+        robot_state = None
+        if runtime_state is not RuntimeState.INIT:
+            robot_state = self.state_aggregator.snapshot()
+        self.safety_manager.authorize_command(
+            command,
+            runtime_state,
+            robot_state,
+        )
 
-            state = self.motor_backend.cycle(command)
-            self.safety_manager.validate_motor_health(state)
-            source_timestamps = getattr(
-                self.motor_backend,
-                'last_bus_timestamps',
-                None,
-            )
-            self.state_aggregator.update_joints(
-                state,
-                source_timestamps=source_timestamps or None,
-            )
-            self._mark_initial_state_if_ready()
+        state = self.motor_backend.cycle(command)
+        self.safety_manager.validate_motor_health(state)
+        source_timestamps = getattr(
+            self.motor_backend,
+            'last_bus_timestamps',
+            None,
+        )
+        self.state_aggregator.update_joints(
+            state,
+            source_timestamps=source_timestamps or None,
+        )
+        self._mark_initial_state_if_ready()
 
     def _imu_step(self) -> None:
         state = self.imu_backend.read()
@@ -714,7 +733,6 @@ class RealRLRunner:
         message: str,
         *,
         cycle_duration_s: float | None = None,
-        stop_motor: bool,
     ) -> FaultRecord:
         with self._fault_lock:
             record = self._make_fault_record(
@@ -723,22 +741,12 @@ class RealRLRunner:
                 message,
                 cycle_duration_s,
             )
-            is_root = self.state_machine.fault(record)
+            self.state_machine.fault(record)
             self._stop_event.set()
             with self._control_lock:
                 self._velocity_command.fill(0.0)
                 self._last_action.fill(0.0)
 
-        if is_root and stop_motor:
-            try:
-                with self._motor_io_lock:
-                    self.motor_backend.safe_stop()
-            except Exception as exc:
-                self._record_secondary_fault(
-                    FaultCode.SHUTDOWN,
-                    'fault.safe_stop',
-                    f'motor safe_stop failed: {exc}',
-                )
         return record
 
     def _record_secondary_fault(
