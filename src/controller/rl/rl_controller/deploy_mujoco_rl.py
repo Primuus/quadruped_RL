@@ -117,9 +117,9 @@ class MujocoRLRunner:
         base_pos = self.data.qpos[0:3].copy()
         base_quat = self.data.qpos[3:7].copy()
         base_lin_vel_world = self.data.qvel[0:3].copy()
-        base_ang_vel_world = self.data.qvel[3:6].copy()
         base_lin_vel = quat_rotate_inverse(base_quat, base_lin_vel_world)
-        base_ang_vel = quat_rotate_inverse(base_quat, base_ang_vel_world)
+        # MuJoCo free-joint angular qvel is already expressed in the body frame.
+        base_ang_vel = self.data.qvel[3:6].copy()
         joint_pos = np.array([self.data.qpos[idx] for idx in self.joint_qpos_adr], dtype=np.float32)
         joint_vel = np.array([self.data.qvel[idx] for idx in self.joint_qvel_adr], dtype=np.float32)
         return RobotState(
@@ -144,6 +144,11 @@ class MujocoRLRunner:
             return
 
         observation = self.observation_history.update(state, self.command, self.last_action)
+        observation = np.clip(
+            observation,
+            -self.cfg.clip_observations,
+            self.cfg.clip_observations,
+        )
         raw_action = self.policy.infer(observation)
         clipped_action = np.clip(raw_action, -self.cfg.clip_actions, self.cfg.clip_actions)
         torques, target_joint_pos = compute_torques(

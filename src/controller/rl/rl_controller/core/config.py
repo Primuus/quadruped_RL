@@ -77,6 +77,7 @@ DEFAULT_NUM_OBS = DEFAULT_NUM_ONE_STEP_OBS * DEFAULT_HISTORY_LENGTH  # policy �
 DEFAULT_NUM_ONE_STEP_PRIVILEGED_OBS = DEFAULT_NUM_ONE_STEP_OBS + 3 + 3 + 187  # 训练 critic 特权观测维度：45+base_lin_vel3+外力3+高度187
 DEFAULT_NUM_PRIVILEGED_OBS = DEFAULT_NUM_ONE_STEP_PRIVILEGED_OBS  # 部署不使用，仅用于和训练侧配置对齐
 DEFAULT_OBS_MODE = 'quadruped_history_45x6'  # 默认使用 6 帧 45 维历史观测
+DEFAULT_CLIP_OBSERVATIONS = 100.0  # 与训练侧 normalization.clip_observations 保持一致
 DEFAULT_CLIP_ACTIONS = 100.0  # 与训练侧 normalization.clip_actions 保持一致
 
 
@@ -130,6 +131,7 @@ class RobotRLConfig:
     kds: np.ndarray  # 每个关节的微分增益
     default_angles: np.ndarray  # 默认关节角
     action_scale: float  # 动作缩放系数
+    clip_observations: float  # 观测裁剪上限，需和训练侧 normalization.clip_observations 一致
     clip_actions: float  # 动作裁剪上限，需和训练侧 normalization.clip_actions 一致
     command_init: np.ndarray  # 初始速度命令
     command_limits: np.ndarray  # 速度命令上限
@@ -162,7 +164,7 @@ class RobotRLConfig:
 
         robot_name = str(raw.get('robot_name', DEFAULT_ROBOT_NAME))
         policy_path = _resolve_path(package_root, raw.get('policy_path', DEFAULT_POLICY_PATH))
-        xml_path = _resolve_path(package_root, raw.get('xml_path', 'resources/robots/go2/scene.xml'))
+        xml_path = _resolve_path(package_root, raw.get('xml_path', 'resources/robots/go2/scene_flat.xml'))
 
         num_actions = int(raw.get('num_actions', len(DEFAULT_JOINT_NAMES)))
         num_one_step_obs = int(raw.get('num_one_step_obs', DEFAULT_NUM_ONE_STEP_OBS))
@@ -207,6 +209,7 @@ class RobotRLConfig:
             kds=_as_float_array(raw.get('kds'), num_actions, default_kds),
             default_angles=_as_float_array(raw.get('default_angles'), num_actions, default_angles),
             action_scale=float(raw.get('action_scale', 0.25)),
+            clip_observations=float(raw.get('clip_observations', DEFAULT_CLIP_OBSERVATIONS)),
             clip_actions=float(raw.get('clip_actions', DEFAULT_CLIP_ACTIONS)),
             command_init=_as_float_array(raw.get('command_init'), 3, DEFAULT_COMMAND_INIT),
             command_limits=_as_float_array(raw.get('command_limits'), 3, DEFAULT_COMMAND_LIMITS),
@@ -265,8 +268,10 @@ class RobotRLConfig:
             raise ValueError('joint_names length must match num_actions')
         if len(self.actuator_names) != self.num_actions:
             raise ValueError('actuator_names length must match num_actions')
-        if self.clip_actions <= 0.0:
-            raise ValueError('clip_actions must be positive')
+        if not np.isfinite(self.clip_observations) or self.clip_observations <= 0.0:
+            raise ValueError('clip_observations must be finite and positive')
+        if not np.isfinite(self.clip_actions) or self.clip_actions <= 0.0:
+            raise ValueError('clip_actions must be finite and positive')
         missing_keyboard_actions = set(DEFAULT_KEYBOARD_BINDINGS) - set(self.keyboard_bindings)
         if missing_keyboard_actions:
             raise ValueError(

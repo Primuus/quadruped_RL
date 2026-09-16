@@ -5,8 +5,8 @@ robot_name: go2
 
 # 训练导出的策略文件，部署时默认加载这个权重
 policy_path: models/policy_1.pt
-# MuJoCo 场景文件
-xml_path: resources/robots/go2/scene.xml
+# MuJoCo 默认使用与当前平地训练环境一致的场景；障碍测试可通过 --xml-path 指定 scene_obstacles.xml
+xml_path: resources/robots/go2/scene_flat.xml
 
 # 仿真总时长 [s]
 simulation_duration: 60.0
@@ -107,6 +107,8 @@ default_angles:
 
 # 策略动作映射到关节角偏移的缩放
 action_scale: 0.25
+# policy 观测裁剪上限，必须和训练侧 normalization.clip_observations 保持一致
+clip_observations: 100.0
 # policy 动作裁剪上限，必须和训练侧 normalization.clip_actions 保持一致；当前训练侧为 100
 clip_actions: 100.0
 

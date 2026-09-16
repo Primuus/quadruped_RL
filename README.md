@@ -58,6 +58,7 @@ quadruped
 | `src/controller/rl/resources` | MuJoCo XML、URDF 和网格资源 |
 | `src/controller/rl/tools` | 模型导出/发布工具 |
 | `src/controller/rl/third_party` | 固定版本 Unitree Actuator SDK |
+| `doc` | TensorBoard 使用和训练调参文档 |
 
 每个文件的详细职责见 [RL 子工程说明](src/controller/rl/README.md)。
 
@@ -205,6 +206,11 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 ```
 
 `--allow-real-hardware` 是必须显式提供的启动许可。它不是安全认证，也不能替代物理急停、驱动器底层超时、吊架测试和单电机验证。
+
+## 辅助文档
+
+- [TensorBoard 使用指南](doc/TensorBoard使用指南.md)
+- [训练调参教程](doc/训练调参教程.md)
 
 ## 故障行为
 

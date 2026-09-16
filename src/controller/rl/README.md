@@ -90,7 +90,7 @@ policy_1.onnx
 
 ### `resources/robots/<robot>/`
 
-存放 MuJoCo XML、URDF 和网格资源。当前 `go2/scene.xml` 是仿真场景入口，`go2/go2.xml` 定义机器人本体。
+存放 MuJoCo XML、URDF 和网格资源。当前 `go2/scene_flat.xml` 是默认平地场景，和训练侧平地环境对齐；`go2/scene_obstacles.xml` 是可选障碍场景，`go2/go2.xml` 定义机器人本体。
 
 ### `tools/compare_policy_backends.py`
 
@@ -113,6 +113,7 @@ MuJoCo 正式入口和主循环，负责：
 - 加载 `RobotRLConfig`、策略和 XML；
 - 建立 MuJoCo 关节、执行器和配置顺序映射；
 - 读取仿真状态并构造 45×6 历史观测；
+- 按训练契约裁剪完整的 270 维观测；
 - 执行 TorchScript/ONNX 推理；
 - 通过 PD 计算 actuator 力矩；
 - 读取电脑键盘速度命令；
