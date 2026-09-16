@@ -2,7 +2,7 @@
 
 `src/controller/rl` 是 `quadruped` 的纯 Python RL 部署包，不依赖 ROS2、ament 或 `colcon`。MuJoCo 入口负责加载 `quadruped_train` 从同一个部署模型直接导出的 TorchScript 或 ONNX 策略；独立实机入口负责运行不依赖 MuJoCo 的硬件、状态、观测和策略线程，当前默认使用 Mock 配置完成离线验证。
 
-当前已经接入 MuJoCo 的机器人实例是 Go2；核心代码按四足机器人通用接口组织，新增其他四足机器人时应新增 YAML 配置、物理资源和策略文件，而不是复制部署主循环。本仓库不包含训练代码。实机侧目前完成方案阶段 0–10，具有 Mock 组件、GO-M8010-6 电机后端、YIS130 IMU 后端、状态聚合、45×6 历史观测、严格策略执行层、状态机、多线程 runner 和发令前安全门。安全阈值仍是 Mock 测试值；在阶段 12 的硬件逐级验收前，不能据此直接连接真实电机。
+当前已经接入 MuJoCo 的机器人实例是 Go2；核心代码按四足机器人通用接口组织，新增其他四足机器人时应新增 YAML 配置、物理资源和策略文件，而不是复制部署主循环。本仓库不包含训练代码。实机侧目前完成方案阶段 0–11，具有 Mock 组件、GO-M8010-6 电机后端、YIS130 IMU 后端、状态聚合、45×6 历史观测、严格策略执行层、状态机、多线程 runner、发令前安全门及离线集成验收工具。安全阈值仍是 Mock 测试值；在阶段 12 的硬件逐级验收前，不能据此直接连接真实电机。
 
 ## MuJoCo 数据流
 
@@ -60,6 +60,7 @@ src/controller/rl/
     core/
     input/
     real/
+      acceptance.py
       config.py
       observation.py
       orientation.py
@@ -84,12 +85,14 @@ src/controller/rl/
     compare_policy_backends.py
     deploy_mujoco_rl_debug.py
     deploy_mujoco_rl_keyboard_debug.py
+    run_real_mock_acceptance.py
     test_keyboard_controller.py
     test_mock_backends.py
     test_real_config.py
     test_real_entrypoint.py
     test_real_interfaces.py
     test_real_policy.py
+    test_real_acceptance.py
     test_real_runner.py
     test_real_safety.py
     test_real_state_machine.py
@@ -405,7 +408,7 @@ input 模块导出文件，供 MuJoCo 与实机两个独立入口复用 `Keyboar
 - 检查命令关节数量和所有命令数组的有限性；
 - 将模拟状态约束在输出轴关节限位内；
 - `safe_stop()` 锁存停止状态，保持位置并清零速度和力矩；
-- 注入过期时间戳、NaN、高温、电机错误码和无效状态；
+- 注入通信异常、过期时间戳、NaN、高温、电机错误码和无效状态；
 - `clear_faults()` 清除故障，但不会解除已经触发的 `safe_stop()`。
 
 ### `rl_controller/real/hardware/mock_imu.py`
@@ -477,7 +480,7 @@ state_aggregator.update_imu(imu_backend.read())
 robot_state = state_aggregator.snapshot()
 ```
 
-`snapshot()` 在状态不完整时抛出 `StateUnavailableError`，`try_snapshot()` 则返回 `None`。非零电机错误码会随快照保留；聚合器不提前吞掉温度或错误码，而由安全管理器统一决定是否触发停机。
+`snapshot()` 在状态不完整时抛出 `StateUnavailableError`，`try_snapshot()` 则返回 `None`。`feedback_ages()` 不要求当前快照继续有效，可读取最近电机、IMU、最老来源及各电机总线的状态年龄，供运行记录和故障分析使用。非零电机错误码会随快照保留；聚合器不提前吞掉温度或错误码，而由安全管理器统一决定是否触发停机。
 
 ### `rl_controller/real/observation.py`
 
@@ -558,7 +561,21 @@ INIT -> READY -> MOVE_TO_DEFAULT -> RL -> SHUTDOWN
 
 电机线程在每次 `cycle()` 前获取一份一致状态并调用安全门；只有检查通过才能发送目标。发现故障后先停止调度，再在电机 I/O 临界区内调用 `safe_stop()`，从而不会重复发送上一次策略目标。无法从 Python 强制终止已经进入底层 SDK 或 ONNX Runtime 的同步调用，因此实机仍必须使用独立硬件急停，并在台架上验证底层超时。
 
-三个 Mock 组件现在可以通过完整线程 runner 连续运行。长时间故障注入、运行记录和回归验收属于阶段 11，真实设备和阈值验收属于阶段 12。
+`telemetry()` 返回一份只读 `RuntimeTelemetry`，记录当前状态、各工作线程迭代次数、最近/最大周期耗时、电机与 IMU 状态年龄、速度命令、策略动作、目标关节角、推理耗时和锁存故障原因。该接口只读取运行状态，不改变控制周期。
+
+三个 Mock 组件现在可以通过完整线程 runner 连续运行，并由阶段 11 的离线验收工具自动完成稳态浸泡、故障注入、运行记录和资源回收检查。真实设备和安全阈值验收属于阶段 12。
+
+### `rl_controller/real/acceptance.py`
+
+`MockAcceptanceSuite` 是实机链路的离线集成验收编排器，只接受电机、IMU 和策略均为 Mock 的配置。每个场景创建独立 runner，先完整进入 RL，再依次执行：
+
+- `nominal_soak`：在 RL 状态持续运行指定时间；
+- `motor_communication_fault`：注入电机通信异常；
+- `imu_nonfinite_fault`：注入 IMU 非有限数据；
+- `policy_nonfinite_fault`：注入策略 NaN；
+- `target_step_fault`：注入超过单周期目标变化限制的动作。
+
+每个场景都记录周期、状态年龄、命令、动作、目标角和故障原因，并在结束后验证状态进入 `SHUTDOWN`、全部 runner 线程退出、Mock 后端关闭且电机保持 `safe_stop`。即使长时间浸泡被 `Ctrl+C` 中断，当前 runner 也会先执行关闭和安全停机再向上传递中断。`write_acceptance_report()` 将完整结果写成严格 JSON，拒绝写入 NaN/Inf。
 
 ## third_party 目录
 
@@ -673,6 +690,14 @@ Mock 组件测试，覆盖电机速度限幅、生命周期、`safe_stop`、IMU 
 
 验证独立入口参数、短时无键盘 Mock 运行、真实硬件显式许可门槛，以及入口导入时不加载 MuJoCo、ONNX Runtime、串口和 Unitree SDK。
 
+### `test/run_real_mock_acceptance.py`
+
+阶段 11 的可执行离线验收入口。默认执行 60 秒稳态浸泡和四类故障场景，并把 JSON 报告写入被 Git 忽略的 `src/controller/rl/log/`。`--soak-duration` 可改为数小时，`--sample-interval` 控制记录间隔，`--output` 可指定报告路径；`--move-to-default-duration` 只用于缩短 Mock 验收等待，不修改 YAML。
+
+### `test/test_real_acceptance.py`
+
+用短时参数回归完整稳态与故障矩阵，检查遥测可序列化、动作和目标维度正确、线程与后端资源全部回收，并确认导入验收模块不会加载 MuJoCo、ONNX Runtime、串口、Unitree SDK 或训练包。
+
 ### `test/compare_policy_backends.py`
 
 TorchScript / ONNX 离线输出一致性检查脚本。它向两个模型输入完全相同的 `float32` 历史观测，打印平均绝对误差、最大绝对误差和 `allclose` 结果；比较失败时退出码为 1。
@@ -741,6 +766,40 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py --duration 30
 ```
 
 按 `F` 后依次进入 MOVE_TO_DEFAULT 和 RL；`W/S/A/D/Q/E` 产生速度命令，Space 清零命令，`I` 关闭控制并触发锁存 FAULT。完成方案阶段 12 的硬件逐级验收前，不运行任何非 Mock 配置。
+
+### 阶段 11 离线集成验收
+
+运行默认 60 秒稳态浸泡和完整故障矩阵：
+
+```bash
+python3 src/controller/rl/test/run_real_mock_acceptance.py
+```
+
+执行一小时浸泡、每秒记录一次，并指定报告文件：
+
+```bash
+python3 src/controller/rl/test/run_real_mock_acceptance.py \
+  --soak-duration 3600 \
+  --sample-interval 1 \
+  --output /tmp/real_mock_acceptance.json
+```
+
+快速检查验收入口可使用：
+
+```bash
+python3 src/controller/rl/test/run_real_mock_acceptance.py \
+  --soak-duration 1 \
+  --sample-interval 0.1 \
+  --move-to-default-duration 0.05
+```
+
+命令仅允许全 Mock 配置，不会打开真实电机、IMU、MuJoCo 或模型运行库。退出码 `0` 表示五个场景全部通过，`1` 表示至少一个场景未达到预期状态或资源未完整释放。JSON 中每个 `samples` 项包含：
+
+- `last_cycle_duration_s` / `max_cycle_duration_s`：电机、IMU、策略最近和最大执行耗时；
+- `feedback_age_s`：最近电机、IMU、最老来源及总线状态年龄；
+- `worker_iterations`：三个周期线程的累计次数；
+- `velocity_command`、`action`、`target_position`：当前控制数据；
+- `state`、`fault_reason`：采样时的状态和锁存故障。
 
 ### MuJoCo 运行
 

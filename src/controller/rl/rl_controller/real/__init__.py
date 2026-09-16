@@ -13,6 +13,11 @@ from .config import (
     RealSafetyConfig,
     load_real_config,
 )
+from .acceptance import (
+    MockAcceptanceError,
+    MockAcceptanceSuite,
+    write_acceptance_report,
+)
 from .hardware import (
     MockImuBackend,
     MockMotorBackend,
@@ -50,6 +55,7 @@ from .runner import (
     RealRunnerError,
     RealRunnerShutdownError,
     RealRunnerStartupError,
+    RuntimeTelemetry,
     WorkerFailure,
 )
 from .types import ImuState, JointCommand, JointState, RealRobotState
@@ -61,6 +67,8 @@ __all__ = [
     'MotorBusConfig',
     'MotorJointConfig',
     'MockImuBackend',
+    'MockAcceptanceError',
+    'MockAcceptanceSuite',
     'MockMotorBackend',
     'MockPolicy',
     'OnnxPolicy',
@@ -95,6 +103,7 @@ __all__ = [
     'RuntimeState',
     'RuntimeTransition',
     'RuntimeTransitionError',
+    'RuntimeTelemetry',
     'SafetyViolationError',
     'StateUnavailableError',
     'UnitreeM8010Backend',
@@ -103,4 +112,5 @@ __all__ = [
     'build_real_one_step_observation',
     'load_real_config',
     'load_real_policy',
+    'write_acceptance_report',
 ]

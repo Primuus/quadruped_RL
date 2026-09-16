@@ -71,6 +71,7 @@ class MockMotorBackend:
         self._temperature_fault: tuple[float, int | None] | None = None
         self._error_fault: tuple[int, int | None] | None = None
         self._invalid_state = False
+        self._communication_error: str | None = None
 
     @property
     def num_joints(self) -> int:
@@ -119,6 +120,8 @@ class MockMotorBackend:
         now = self._read_clock()
         with self._lock:
             self._require_open()
+            if self._communication_error is not None:
+                raise BackendCommunicationError(self._communication_error)
             previous_time = self._last_update_time
             dt = self._nominal_dt if previous_time is None else now - previous_time
             if dt < 0.0:
@@ -213,6 +216,16 @@ class MockMotorBackend:
         with self._lock:
             self._invalid_state = True
 
+    def inject_communication_error(
+        self,
+        message: str = 'injected Mock motor communication failure',
+    ) -> None:
+        reason = str(message).strip()
+        if not reason:
+            raise ValueError('communication error message must not be empty')
+        with self._lock:
+            self._communication_error = reason
+
     def clear_faults(self) -> None:
         with self._lock:
             self._stale_age_s = 0.0
@@ -220,6 +233,7 @@ class MockMotorBackend:
             self._temperature_fault = None
             self._error_fault = None
             self._invalid_state = False
+            self._communication_error = None
 
     def _make_state(self, now: float) -> JointState:
         position = self._position.copy()

@@ -78,6 +78,29 @@ class RealStateAggregator:
         with self._lock:
             return MappingProxyType(self._motor_source_timestamps.copy())
 
+    def feedback_ages(self) -> Mapping[str, float | None]:
+        """Return the latest feedback ages without requiring a valid snapshot."""
+
+        with self._lock:
+            joints = self._joints
+            imu = self._imu
+            source_timestamps = self._motor_source_timestamps.copy()
+        now = self._read_clock()
+
+        motor_age = None if joints is None else now - joints.timestamp
+        imu_age = None if imu is None else now - imu.timestamp
+        available_ages = [
+            age for age in (motor_age, imu_age) if age is not None
+        ]
+        result: dict[str, float | None] = {
+            'motor': motor_age,
+            'imu': imu_age,
+            'oldest': max(available_ages) if available_ages else None,
+        }
+        for source_name, timestamp in sorted(source_timestamps.items()):
+            result[f'motor_source:{source_name}'] = now - timestamp
+        return MappingProxyType(result)
+
     def clear(self) -> None:
         with self._lock:
             self._joints = None

@@ -193,6 +193,22 @@ class MockMotorBackendTest(MockComponentTestCase):
         with self.assertRaisesRegex(BackendError, 'only finite values'):
             motor.cycle(self.make_command(invalid_position))
 
+    def test_injects_and_clears_communication_failure(self) -> None:
+        motor = MockMotorBackend(
+            self.config.motors,
+            initial_position=np.zeros(12),
+            clock=self.clock,
+        )
+        motor.open()
+        motor.inject_communication_error('injected link loss')
+
+        with self.assertRaisesRegex(BackendError, 'injected link loss'):
+            motor.cycle(self.make_command())
+
+        motor.clear_faults()
+        state = motor.cycle(self.make_command())
+        self.assertTrue(state.valid)
+
 
 class MockImuBackendTest(MockComponentTestCase):
     def test_returns_body_frame_state_and_matches_protocol(self) -> None:

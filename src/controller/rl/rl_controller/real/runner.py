@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import queue
 import threading
 import time
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -48,6 +49,56 @@ class WorkerFailure:
     message: str
     timestamp: float
     exception: Exception
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeTelemetry:
+    """Immutable diagnostic snapshot of one real runner."""
+
+    timestamp: float
+    state: RuntimeState
+    worker_iterations: Mapping[str, int]
+    last_cycle_duration_s: Mapping[str, float | None]
+    max_cycle_duration_s: Mapping[str, float | None]
+    feedback_age_s: Mapping[str, float | None]
+    velocity_command: np.ndarray
+    action: np.ndarray
+    target_position: np.ndarray
+    policy_inference_time_s: float | None
+    fault_reason: str | None
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            'worker_iterations',
+            'last_cycle_duration_s',
+            'max_cycle_duration_s',
+            'feedback_age_s',
+        ):
+            value = dict(getattr(self, field_name))
+            object.__setattr__(self, field_name, MappingProxyType(value))
+        for field_name in ('velocity_command', 'action', 'target_position'):
+            value = np.array(
+                getattr(self, field_name),
+                dtype=np.float32,
+                copy=True,
+            )
+            value.setflags(write=False)
+            object.__setattr__(self, field_name, value)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            'timestamp': self.timestamp,
+            'state': self.state.value,
+            'worker_iterations': dict(self.worker_iterations),
+            'last_cycle_duration_s': dict(self.last_cycle_duration_s),
+            'max_cycle_duration_s': dict(self.max_cycle_duration_s),
+            'feedback_age_s': dict(self.feedback_age_s),
+            'velocity_command': self.velocity_command.tolist(),
+            'action': self.action.tolist(),
+            'target_position': self.target_position.tolist(),
+            'policy_inference_time_s': self.policy_inference_time_s,
+            'fault_reason': self.fault_reason,
+        }
 
 
 class RealRLRunner:
@@ -123,6 +174,16 @@ class RealRLRunner:
         self._worker_failures: queue.Queue[WorkerFailure] = queue.Queue()
         self._recorded_failures: list[WorkerFailure] = []
         self._worker_iterations = {'motor': 0, 'imu': 0, 'policy': 0}
+        self._last_cycle_duration_s: dict[str, float | None] = {
+            'motor': None,
+            'imu': None,
+            'policy': None,
+        }
+        self._max_cycle_duration_s: dict[str, float | None] = {
+            'motor': None,
+            'imu': None,
+            'policy': None,
+        }
         self._worker_cycle_started: dict[str, float | None] = {
             'motor': None,
             'imu': None,
@@ -243,6 +304,30 @@ class RealRLRunner:
     @property
     def live_thread_names(self) -> tuple[str, ...]:
         return tuple(thread.name for thread in self._threads if thread.is_alive())
+
+    def telemetry(self) -> RuntimeTelemetry:
+        with self._metrics_lock:
+            iterations = self._worker_iterations.copy()
+            last_cycle = self._last_cycle_duration_s.copy()
+            max_cycle = self._max_cycle_duration_s.copy()
+        feedback_ages = self.state_aggregator.feedback_ages()
+        with self._control_lock:
+            velocity_command = self._velocity_command.copy()
+            action = self._last_action.copy()
+            target_position = self._latest_joint_command.position.copy()
+        return RuntimeTelemetry(
+            timestamp=self._read_clock(),
+            state=self.state,
+            worker_iterations=iterations,
+            last_cycle_duration_s=last_cycle,
+            max_cycle_duration_s=max_cycle,
+            feedback_age_s=feedback_ages,
+            velocity_command=velocity_command,
+            action=action,
+            target_position=target_position,
+            policy_inference_time_s=self.policy.last_inference_time_s,
+            fault_reason=self.fault_reason,
+        )
 
     def start(self, *, ready_timeout_s: float | None = None) -> None:
         with self._lifecycle_lock:
@@ -578,6 +663,7 @@ class RealRLRunner:
             started_at = self._read_timing_clock()
             state = self.motor_backend.cycle(command)
             cycle_duration = self._read_timing_clock() - started_at
+            self._record_cycle_duration('motor', cycle_duration)
             self.safety_manager.validate_motor_cycle_duration(cycle_duration)
 
             source_timestamps = getattr(
@@ -602,6 +688,7 @@ class RealRLRunner:
         started_at = self._read_timing_clock()
         state = self.imu_backend.read()
         cycle_duration = self._read_timing_clock() - started_at
+        self._record_cycle_duration('imu', cycle_duration)
         self.safety_manager.validate_imu_cycle_duration(cycle_duration)
         self.safety_manager.validate_imu_feedback(state)
         self.state_aggregator.update_imu(state)
@@ -621,6 +708,7 @@ class RealRLRunner:
         elif state is RuntimeState.RL:
             self._rl_step()
         cycle_duration = self._read_timing_clock() - started_at
+        self._record_cycle_duration('policy', cycle_duration)
         self.safety_manager.validate_policy_cycle_duration(cycle_duration)
 
     def _move_to_default_step(self) -> None:
@@ -755,6 +843,18 @@ class RealRLRunner:
                 'runner timing clock must return finite time'
             )
         return timestamp
+
+    def _record_cycle_duration(
+        self,
+        worker_name: str,
+        duration_s: float,
+    ) -> None:
+        duration = float(duration_s)
+        with self._metrics_lock:
+            self._last_cycle_duration_s[worker_name] = duration
+            previous_max = self._max_cycle_duration_s[worker_name]
+            if previous_max is None or duration > previous_max:
+                self._max_cycle_duration_s[worker_name] = duration
 
     def _failure_timestamp(self) -> float:
         try:
