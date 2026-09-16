@@ -24,6 +24,10 @@ from .base import (
 )
 
 
+UNITREE_BINDING_API_VERSION = 1
+UNITREE_SDK_COMMIT = '5b79a42d81cd69adac1367db79efdb972a898fd1'
+
+
 @dataclass(frozen=True, slots=True)
 class _BusCycleResult:
     feedback: tuple[tuple[int, float, float, float, float, int], ...]
@@ -509,6 +513,19 @@ class UnitreeM8010Backend:
 
     @staticmethod
     def _validate_sdk_api(sdk: Any) -> None:
+        binding_api = getattr(sdk, '__quadruped_binding_api__', None)
+        sdk_commit = getattr(sdk, '__quadruped_sdk_commit__', None)
+        if (
+            binding_api != UNITREE_BINDING_API_VERSION
+            or sdk_commit != UNITREE_SDK_COMMIT
+        ):
+            raise BackendUnavailableError(
+                'Unitree actuator SDK binding does not match this deployment '
+                f'package (expected API {UNITREE_BINDING_API_VERSION}, commit '
+                f'{UNITREE_SDK_COMMIT}; got API {binding_api!r}, commit '
+                f'{sdk_commit!r}). Rebuild it with '
+                'third_party/build_unitree_actuator_sdk.sh.'
+            )
         required = (
             'MotorType',
             'MotorMode',
@@ -537,12 +554,7 @@ class UnitreeM8010Backend:
 
 
 def _load_unitree_sdk() -> ModuleType:
-    """Load an installed SDK or the source-tree binding built by our script."""
-    try:
-        return importlib.import_module('unitree_actuator_sdk')
-    except (ImportError, OSError):
-        pass
-
+    """Load a binding built from this source tree and matching its API marker."""
     rl_package_root = Path(__file__).resolve().parents[3]
     sdk_lib = rl_package_root / 'third_party' / 'unitree_actuator_sdk' / 'lib'
     machine = platform.machine().lower()
@@ -560,8 +572,11 @@ def _load_unitree_sdk() -> ModuleType:
     try:
         ctypes.CDLL(str(core_library), mode=ctypes.RTLD_GLOBAL)
         sdk_path = str(sdk_lib)
-        if sdk_path not in sys.path:
-            sys.path.insert(0, sdk_path)
+        while sdk_path in sys.path:
+            sys.path.remove(sdk_path)
+        sys.path.insert(0, sdk_path)
+        sys.modules.pop('unitree_actuator_sdk', None)
+        importlib.invalidate_caches()
         return importlib.import_module('unitree_actuator_sdk')
     except (ImportError, OSError) as exc:
         raise BackendUnavailableError(

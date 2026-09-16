@@ -18,9 +18,9 @@ setup(
         'onnxruntime>=1.16,<2',
     ],
     python_requires='>=3.10',
-    zip_safe=True,
+    zip_safe=False,
     maintainer='RY',
     maintainer_email='18737950912@163.com',
-    description='Quadruped RL deployment package for direct Python MuJoCo simulation.',
+    description='Source-tree quadruped RL deployment for MuJoCo and real hardware.',
     license='Apache-2.0',
 )

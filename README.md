@@ -64,11 +64,13 @@ quadruped
 
 ## 安装
 
-建议在独立 Python 环境中，从仓库根目录安装：
+本工程只支持在完整 Git checkout 中进行 editable 安装。请在独立 Python 环境中，从仓库根目录执行：
 
 ```bash
 python3 -m pip install -e src/controller/rl
 ```
+
+不要使用 `pip install src/controller/rl`、`pip install .` 或构建出的 wheel 作为部署产物。运行链路会直接使用源码树中的 `config/`、`models/`、`resources/` 和 `third_party/`；这些目录包含需要现场检查、替换或按本机 Python ABI 编译的资产，不属于普通 Python wheel。运行命令也应在该 checkout 内执行。
 
 主要依赖：
 

@@ -1,7 +1,5 @@
-from .config import Go2Config, RobotRLConfig, default_config_path
+from .config import RobotRLConfig, default_config_path
 from .observer import (
-    Go2ObservationHistory,
-    Go2State,
     ObservationHistory,
     RobotState,
     build_observation,

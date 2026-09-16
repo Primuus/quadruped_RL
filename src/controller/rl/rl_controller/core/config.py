@@ -360,6 +360,3 @@ class RobotRLConfig:
             )
         if self.keyboard_default_speed_level not in (1, 2, 3):
             raise ValueError('keyboard.default_speed_level must be 1, 2, or 3')
-
-
-Go2Config = RobotRLConfig

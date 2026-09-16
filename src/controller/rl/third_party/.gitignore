@@ -1,5 +1,5 @@
 unitree_actuator_sdk/build/
+unitree_actuator_sdk/build-*/
 unitree_actuator_sdk/lib/unitree_actuator_sdk.cpython-*.so
 !unitree_actuator_sdk/lib/libUnitreeMotorSDK_Arm64.so
 !unitree_actuator_sdk/lib/libUnitreeMotorSDK_Linux64.so
-!unitree_actuator_sdk/lib/unitree_actuator_sdk.cpython-38-x86_64-linux-gnu.so

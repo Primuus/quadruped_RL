@@ -25,7 +25,24 @@ def _prepare_observation(observation: np.ndarray) -> np.ndarray:
     obs = np.asarray(observation, dtype=np.float32)
     if obs.ndim != 1:
         raise ValueError(f'Policy observation must be one-dimensional, got shape {obs.shape}')
+    if not np.all(np.isfinite(obs)):
+        raise ValueError('Policy observation must contain only finite values')
     return np.ascontiguousarray(obs)
+
+
+def _validate_action(action: np.ndarray, backend_name: str) -> np.ndarray:
+    array = np.asarray(action)
+    if array.ndim != 1:
+        raise ValueError(
+            f'{backend_name} policy action must be one-dimensional, got shape {array.shape}'
+        )
+    if array.dtype != np.dtype(np.float32):
+        raise ValueError(
+            f'{backend_name} policy action must have dtype float32, got {array.dtype}'
+        )
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f'{backend_name} policy action must contain only finite values')
+    return np.array(array, dtype=np.float32, order='C', copy=True)
 
 
 class TorchScriptPolicy:
@@ -45,10 +62,28 @@ class TorchScriptPolicy:
             output = self.model(obs_tensor)
 
         if isinstance(output, (tuple, list)):
+            if len(output) != 1:
+                raise ValueError(
+                    'TorchScript policy must return one Tensor or a one-element tuple/list'
+                )
             output = output[0]
+        if not isinstance(output, torch.Tensor):
+            raise TypeError(
+                'TorchScript policy output must be a Tensor, got '
+                f'{type(output).__name__}'
+            )
+        if output.ndim != 2 or output.shape[0] != 1:
+            raise ValueError(
+                'TorchScript policy output must have shape [1, num_actions], '
+                f'got {tuple(output.shape)}'
+            )
+        if output.dtype != torch.float32:
+            raise ValueError(
+                f'TorchScript policy output must have dtype float32, got {output.dtype}'
+            )
 
-        action = output.squeeze(0).detach().to('cpu').numpy().astype(np.float32)
-        return action
+        action = output.detach().to('cpu').numpy()[0]
+        return _validate_action(action, self.backend_name)
 
 
 class OnnxRuntimePolicy:
@@ -102,10 +137,10 @@ class OnnxRuntimePolicy:
     def infer(self, observation: np.ndarray) -> np.ndarray:
         obs = _prepare_observation(observation)[np.newaxis, :]
         output = self.session.run([self.output_name], {self.input_name: obs})[0]
-        action = np.asarray(output, dtype=np.float32)
-        if action.ndim < 2 or action.shape[0] != 1:
+        action = np.asarray(output)
+        if action.ndim != 2 or action.shape[0] != 1:
             raise ValueError(f'ONNX policy output must have batch size 1, got shape {action.shape}')
-        return action.reshape(1, -1)[0]
+        return _validate_action(action[0], self.backend_name)
 
 
 def resolve_policy_backend(model_path: str | Path, backend: str = 'auto') -> str:

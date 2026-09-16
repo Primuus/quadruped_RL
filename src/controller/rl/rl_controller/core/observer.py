@@ -84,7 +84,3 @@ def build_observation(state: RobotState, command: np.ndarray, last_action: np.nd
     """单次构造 policy 观测；部署主循环应优先使用 ObservationHistory。"""
     history = ObservationHistory(cfg)
     return history.update(state, command, last_action)
-
-
-Go2State = RobotState
-Go2ObservationHistory = ObservationHistory

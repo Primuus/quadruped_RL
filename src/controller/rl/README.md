@@ -59,7 +59,7 @@ src/controller/rl/
 
 ### `setup.py`
 
-定义 Python 包、Python 版本和运行依赖。依赖包含 NumPy、PyYAML、pyserial、evdev、PyTorch、MuJoCo 和 ONNX Runtime，不包含 ROS2 或测试框架。
+定义 Python 包、Python 版本和运行依赖。依赖包含 NumPy、PyYAML、pyserial、evdev、PyTorch、MuJoCo 和 ONNX Runtime，不包含 ROS2 或测试框架。`zip_safe=False` 明确该包依赖源码树资产。
 
 ### `pyproject.toml`
 
@@ -68,6 +68,8 @@ src/controller/rl/
 ```bash
 python3 -m pip install -e src/controller/rl
 ```
+
+这是唯一支持的安装模式。非 editable 安装和 wheel 不包含外部的 `config/`、`models/`、`resources/`、`third_party/` 完整部署资产，不能用于运行本工程。
 
 ### `config/go2.yaml`
 
@@ -142,7 +144,7 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 
 ### `rl_controller/core/policy.py`
 
-包含 `TorchScriptPolicy`、`OnnxRuntimePolicy` 和后端自动选择逻辑。MuJoCo 根据模型后缀或 `--policy-backend` 选择后端，并根据 `--device` 使用 CPU 或可用的 CUDA Execution Provider。
+包含 `TorchScriptPolicy`、`OnnxRuntimePolicy` 和后端自动选择逻辑。MuJoCo 根据模型后缀或 `--policy-backend` 选择后端，并根据 `--device` 使用 CPU 或可用的 CUDA Execution Provider。推理边界要求输入和动作均为有限值；策略必须输出 batch 为 1 的二维 float32 Tensor。TorchScript 只接受单个 Tensor 或只含一个 Tensor 的 tuple/list，不隐式解释 dict 等其他结构。
 
 ### `rl_controller/core/pd.py`
 
@@ -236,8 +238,8 @@ torque = kp * (target - joint_pos) - kd * joint_vel
 
 GO-M8010-6 多总线后端，负责：
 
-- 延迟加载固定版本 Unitree Actuator SDK；
-- 检查 SDK API 和减速比；
+- 延迟加载由本源码树构建的固定版本 Unitree Actuator SDK；
+- 检查绑定 API 标记、上游提交号、成员和减速比；
 - 并行执行多条 RS485 总线；
 - 校验返回帧、CRC 和 motor ID；
 - 把电机转子侧位置、速度、力矩转换为关节输出轴单位；

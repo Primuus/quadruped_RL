@@ -6,6 +6,8 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(unitree_actuator_sdk, m){ 
 m.doc() = "unitree_actuator_sdk python wrapper"; 
+m.attr("__quadruped_binding_api__") = 1;
+m.attr("__quadruped_sdk_commit__") = "5b79a42d81cd69adac1367db79efdb972a898fd1";
  
 py::enum_<MotorType>(m, "MotorType")
   .value("A1", MotorType::A1, "A1 Motor")
