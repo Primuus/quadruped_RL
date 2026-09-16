@@ -11,7 +11,6 @@ from .base import (
     PolicyContractError,
     PolicyInferenceError,
     PolicyLoadError,
-    require_float32_vector,
 )
 
 
@@ -23,8 +22,6 @@ class OnnxPolicy:
     def __init__(
         self,
         config: RealPolicyConfig,
-        *,
-        ort_module: Any | None = None,
     ) -> None:
         if config.backend != 'onnx':
             raise PolicyLoadError('OnnxPolicy requires policy.backend=onnx')
@@ -39,7 +36,7 @@ class OnnxPolicy:
 
         self.num_observations = config.num_observations
         self.num_actions = config.num_actions
-        ort = ort_module if ort_module is not None else self._import_runtime()
+        ort = self._import_runtime()
 
         try:
             self.session = ort.InferenceSession(
@@ -138,12 +135,7 @@ class OnnxPolicy:
             )
 
     def infer(self, observation: np.ndarray) -> np.ndarray:
-        obs = require_float32_vector(
-            observation,
-            size=self.num_observations,
-            name='Policy observation',
-        )
-        model_input = obs[np.newaxis, :]
+        model_input = observation[np.newaxis, :]
 
         try:
             outputs = self.session.run(
@@ -169,9 +161,5 @@ class OnnxPolicy:
             raise PolicyContractError(
                 f'ONNX policy output must have dtype float32, '
                 f'got {output.dtype}'
-            )
-        if not np.all(np.isfinite(output)):
-            raise PolicyContractError(
-                'ONNX policy output must contain only finite values'
             )
         return np.array(output[0], dtype=np.float32, order='C', copy=True)

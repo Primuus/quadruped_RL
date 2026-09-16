@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 import threading
 import time
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
 
@@ -16,6 +16,17 @@ class RuntimeState(str, Enum):
     MOVE_TO_DEFAULT = 'MOVE_TO_DEFAULT'
     RL = 'RL'
     FAULT = 'FAULT'
+    SHUTDOWN = 'SHUTDOWN'
+
+
+class FaultCode(str, Enum):
+    CONFIGURATION = 'CONFIGURATION'
+    HARDWARE = 'HARDWARE'
+    POLICY = 'POLICY'
+    TIMING = 'TIMING'
+    SAFETY = 'SAFETY'
+    INPUT = 'INPUT'
+    INTERNAL = 'INTERNAL'
     SHUTDOWN = 'SHUTDOWN'
 
 
@@ -32,9 +43,56 @@ class RuntimeTransition:
 
 
 @dataclass(frozen=True, slots=True)
-class RuntimeFault:
-    reason: str
+class FaultRecord:
+    code: FaultCode
+    source: str
+    message: str
     timestamp: float
+    runtime_state: RuntimeState
+    state_age_s: float | None = None
+    command: tuple[float, ...] = ()
+    raw_action: tuple[float, ...] = ()
+    target_position: tuple[float, ...] = ()
+    cycle_duration_s: float | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.code, FaultCode):
+            raise TypeError('code must be a FaultCode')
+        if not isinstance(self.runtime_state, RuntimeState):
+            raise TypeError('runtime_state must be a RuntimeState')
+        if not str(self.source).strip():
+            raise ValueError('fault source must not be empty')
+        if not str(self.message).strip():
+            raise ValueError('fault message must not be empty')
+        if not np.isfinite(self.timestamp) or self.timestamp < 0.0:
+            raise ValueError('fault timestamp must be finite and non-negative')
+        for field_name in ('state_age_s', 'cycle_duration_s'):
+            value = getattr(self, field_name)
+            if value is not None and (not np.isfinite(value) or value < 0.0):
+                raise ValueError(
+                    f'{field_name} must be finite and non-negative when set'
+                )
+        for field_name in ('command', 'raw_action', 'target_position'):
+            values = tuple(float(value) for value in getattr(self, field_name))
+            object.__setattr__(self, field_name, values)
+
+    @property
+    def reason(self) -> str:
+        return self.message
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            'code': self.code.value,
+            'source': self.source,
+            'message': self.message,
+            'timestamp': self.timestamp,
+            'runtime_state': self.runtime_state.value,
+            'state_age_s': self.state_age_s,
+            'command': list(self.command),
+            'raw_action': list(self.raw_action),
+            'target_position': list(self.target_position),
+            'cycle_duration_s': self.cycle_duration_s,
+        }
 
 
 class RealRuntimeStateMachine:
@@ -73,7 +131,8 @@ class RealRuntimeStateMachine:
         self._condition = threading.Condition(threading.RLock())
         self._state = RuntimeState.INIT
         self._transitions: list[RuntimeTransition] = []
-        self._faults: list[RuntimeFault] = []
+        self._root_fault: FaultRecord | None = None
+        self._secondary_faults: list[FaultRecord] = []
 
     @property
     def state(self) -> RuntimeState:
@@ -86,19 +145,26 @@ class RealRuntimeStateMachine:
             return tuple(self._transitions)
 
     @property
-    def faults(self) -> tuple[RuntimeFault, ...]:
+    def fault_record(self) -> FaultRecord | None:
         with self._condition:
-            return tuple(self._faults)
+            return self._root_fault
+
+    @property
+    def secondary_faults(self) -> tuple[FaultRecord, ...]:
+        with self._condition:
+            return tuple(self._secondary_faults)
 
     @property
     def fault_reason(self) -> str | None:
         with self._condition:
-            return self._faults[0].reason if self._faults else None
+            return None if self._root_fault is None else self._root_fault.message
 
     @property
     def latest_fault_reason(self) -> str | None:
         with self._condition:
-            return self._faults[-1].reason if self._faults else None
+            if self._secondary_faults:
+                return self._secondary_faults[-1].message
+            return None if self._root_fault is None else self._root_fault.message
 
     def mark_ready(self, reason: str = 'initial hardware state is ready') -> None:
         self._transition(RuntimeState.READY, reason)
@@ -112,30 +178,27 @@ class RealRuntimeStateMachine:
     def enter_rl(self, reason: str = 'observation history is ready') -> None:
         self._transition(RuntimeState.RL, reason)
 
-    def fault(self, reason: str) -> None:
-        normalized_reason = str(reason).strip()
-        if not normalized_reason:
-            raise ValueError('fault reason must not be empty')
-
+    def fault(self, record: FaultRecord) -> bool:
+        if not isinstance(record, FaultRecord):
+            raise TypeError('record must be a FaultRecord')
         with self._condition:
             if self._state is RuntimeState.SHUTDOWN:
                 raise RuntimeTransitionError(
                     'Cannot report a fault after SHUTDOWN'
                 )
-            timestamp = self._read_clock()
-            self._faults.append(
-                RuntimeFault(
-                    reason=normalized_reason,
-                    timestamp=timestamp,
-                )
+            if self._root_fault is not None:
+                self._secondary_faults.append(record)
+                self._condition.notify_all()
+                return False
+
+            self._root_fault = record
+            self._transition_locked(
+                RuntimeState.FAULT,
+                record.message,
+                record.timestamp,
             )
-            if self._state is not RuntimeState.FAULT:
-                self._transition_locked(
-                    RuntimeState.FAULT,
-                    normalized_reason,
-                    timestamp,
-                )
             self._condition.notify_all()
+            return True
 
     def shutdown(self, reason: str = 'shutdown requested') -> None:
         with self._condition:

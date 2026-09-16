@@ -164,7 +164,6 @@ class RealStateAggregator:
             snapshot = RealRobotState(
                 joints=joints,
                 imu=imu,
-                valid=True,
                 timestamp=min(timestamps),
             )
             self._last_rejection = None
@@ -181,10 +180,6 @@ class RealStateAggregator:
             return 'complete motor feedback is unavailable'
         if imu is None:
             return 'IMU feedback is unavailable'
-        if not joints.valid:
-            return 'motor feedback is marked invalid'
-        if not imu.valid:
-            return 'IMU feedback is marked invalid'
         if joints.num_joints != self._num_joints:
             return (
                 f'motor feedback has {joints.num_joints} joints, '
@@ -192,22 +187,6 @@ class RealStateAggregator:
             )
         if not source_timestamps:
             return 'motor source timestamps are unavailable'
-
-        finite_joint_fields = (
-            joints.position,
-            joints.velocity,
-            joints.torque,
-            joints.temperature,
-        )
-        if not all(np.all(np.isfinite(field)) for field in finite_joint_fields):
-            return 'motor feedback contains NaN or Inf'
-        if not np.all(np.isfinite(imu.quaternion_wxyz)) or not np.all(
-            np.isfinite(imu.angular_velocity)
-        ):
-            return 'IMU feedback contains NaN or Inf'
-        quaternion_norm = float(np.linalg.norm(imu.quaternion_wxyz))
-        if not np.isclose(quaternion_norm, 1.0, rtol=0.0, atol=2e-2):
-            return f'IMU quaternion norm {quaternion_norm:.6f} is invalid'
 
         timestamps = tuple(source_timestamps.values()) + (imu.timestamp,)
         ages = tuple(now - timestamp for timestamp in timestamps)

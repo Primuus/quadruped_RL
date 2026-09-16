@@ -169,9 +169,6 @@ class YesenseYis130Backend:
     def __init__(
         self,
         config: RealImuConfig,
-        *,
-        serial_factory: Callable[..., Any] | None = None,
-        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if config.backend != 'yesense_yis130':
             raise ValueError(
@@ -191,8 +188,6 @@ class YesenseYis130Backend:
             raise ValueError('YIS130 requires an IMU-to-body mounting quaternion')
 
         self.config = config
-        self._serial_factory = serial_factory
-        self._clock = clock
         self._parser = YesenseFrameParser()
         self._lock = threading.RLock()
         self._serial: Any | None = None
@@ -238,7 +233,7 @@ class YesenseYis130Backend:
         with self._lock:
             if self._is_open:
                 return
-            factory = self._serial_factory or _load_serial_factory()
+            factory = _load_serial_factory()
             serial_timeout = min(self.config.state_timeout_s, 0.005)
             try:
                 serial_port = factory(
@@ -315,7 +310,6 @@ class YesenseYis130Backend:
                     return ImuState(
                         quaternion_wxyz=body_quaternion,
                         angular_velocity=body_angular_velocity,
-                        valid=True,
                         timestamp=received_at,
                     )
 
@@ -359,7 +353,7 @@ class YesenseYis130Backend:
             raise BackendError('YIS130 IMU backend is not open')
 
     def _read_clock(self) -> float:
-        timestamp = float(self._clock())
+        timestamp = float(time.monotonic())
         if not np.isfinite(timestamp) or timestamp < 0.0:
             raise BackendCommunicationError(
                 'YIS130 clock must return finite, non-negative time'

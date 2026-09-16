@@ -40,7 +40,6 @@ class JointState:
     torque: np.ndarray
     temperature: np.ndarray
     error: np.ndarray
-    valid: bool
     timestamp: float
 
     def __post_init__(self) -> None:
@@ -73,7 +72,6 @@ class JointState:
             'error',
             _readonly_int_vector(self.error, num_joints, 'error'),
         )
-        object.__setattr__(self, 'valid', bool(self.valid))
         object.__setattr__(self, 'timestamp', _validate_timestamp(self.timestamp))
 
     @property
@@ -87,7 +85,6 @@ class ImuState:
 
     quaternion_wxyz: np.ndarray
     angular_velocity: np.ndarray
-    valid: bool
     timestamp: float
 
     def __post_init__(self) -> None:
@@ -101,7 +98,6 @@ class ImuState:
             'angular_velocity',
             _readonly_float_vector(self.angular_velocity, 3, 'angular_velocity'),
         )
-        object.__setattr__(self, 'valid', bool(self.valid))
         object.__setattr__(self, 'timestamp', _validate_timestamp(self.timestamp))
 
 
@@ -159,7 +155,6 @@ class RealRobotState:
 
     joints: JointState
     imu: ImuState
-    valid: bool
     timestamp: float
 
     def __post_init__(self) -> None:
@@ -167,7 +162,6 @@ class RealRobotState:
             raise TypeError('joints must be a JointState')
         if not isinstance(self.imu, ImuState):
             raise TypeError('imu must be an ImuState')
-        object.__setattr__(self, 'valid', bool(self.valid))
         object.__setattr__(self, 'timestamp', _validate_timestamp(self.timestamp))
 
     @property

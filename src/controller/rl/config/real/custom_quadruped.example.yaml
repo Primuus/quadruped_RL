@@ -1,6 +1,6 @@
 # 未来自研四足的真实部署配置模板。
 # null 表示必须通过训练契约、机械标定、硬件手册或安全测试确定，解析器会拒绝
-# 使用未填写的模板。不要把 mock.yaml 或 Go2 的数值直接复制到实机配置。
+# 使用未填写的模板。不要把其他机器人或仿真环境的数值直接复制到实机配置。
 
 schema_version: 1
 
@@ -108,7 +108,6 @@ runtime:
   # 站姿过渡时间必须在吊架和低增益条件下验证。
   move_to_default_duration_s: null
   history_warmup_frames: 6
-  log_frequency_hz: 10.0
   shutdown_timeout_s: 1.0
 
 keyboard:
@@ -127,7 +126,7 @@ keyboard:
     speed_high: KEY_3
     reset_sim: KEY_R
     print_status: KEY_P
-  # 由训练命令范围确定，不可沿用 Mock 数值。
+  # 由训练命令范围确定，不可沿用其他机器人或临时调试数值。
   command_limits:
     - null
     - null

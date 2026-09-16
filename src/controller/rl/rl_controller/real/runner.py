@@ -1,34 +1,37 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-import queue
 import threading
 import time
-from types import MappingProxyType
-from typing import Any
 
 import numpy as np
 
 from .config import RealDeploymentConfig
 from .hardware import (
+    BackendError,
     ImuBackend,
-    MockImuBackend,
-    MockMotorBackend,
     MotorBackend,
     UnitreeM8010Backend,
     YesenseYis130Backend,
 )
-from .observation import RealObservationHistory
-from .policy import PolicyExecutor, load_real_policy
+from .observation import ObservationContinuityError, RealObservationHistory
+from .policy import (
+    PolicyError,
+    PolicyExecutor,
+    PolicyInferenceTimeoutError,
+    load_real_policy,
+)
 from .safety import RealSafetyManager, SafetyViolationError
 from .state import RealStateAggregator, StateUnavailableError
 from .state_machine import (
+    FaultCode,
+    FaultRecord,
     RealRuntimeStateMachine,
     RuntimeState,
     RuntimeTransitionError,
 )
-from .types import JointCommand, RealRobotState
+from .types import JointCommand
 
 
 class RealRunnerError(RuntimeError):
@@ -36,73 +39,26 @@ class RealRunnerError(RuntimeError):
 
 
 class RealRunnerStartupError(RealRunnerError):
-    """Raised when the runner cannot obtain its initial synchronized state."""
+    """Raised when startup cannot produce a synchronized hardware state."""
 
 
 class RealRunnerShutdownError(RealRunnerError):
     """Raised after shutdown when one or more resources failed to close."""
 
 
+class WorkerDeadlineError(RealRunnerError):
+    """Raised when a completed or blocked worker exceeds its deadline."""
+
+
 @dataclass(frozen=True, slots=True)
-class WorkerFailure:
+class _WorkerFailure:
     worker_name: str
-    message: str
-    timestamp: float
     exception: Exception
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeTelemetry:
-    """Immutable diagnostic snapshot of one real runner."""
-
-    timestamp: float
-    state: RuntimeState
-    worker_iterations: Mapping[str, int]
-    last_cycle_duration_s: Mapping[str, float | None]
-    max_cycle_duration_s: Mapping[str, float | None]
-    feedback_age_s: Mapping[str, float | None]
-    velocity_command: np.ndarray
-    action: np.ndarray
-    target_position: np.ndarray
-    policy_inference_time_s: float | None
-    fault_reason: str | None
-
-    def __post_init__(self) -> None:
-        for field_name in (
-            'worker_iterations',
-            'last_cycle_duration_s',
-            'max_cycle_duration_s',
-            'feedback_age_s',
-        ):
-            value = dict(getattr(self, field_name))
-            object.__setattr__(self, field_name, MappingProxyType(value))
-        for field_name in ('velocity_command', 'action', 'target_position'):
-            value = np.array(
-                getattr(self, field_name),
-                dtype=np.float32,
-                copy=True,
-            )
-            value.setflags(write=False)
-            object.__setattr__(self, field_name, value)
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            'timestamp': self.timestamp,
-            'state': self.state.value,
-            'worker_iterations': dict(self.worker_iterations),
-            'last_cycle_duration_s': dict(self.last_cycle_duration_s),
-            'max_cycle_duration_s': dict(self.max_cycle_duration_s),
-            'feedback_age_s': dict(self.feedback_age_s),
-            'velocity_command': self.velocity_command.tolist(),
-            'action': self.action.tolist(),
-            'target_position': self.target_position.tolist(),
-            'policy_inference_time_s': self.policy_inference_time_s,
-            'fault_reason': self.fault_reason,
-        }
+    cycle_duration_s: float | None
 
 
 class RealRLRunner:
-    """Threaded hardware-to-policy runtime without a command-line frontend."""
+    """Threaded real-hardware runtime with one latched fault boundary."""
 
     def __init__(
         self,
@@ -111,10 +67,7 @@ class RealRLRunner:
         motor_backend: MotorBackend,
         imu_backend: ImuBackend,
         policy: PolicyExecutor,
-        clock: Callable[[], float] = time.monotonic,
-        timing_clock: Callable[[], float] = time.perf_counter,
     ) -> None:
-        config.validate()
         if not isinstance(motor_backend, MotorBackend):
             raise TypeError('motor_backend must implement MotorBackend')
         if not isinstance(imu_backend, ImuBackend):
@@ -135,19 +88,11 @@ class RealRLRunner:
         self.motor_backend = motor_backend
         self.imu_backend = imu_backend
         self.policy = policy
-        self._clock = clock
-        self._timing_clock = timing_clock
 
-        self.state_machine = RealRuntimeStateMachine(clock=clock)
-        self.state_aggregator = RealStateAggregator.from_config(
-            config,
-            clock=clock,
-        )
-        self.observation_history = RealObservationHistory(
-            config,
-            clock=clock,
-        )
-        self.safety_manager = RealSafetyManager(config, clock=clock)
+        self.state_machine = RealRuntimeStateMachine()
+        self.state_aggregator = RealStateAggregator.from_config(config)
+        self.observation_history = RealObservationHistory(config)
+        self.safety_manager = RealSafetyManager(config)
 
         num_actions = config.robot.num_actions
         self._kp = np.asarray(
@@ -166,25 +111,17 @@ class RealRLRunner:
 
         self._control_lock = threading.RLock()
         self._lifecycle_lock = threading.Lock()
-        self._metrics_lock = threading.Lock()
+        self._watchdog_lock = threading.Lock()
         self._motor_io_lock = threading.Lock()
+        self._fault_lock = threading.Lock()
         self._stop_event = threading.Event()
-        self._fault_pending_event = threading.Event()
         self._initial_state_event = threading.Event()
-        self._worker_failures: queue.Queue[WorkerFailure] = queue.Queue()
-        self._recorded_failures: list[WorkerFailure] = []
-        self._worker_iterations = {'motor': 0, 'imu': 0, 'policy': 0}
-        self._last_cycle_duration_s: dict[str, float | None] = {
-            'motor': None,
-            'imu': None,
-            'policy': None,
-        }
-        self._max_cycle_duration_s: dict[str, float | None] = {
-            'motor': None,
-            'imu': None,
-            'policy': None,
-        }
         self._worker_cycle_started: dict[str, float | None] = {
+            'motor': None,
+            'imu': None,
+            'policy': None,
+        }
+        self._last_cycle_duration_s: dict[str, float | None] = {
             'motor': None,
             'imu': None,
             'policy': None,
@@ -197,6 +134,7 @@ class RealRLRunner:
         self._threads: list[threading.Thread] = []
         self._started = False
         self._shutdown_started = False
+        self._stop_reason: str | None = None
 
         self._latest_joint_command = self._make_joint_command(
             config.robot.default_angles,
@@ -204,68 +142,16 @@ class RealRLRunner:
         )
 
     @classmethod
-    def from_config(
-        cls,
-        config: RealDeploymentConfig,
-        *,
-        motor_backend: MotorBackend | None = None,
-        imu_backend: ImuBackend | None = None,
-        policy: PolicyExecutor | None = None,
-        sdk_module: Any | None = None,
-        serial_factory: Callable[..., Any] | None = None,
-        ort_module: Any | None = None,
-        mock_action: Any | None = None,
-        clock: Callable[[], float] = time.monotonic,
-        policy_clock: Callable[[], float] = time.perf_counter,
-        timing_clock: Callable[[], float] = time.perf_counter,
-    ) -> 'RealRLRunner':
-        if motor_backend is None:
-            if config.motors.backend == 'mock':
-                motor_backend = MockMotorBackend(
-                    config.motors,
-                    initial_position=config.robot.default_angles,
-                    clock=clock,
-                )
-            elif config.motors.backend == 'unitree_m8010':
-                motor_backend = UnitreeM8010Backend(
-                    config.motors,
-                    sdk_module=sdk_module,
-                    clock=clock,
-                )
-            else:
-                raise ValueError(
-                    f'Unsupported motor backend: {config.motors.backend}'
-                )
-
-        if imu_backend is None:
-            if config.imu.backend == 'mock':
-                imu_backend = MockImuBackend(config.imu, clock=clock)
-            elif config.imu.backend == 'yesense_yis130':
-                imu_backend = YesenseYis130Backend(
-                    config.imu,
-                    serial_factory=serial_factory,
-                    clock=clock,
-                )
-            else:
-                raise ValueError(
-                    f'Unsupported IMU backend: {config.imu.backend}'
-                )
-
-        if policy is None:
-            policy = load_real_policy(
-                config,
-                mock_action=mock_action,
-                ort_module=ort_module,
-                clock=policy_clock,
-            )
-
+    def from_config(cls, config: RealDeploymentConfig) -> 'RealRLRunner':
+        """Construct the current production hardware and ONNX chain."""
+        motor_backend = UnitreeM8010Backend(config.motors)
+        imu_backend = YesenseYis130Backend(config.imu)
+        policy = load_real_policy(config)
         return cls(
             config,
             motor_backend=motor_backend,
             imu_backend=imu_backend,
             policy=policy,
-            clock=clock,
-            timing_clock=timing_clock,
         )
 
     @property
@@ -273,8 +159,24 @@ class RealRLRunner:
         return self.state_machine.state
 
     @property
+    def fault_record(self) -> FaultRecord | None:
+        return self.state_machine.fault_record
+
+    @property
+    def secondary_faults(self) -> tuple[FaultRecord, ...]:
+        return self.state_machine.secondary_faults
+
+    @property
     def fault_reason(self) -> str | None:
         return self.state_machine.fault_reason
+
+    @property
+    def stop_requested(self) -> bool:
+        return self._stop_event.is_set()
+
+    @property
+    def stop_reason(self) -> str | None:
+        return self._stop_reason
 
     @property
     def velocity_command(self) -> np.ndarray:
@@ -292,42 +194,8 @@ class RealRLRunner:
             return self._latest_joint_command
 
     @property
-    def worker_failures(self) -> tuple[WorkerFailure, ...]:
-        with self._metrics_lock:
-            return tuple(self._recorded_failures)
-
-    @property
-    def worker_iterations(self) -> Mapping[str, int]:
-        with self._metrics_lock:
-            return self._worker_iterations.copy()
-
-    @property
     def live_thread_names(self) -> tuple[str, ...]:
         return tuple(thread.name for thread in self._threads if thread.is_alive())
-
-    def telemetry(self) -> RuntimeTelemetry:
-        with self._metrics_lock:
-            iterations = self._worker_iterations.copy()
-            last_cycle = self._last_cycle_duration_s.copy()
-            max_cycle = self._max_cycle_duration_s.copy()
-        feedback_ages = self.state_aggregator.feedback_ages()
-        with self._control_lock:
-            velocity_command = self._velocity_command.copy()
-            action = self._last_action.copy()
-            target_position = self._latest_joint_command.position.copy()
-        return RuntimeTelemetry(
-            timestamp=self._read_clock(),
-            state=self.state,
-            worker_iterations=iterations,
-            last_cycle_duration_s=last_cycle,
-            max_cycle_duration_s=max_cycle,
-            feedback_age_s=feedback_ages,
-            velocity_command=velocity_command,
-            action=action,
-            target_position=target_position,
-            policy_inference_time_s=self.policy.last_inference_time_s,
-            fault_reason=self.fault_reason,
-        )
 
     def start(self, *, ready_timeout_s: float | None = None) -> None:
         with self._lifecycle_lock:
@@ -345,16 +213,25 @@ class RealRLRunner:
             self.observation_history.reset('runner startup')
             self.safety_manager.reset()
             self._stop_event.clear()
-            self._fault_pending_event.clear()
             self._initial_state_event.clear()
+            self._stop_reason = None
 
             try:
                 self.motor_backend.open()
                 self.imu_backend.open()
             except Exception as exc:
-                self._close_after_startup_failure()
                 reason = f'hardware startup failed: {exc}'
-                self.state_machine.fault(reason)
+                self.report_fault(
+                    FaultCode.HARDWARE,
+                    'startup',
+                    reason,
+                )
+                for source, cleanup_error in self._close_after_startup_failure():
+                    self._record_secondary_fault(
+                        FaultCode.SHUTDOWN,
+                        source,
+                        cleanup_error,
+                    )
                 raise RealRunnerStartupError(reason) from exc
 
             self._threads = self._create_threads()
@@ -371,7 +248,7 @@ class RealRLRunner:
                 f'initial synchronized state was unavailable after '
                 f'{timeout_s:.3f}s'
             )
-            self.report_fault(reason)
+            self.report_fault(FaultCode.HARDWARE, 'startup', reason)
             raise RealRunnerStartupError(reason)
 
         try:
@@ -393,7 +270,6 @@ class RealRLRunner:
             raise RealRunnerError(
                 f'Cannot begin default-pose transition: {exc}'
             ) from exc
-        self.safety_manager.validate_robot_state(state)
 
         with self._control_lock:
             self._velocity_command.fill(0.0)
@@ -403,7 +279,7 @@ class RealRLRunner:
                 dtype=np.float32,
                 copy=True,
             )
-            self._move_start_time = self._read_clock()
+            self._move_start_time = time.monotonic()
             self.observation_history.reset('moving to default pose')
             self.state_machine.begin_move_to_default()
             self._latest_joint_command = self._make_joint_command(
@@ -411,7 +287,7 @@ class RealRLRunner:
                 use_gains=True,
             )
 
-    def set_velocity_command(self, command: Any) -> np.ndarray:
+    def set_velocity_command(self, command: object) -> np.ndarray:
         value = np.asarray(command, dtype=np.float32)
         if value.shape != (3,):
             raise ValueError(
@@ -439,8 +315,9 @@ class RealRLRunner:
     ) -> bool:
         return self.state_machine.wait_for(states, timeout)
 
-    def report_fault(self, reason: str) -> None:
-        self.state_machine.fault(reason)
+    def request_stop(self, reason: str = 'operator stop requested') -> None:
+        normalized_reason = str(reason).strip() or 'operator stop requested'
+        self._stop_reason = normalized_reason
         self._stop_event.set()
         with self._control_lock:
             self._velocity_command.fill(0.0)
@@ -449,7 +326,42 @@ class RealRLRunner:
             with self._motor_io_lock:
                 self.motor_backend.safe_stop()
         except Exception as exc:
-            self.state_machine.fault(f'motor safe_stop failed: {exc}')
+            self._latch_fault(
+                FaultCode.HARDWARE,
+                'operator-stop',
+                f'motor safe_stop failed: {exc}',
+                stop_motor=False,
+            )
+
+    def report_exception(
+        self,
+        source: str,
+        exception: Exception,
+        *,
+        cycle_duration_s: float | None = None,
+    ) -> FaultRecord:
+        return self.report_fault(
+            self._classify_exception(exception),
+            source,
+            f'{source} failed: {exception}',
+            cycle_duration_s=cycle_duration_s,
+        )
+
+    def report_fault(
+        self,
+        code: FaultCode,
+        source: str,
+        message: str,
+        *,
+        cycle_duration_s: float | None = None,
+    ) -> FaultRecord:
+        return self._latch_fault(
+            code,
+            source,
+            message,
+            cycle_duration_s=cycle_duration_s,
+            stop_motor=True,
+        )
 
     def shutdown(self, reason: str = 'shutdown requested') -> None:
         with self._lifecycle_lock:
@@ -460,13 +372,13 @@ class RealRLRunner:
             self._shutdown_started = True
             self._stop_event.set()
 
-        errors: list[str] = []
+        errors: list[tuple[str, str]] = []
         if self._started:
             try:
                 with self._motor_io_lock:
                     self.motor_backend.safe_stop()
             except Exception as exc:
-                errors.append(f'motor safe_stop failed: {exc}')
+                errors.append(('shutdown.safe_stop', str(exc)))
 
             deadline = time.monotonic() + self.config.runtime.shutdown_timeout_s
             current_thread = threading.current_thread()
@@ -478,27 +390,35 @@ class RealRLRunner:
             live_threads = self.live_thread_names
             if live_threads:
                 errors.append(
-                    'worker threads did not stop: ' + ', '.join(live_threads)
+                    (
+                        'shutdown.threads',
+                        'worker threads did not stop: '
+                        + ', '.join(live_threads),
+                    )
                 )
 
-        for name, close in (
-            ('IMU', self.imu_backend.close),
-            ('motor', self.motor_backend.close),
+        for source, close in (
+            ('shutdown.imu', self.imu_backend.close),
+            ('shutdown.motor', self.motor_backend.close),
         ):
             try:
                 close()
             except Exception as exc:
-                errors.append(f'{name} close failed: {exc}')
+                errors.append((source, str(exc)))
 
-        if errors and self.state is not RuntimeState.FAULT:
-            self.state_machine.fault(' | '.join(errors))
-        elif errors:
-            for error in errors:
-                self.state_machine.fault(error)
+        for source, message in errors:
+            self._latch_fault(
+                FaultCode.SHUTDOWN,
+                source,
+                message,
+                stop_motor=False,
+            )
+
         self.state_machine.shutdown(reason)
-
         if errors:
-            raise RealRunnerShutdownError(' | '.join(errors))
+            raise RealRunnerShutdownError(
+                ' | '.join(f'{source}: {message}' for source, message in errors)
+            )
 
     def __enter__(self) -> 'RealRLRunner':
         self.start()
@@ -506,14 +426,14 @@ class RealRLRunner:
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         if exc_value is not None and self.state is not RuntimeState.SHUTDOWN:
-            self.report_fault(f'runner context failed: {exc_value}')
+            self.report_exception('runner-context', exc_value)
         self.shutdown()
 
     def _create_threads(self) -> list[threading.Thread]:
-        workers = (
-            ('real-runtime-monitor', self._monitor_loop),
+        workers: tuple[tuple[str, Callable[[], None]], ...] = (
+            ('monitor', self._monitor_loop),
             (
-                'real-motor-io',
+                'motor',
                 lambda: self._periodic_loop(
                     'motor',
                     self.config.motors.io_frequency_hz,
@@ -521,7 +441,7 @@ class RealRLRunner:
                 ),
             ),
             (
-                'real-imu-io',
+                'imu',
                 lambda: self._periodic_loop(
                     'imu',
                     self.config.motors.io_frequency_hz,
@@ -529,7 +449,7 @@ class RealRLRunner:
                 ),
             ),
             (
-                'real-policy',
+                'policy',
                 lambda: self._periodic_loop(
                     'policy',
                     self.config.policy.frequency_hz,
@@ -541,7 +461,7 @@ class RealRLRunner:
             threading.Thread(
                 target=self._worker_entry,
                 args=(name, target),
-                name=name,
+                name=f'real-{name}',
                 daemon=False,
             )
             for name, target in workers
@@ -555,45 +475,33 @@ class RealRLRunner:
         try:
             target()
         except Exception as exc:
-            if not self._stop_event.is_set():
-                failure = WorkerFailure(
-                    worker_name=worker_name,
-                    message=f'{worker_name} failed: {exc}',
-                    timestamp=self._failure_timestamp(),
-                    exception=exc,
-                )
-                self._fault_pending_event.set()
-                self._worker_failures.put(failure)
-                self._stop_event.set()
+            if self._stop_event.is_set():
+                return
+            self.report_exception(
+                worker_name,
+                exc,
+                cycle_duration_s=self._last_cycle_duration_s.get(worker_name),
+            )
 
     def _monitor_loop(self) -> None:
         poll_interval_s = min(
             0.01,
             min(self._watchdog_deadlines.values()) / 4.0,
         )
-        while True:
-            try:
-                failure = self._worker_failures.get(
-                    timeout=poll_interval_s,
-                )
-            except queue.Empty:
-                if (
-                    self._stop_event.is_set()
-                    and not self._fault_pending_event.is_set()
-                ):
-                    return
-                failure = self._find_watchdog_failure()
-                if failure is None:
-                    continue
-            self._fault_pending_event.clear()
-            with self._metrics_lock:
-                self._recorded_failures.append(failure)
-            self.report_fault(failure.message)
+        while not self._stop_event.wait(poll_interval_s):
+            failure = self._find_watchdog_failure()
+            if failure is None:
+                continue
+            self.report_exception(
+                failure.worker_name,
+                failure.exception,
+                cycle_duration_s=failure.cycle_duration_s,
+            )
             return
 
-    def _find_watchdog_failure(self) -> WorkerFailure | None:
+    def _find_watchdog_failure(self) -> _WorkerFailure | None:
         now = time.monotonic()
-        with self._metrics_lock:
+        with self._watchdog_lock:
             cycle_started = self._worker_cycle_started.copy()
         for worker_name, started_at in cycle_started.items():
             if started_at is None:
@@ -602,15 +510,13 @@ class RealRLRunner:
             elapsed_s = now - started_at
             if elapsed_s <= deadline_s:
                 continue
-            message = (
-                f'real-{worker_name} exceeded {deadline_s:.6f}s '
-                f'watchdog deadline: {elapsed_s:.6f}s'
-            )
-            return WorkerFailure(
-                worker_name=f'real-{worker_name}',
-                message=message,
-                timestamp=self._failure_timestamp(),
-                exception=SafetyViolationError(message),
+            return _WorkerFailure(
+                worker_name=worker_name,
+                exception=WorkerDeadlineError(
+                    f'exceeded {deadline_s:.6f}s watchdog deadline: '
+                    f'{elapsed_s:.6f}s'
+                ),
+                cycle_duration_s=elapsed_s,
             )
         return None
 
@@ -621,20 +527,28 @@ class RealRLRunner:
         callback: Callable[[], None],
     ) -> None:
         period_s = 1.0 / frequency_hz
-        next_deadline = self._read_clock()
+        next_deadline = time.monotonic()
         while not self._stop_event.is_set():
-            with self._metrics_lock:
-                self._worker_cycle_started[worker_name] = time.monotonic()
+            started_at = time.monotonic()
+            with self._watchdog_lock:
+                self._worker_cycle_started[worker_name] = started_at
             try:
                 callback()
             finally:
-                with self._metrics_lock:
+                duration_s = time.monotonic() - started_at
+                self._last_cycle_duration_s[worker_name] = duration_s
+                with self._watchdog_lock:
                     self._worker_cycle_started[worker_name] = None
-            with self._metrics_lock:
-                self._worker_iterations[worker_name] += 1
+
+            deadline_s = self._watchdog_deadlines[worker_name]
+            if duration_s > deadline_s:
+                raise WorkerDeadlineError(
+                    f'{worker_name} cycle exceeded {deadline_s:.6f}s '
+                    f'deadline: {duration_s:.6f}s'
+                )
 
             next_deadline += period_s
-            now = self._read_clock()
+            now = time.monotonic()
             if next_deadline <= now:
                 next_deadline = now
                 continue
@@ -642,10 +556,7 @@ class RealRLRunner:
 
     def _motor_step(self) -> None:
         with self._motor_io_lock:
-            if (
-                self._stop_event.is_set()
-                or self._fault_pending_event.is_set()
-            ):
+            if self._stop_event.is_set():
                 return
             with self._control_lock:
                 runtime_state = self.state
@@ -654,43 +565,28 @@ class RealRLRunner:
             robot_state = None
             if runtime_state is not RuntimeState.INIT:
                 robot_state = self.state_aggregator.snapshot()
-            self.safety_manager.validate_command_before_send(
+            self.safety_manager.authorize_command(
                 command,
                 runtime_state,
                 robot_state,
             )
 
-            started_at = self._read_timing_clock()
             state = self.motor_backend.cycle(command)
-            cycle_duration = self._read_timing_clock() - started_at
-            self._record_cycle_duration('motor', cycle_duration)
-            self.safety_manager.validate_motor_cycle_duration(cycle_duration)
-
+            self.safety_manager.validate_motor_health(state)
             source_timestamps = getattr(
                 self.motor_backend,
                 'last_bus_timestamps',
                 None,
             )
-            source_timestamps = (
-                source_timestamps if source_timestamps else None
-            )
-            self.safety_manager.validate_joint_feedback(
-                state,
-                source_timestamps=source_timestamps,
-            )
             self.state_aggregator.update_joints(
                 state,
-                source_timestamps=source_timestamps,
+                source_timestamps=source_timestamps or None,
             )
             self._mark_initial_state_if_ready()
 
     def _imu_step(self) -> None:
-        started_at = self._read_timing_clock()
         state = self.imu_backend.read()
-        cycle_duration = self._read_timing_clock() - started_at
-        self._record_cycle_duration('imu', cycle_duration)
-        self.safety_manager.validate_imu_cycle_duration(cycle_duration)
-        self.safety_manager.validate_imu_feedback(state)
+        self.safety_manager.validate_imu_health(state)
         self.state_aggregator.update_imu(state)
         self._mark_initial_state_if_ready()
 
@@ -701,19 +597,15 @@ class RealRLRunner:
             self._initial_state_event.set()
 
     def _policy_step(self) -> None:
-        started_at = self._read_timing_clock()
         state = self.state
         if state is RuntimeState.MOVE_TO_DEFAULT:
             self._move_to_default_step()
         elif state is RuntimeState.RL:
             self._rl_step()
-        cycle_duration = self._read_timing_clock() - started_at
-        self._record_cycle_duration('policy', cycle_duration)
-        self.safety_manager.validate_policy_cycle_duration(cycle_duration)
 
     def _move_to_default_step(self) -> None:
         state = self.state_aggregator.snapshot()
-        now = self._read_clock()
+        now = time.monotonic()
         with self._control_lock:
             if (
                 self._move_start_position is None
@@ -739,38 +631,39 @@ class RealRLRunner:
                 target,
                 use_gains=True,
             )
-            if alpha < 1.0:
-                return
+            last_action = self._last_action.copy()
+        if alpha < 1.0:
+            return
 
-            observation = self.observation_history.update(
-                state,
-                np.zeros(3, dtype=np.float32),
-                self._last_action,
-            )
-            if observation is None:
-                return
-            if not self._apply_policy(observation):
-                return
-            self.state_machine.enter_rl()
+        observation = self.observation_history.update(
+            state,
+            np.zeros(3, dtype=np.float32),
+            last_action,
+        )
+        if observation is None:
+            return
+        if not self._apply_policy(observation):
+            return
+        self.state_machine.enter_rl()
 
     def _rl_step(self) -> None:
         state = self.state_aggregator.snapshot()
         with self._control_lock:
-            observation = self.observation_history.update(
-                state,
-                self._velocity_command,
-                self._last_action,
+            velocity_command = self._velocity_command.copy()
+            last_action = self._last_action.copy()
+        observation = self.observation_history.update(
+            state,
+            velocity_command,
+            last_action,
+        )
+        if observation is None:
+            raise RealRunnerError(
+                'Observation history lost readiness during RL'
             )
-            if observation is None:
-                raise RealRunnerError(
-                    'Observation history lost readiness during RL'
-                )
-            self._apply_policy(observation)
+        self._apply_policy(observation)
 
     def _apply_policy(self, observation: np.ndarray) -> bool:
-        action = self.safety_manager.validate_action(
-            self.policy.infer(observation)
-        )
+        action = self.policy.infer(observation)
         if (
             self._stop_event.is_set()
             or self.state in {RuntimeState.FAULT, RuntimeState.SHUTDOWN}
@@ -780,17 +673,17 @@ class RealRLRunner:
             self.config.robot.default_angles
             + action * self.config.robot.action_scale
         ).astype(np.float32)
-        target = self.safety_manager.validate_target_position(target)
-        self._last_action = np.array(action, dtype=np.float32, copy=True)
-        self._latest_joint_command = self._make_joint_command(
-            target,
-            use_gains=True,
-        )
+        with self._control_lock:
+            self._last_action = action.copy()
+            self._latest_joint_command = self._make_joint_command(
+                target,
+                use_gains=True,
+            )
         return True
 
     def _make_joint_command(
         self,
-        position: Any,
+        position: object,
         *,
         use_gains: bool,
     ) -> JointCommand:
@@ -800,7 +693,7 @@ class RealRLRunner:
             kp=self._kp if use_gains else self._zeros,
             kd=self._kd if use_gains else self._zeros,
             torque=self._zeros,
-            timestamp=self._read_clock(),
+            timestamp=time.monotonic(),
         )
 
     def _wait_for_initial_state(self, timeout_s: float) -> bool:
@@ -814,53 +707,113 @@ class RealRLRunner:
             self._initial_state_event.wait(timeout=min(remaining, 0.01))
         return self.state is not RuntimeState.FAULT
 
-    def _close_after_startup_failure(self) -> None:
-        try:
-            self.imu_backend.close()
-        except Exception:
-            pass
-        try:
-            self.motor_backend.safe_stop()
-        except Exception:
-            pass
-        try:
-            self.motor_backend.close()
-        except Exception:
-            pass
-
-    def _read_clock(self) -> float:
-        timestamp = float(self._clock())
-        if not np.isfinite(timestamp) or timestamp < 0.0:
-            raise RealRunnerError(
-                'runner clock must return finite, non-negative time'
-            )
-        return timestamp
-
-    def _read_timing_clock(self) -> float:
-        timestamp = float(self._timing_clock())
-        if not np.isfinite(timestamp):
-            raise RealRunnerError(
-                'runner timing clock must return finite time'
-            )
-        return timestamp
-
-    def _record_cycle_duration(
+    def _latch_fault(
         self,
-        worker_name: str,
-        duration_s: float,
-    ) -> None:
-        duration = float(duration_s)
-        with self._metrics_lock:
-            self._last_cycle_duration_s[worker_name] = duration
-            previous_max = self._max_cycle_duration_s[worker_name]
-            if previous_max is None or duration > previous_max:
-                self._max_cycle_duration_s[worker_name] = duration
+        code: FaultCode,
+        source: str,
+        message: str,
+        *,
+        cycle_duration_s: float | None = None,
+        stop_motor: bool,
+    ) -> FaultRecord:
+        with self._fault_lock:
+            record = self._make_fault_record(
+                code,
+                source,
+                message,
+                cycle_duration_s,
+            )
+            is_root = self.state_machine.fault(record)
+            self._stop_event.set()
+            with self._control_lock:
+                self._velocity_command.fill(0.0)
+                self._last_action.fill(0.0)
 
-    def _failure_timestamp(self) -> float:
+        if is_root and stop_motor:
+            try:
+                with self._motor_io_lock:
+                    self.motor_backend.safe_stop()
+            except Exception as exc:
+                self._record_secondary_fault(
+                    FaultCode.SHUTDOWN,
+                    'fault.safe_stop',
+                    f'motor safe_stop failed: {exc}',
+                )
+        return record
+
+    def _record_secondary_fault(
+        self,
+        code: FaultCode,
+        source: str,
+        message: str,
+    ) -> None:
+        with self._fault_lock:
+            record = self._make_fault_record(code, source, message, None)
+            self.state_machine.fault(record)
+
+    def _make_fault_record(
+        self,
+        code: FaultCode,
+        source: str,
+        message: str,
+        cycle_duration_s: float | None,
+    ) -> FaultRecord:
+        state_age_s: float | None = None
         try:
-            return self._read_clock()
+            state_age_s = self.state_aggregator.feedback_ages().get('oldest')
+            if state_age_s is not None:
+                state_age_s = max(0.0, float(state_age_s))
         except Exception:
-            return time.monotonic()
+            state_age_s = None
+
+        with self._control_lock:
+            command = tuple(float(value) for value in self._velocity_command)
+            target = tuple(
+                float(value) for value in self._latest_joint_command.position
+            )
+            last_action = self._last_action.copy()
+        raw_action = self.policy.last_raw_action
+        if raw_action is None:
+            raw_action = last_action
+
+        return FaultRecord(
+            code=code,
+            source=str(source).strip(),
+            message=str(message).strip(),
+            timestamp=time.monotonic(),
+            runtime_state=self.state,
+            state_age_s=state_age_s,
+            command=command,
+            raw_action=tuple(float(value) for value in raw_action),
+            target_position=target,
+            cycle_duration_s=cycle_duration_s,
+        )
+
+    def _close_after_startup_failure(self) -> list[tuple[str, str]]:
+        errors: list[tuple[str, str]] = []
+        for source, close in (
+            ('startup.imu_close', self.imu_backend.close),
+            ('startup.motor_close', self.motor_backend.close),
+        ):
+            try:
+                close()
+            except Exception as exc:
+                errors.append((source, str(exc)))
+        return errors
+
+    @staticmethod
+    def _classify_exception(exception: Exception) -> FaultCode:
+        if isinstance(exception, (WorkerDeadlineError, PolicyInferenceTimeoutError)):
+            return FaultCode.TIMING
+        if isinstance(exception, BackendError):
+            return FaultCode.HARDWARE
+        if isinstance(exception, PolicyError):
+            return FaultCode.POLICY
+        if isinstance(exception, SafetyViolationError):
+            return FaultCode.SAFETY
+        if isinstance(exception, (StateUnavailableError, ObservationContinuityError)):
+            return FaultCode.INPUT
+        return FaultCode.INTERNAL
 
     @staticmethod
     def _positive_timeout(value: float) -> float:

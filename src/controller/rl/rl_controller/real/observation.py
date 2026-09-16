@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import time
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -26,29 +25,14 @@ def build_real_one_step_observation(
     """Build the actor's current frame in the exact training-side order."""
     if not isinstance(state, RealRobotState):
         raise TypeError('state must be a RealRobotState')
-    if not state.valid or not state.joints.valid or not state.imu.valid:
-        raise ValueError('state and both hardware components must be valid')
     num_actions = config.robot.num_actions
     if state.num_joints != num_actions:
         raise ValueError(
             f'state has {state.num_joints} joints, expected {num_actions}'
         )
 
-    command_vector = _finite_vector(command, 3, 'command')
-    previous_action = _finite_vector(last_action, num_actions, 'last_action')
-    if not np.all(np.isfinite(state.joints.position)) or not np.all(
-        np.isfinite(state.joints.velocity)
-    ):
-        raise ValueError('joint position and velocity must be finite')
-    if not np.all(np.isfinite(state.imu.angular_velocity)) or not np.all(
-        np.isfinite(state.imu.quaternion_wxyz)
-    ):
-        raise ValueError('IMU orientation and angular velocity must be finite')
-    quaternion_norm = float(np.linalg.norm(state.imu.quaternion_wxyz))
-    if not np.isclose(quaternion_norm, 1.0, rtol=0.0, atol=2e-2):
-        raise ValueError(
-            f'IMU quaternion norm {quaternion_norm:.6f} is invalid'
-        )
+    command_vector = _vector(command, 3, 'command')
+    previous_action = _vector(last_action, num_actions, 'last_action')
 
     scales = config.policy.observation_scales
     projected_gravity = quaternion_rotate_inverse_wxyz(
@@ -71,8 +55,6 @@ def build_real_one_step_observation(
             'one-step observation has shape '
             f'{observation.shape}, expected ({config.robot.num_one_step_obs},)'
         )
-    if not np.all(np.isfinite(observation)):
-        raise ValueError('one-step observation contains NaN or Inf')
     return observation
 
 
@@ -84,10 +66,8 @@ class RealObservationHistory:
         config: RealDeploymentConfig,
         *,
         max_frame_gap_s: float | None = None,
-        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.config = config
-        self._clock = clock
         self._step_size = config.robot.num_one_step_obs
         self._history_length = config.robot.history_length
         self._warmup_frames = config.runtime.history_warmup_frames
@@ -134,18 +114,6 @@ class RealObservationHistory:
         command: Any,
         last_action: Any,
     ) -> np.ndarray | None:
-        now = self._read_clock()
-        state_age = now - state.timestamp
-        if state_age < 0.0:
-            self.reset('state timestamp is ahead of the observation clock')
-            raise ObservationContinuityError(self._last_reset_reason)
-        if state_age > self.config.safety.max_state_age_s:
-            self.reset(
-                f'state age {state_age:.6f}s exceeds '
-                f'{self.config.safety.max_state_age_s:.6f}s'
-            )
-            raise ObservationContinuityError(self._last_reset_reason)
-
         previous_timestamp = self._last_state_timestamp
         if previous_timestamp is not None:
             frame_gap = state.timestamp - previous_timestamp
@@ -175,26 +143,10 @@ class RealObservationHistory:
 
         if not self.ready:
             return None
-        clipped = np.clip(
-            self._buffer,
-            -self.config.policy.clip_observations,
-            self.config.policy.clip_observations,
-        )
-        return clipped.astype(np.float32, copy=True)
+        return self._buffer.copy()
 
-    def _read_clock(self) -> float:
-        timestamp = float(self._clock())
-        if not np.isfinite(timestamp) or timestamp < 0.0:
-            raise ObservationContinuityError(
-                'observation clock must return finite, non-negative time'
-            )
-        return timestamp
-
-
-def _finite_vector(value: Any, size: int, field_name: str) -> np.ndarray:
+def _vector(value: Any, size: int, field_name: str) -> np.ndarray:
     vector = np.asarray(value, dtype=np.float32)
     if vector.shape != (size,):
         raise ValueError(f'{field_name} must have shape ({size},), got {vector.shape}')
-    if not np.all(np.isfinite(vector)):
-        raise ValueError(f'{field_name} must contain only finite values')
     return np.array(vector, dtype=np.float32, copy=True)

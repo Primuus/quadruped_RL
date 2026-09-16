@@ -13,9 +13,9 @@ from ..input.keyboard_controller import REQUIRED_BINDING_ACTIONS
 
 
 SUPPORTED_SCHEMA_VERSION = 1
-SUPPORTED_POLICY_BACKENDS = frozenset({'mock', 'onnx'})
-SUPPORTED_MOTOR_BACKENDS = frozenset({'mock', 'unitree_m8010'})
-SUPPORTED_IMU_BACKENDS = frozenset({'mock', 'yesense_yis130'})
+SUPPORTED_POLICY_BACKENDS = frozenset({'onnx'})
+SUPPORTED_MOTOR_BACKENDS = frozenset({'unitree_m8010'})
+SUPPORTED_IMU_BACKENDS = frozenset({'yesense_yis130'})
 SUPPORTED_QUATERNION_ORDERS = frozenset({'wxyz', 'xyzw'})
 SUPPORTED_ANGULAR_VELOCITY_UNITS = frozenset({'rad/s', 'deg/s'})
 SUPPORTED_FAULT_ACTIONS = frozenset({'safe_stop'})
@@ -136,7 +136,6 @@ class RealSafetyConfig:
 class RealRuntimeConfig:
     move_to_default_duration_s: float
     history_warmup_frames: int
-    log_frequency_hz: float
     shutdown_timeout_s: float
 
 
@@ -244,24 +243,18 @@ class RealDeploymentConfig:
                 'finite positive values'
             )
 
-        if policy.backend == 'mock':
-            if policy.model_path is not None:
-                raise RealConfigError(
-                    'policy.model_path must be null when policy.backend=mock'
-                )
-        else:
-            if policy.model_path is None:
-                raise RealConfigError(
-                    'policy.model_path is required when policy.backend=onnx'
-                )
-            if policy.model_path.suffix.lower() != '.onnx':
-                raise RealConfigError(
-                    'policy.model_path must point to an .onnx file'
-                )
-            if not policy.model_path.is_file():
-                raise RealConfigError(
-                    f'policy.model_path does not exist: {policy.model_path}'
-                )
+        if policy.model_path is None:
+            raise RealConfigError(
+                'policy.model_path is required when policy.backend=onnx'
+            )
+        if policy.model_path.suffix.lower() != '.onnx':
+            raise RealConfigError(
+                'policy.model_path must point to an .onnx file'
+            )
+        if not policy.model_path.is_file():
+            raise RealConfigError(
+                f'policy.model_path does not exist: {policy.model_path}'
+            )
 
     def _validate_motor_mapping(self) -> None:
         motors = self.motors
@@ -420,11 +413,6 @@ class RealDeploymentConfig:
                 'runtime.history_warmup_frames must be at least '
                 'robot.history_length'
             )
-        _require_positive(runtime.log_frequency_hz, 'runtime.log_frequency_hz')
-        if runtime.log_frequency_hz > self.motors.io_frequency_hz:
-            raise RealConfigError(
-                'runtime.log_frequency_hz cannot exceed motors.io_frequency_hz'
-            )
         _require_positive(
             runtime.shutdown_timeout_s,
             'runtime.shutdown_timeout_s',
@@ -474,33 +462,22 @@ class RealDeploymentConfig:
             )
 
     def _validate_backend_combinations(self) -> None:
-        if self.motors.backend == 'unitree_m8010':
-            if self.policy.backend == 'mock':
+        for index, bus in enumerate(self.motors.buses):
+            _require_real_device(
+                bus.device,
+                f'motors.buses[{index}].device',
+            )
+            if bus.baud_rate is None:
                 raise RealConfigError(
-                    'motors.backend=unitree_m8010 cannot be used with '
-                    'policy.backend=mock'
+                    f'motors.buses[{index}].baud_rate is required when '
+                    'motors.backend=unitree_m8010'
                 )
-            if self.imu.backend == 'mock':
-                raise RealConfigError(
-                    'motors.backend=unitree_m8010 requires a non-mock IMU backend'
-                )
-            for index, bus in enumerate(self.motors.buses):
-                _require_real_device(
-                    bus.device,
-                    f'motors.buses[{index}].device',
-                )
-                if bus.baud_rate is None:
-                    raise RealConfigError(
-                        f'motors.buses[{index}].baud_rate is required when '
-                        'motors.backend=unitree_m8010'
-                    )
 
-        if self.imu.backend == 'yesense_yis130':
-            _require_real_device(self.imu.device, 'imu.device')
-            if self.imu.baud_rate is None:
-                raise RealConfigError(
-                    'imu.baud_rate is required when imu.backend=yesense_yis130'
-                )
+        _require_real_device(self.imu.device, 'imu.device')
+        if self.imu.baud_rate is None:
+            raise RealConfigError(
+                'imu.baud_rate is required when imu.backend=yesense_yis130'
+            )
 
 
 def load_real_config(yaml_path: str | Path) -> RealDeploymentConfig:
@@ -844,7 +821,6 @@ def _parse_runtime(value: Any) -> RealRuntimeConfig:
         {
             'move_to_default_duration_s',
             'history_warmup_frames',
-            'log_frequency_hz',
             'shutdown_timeout_s',
         },
         'runtime',
@@ -857,10 +833,6 @@ def _parse_runtime(value: Any) -> RealRuntimeConfig:
         history_warmup_frames=_as_int(
             raw['history_warmup_frames'],
             'runtime.history_warmup_frames',
-        ),
-        log_frequency_hz=_as_float(
-            raw['log_frequency_hz'],
-            'runtime.log_frequency_hz',
         ),
         shutdown_timeout_s=_as_float(
             raw['shutdown_timeout_s'],

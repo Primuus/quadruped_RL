@@ -6,7 +6,7 @@ package_name = 'rl_controller'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=find_packages(exclude=['test']),
+    packages=find_packages(),
     install_requires=[
         'setuptools',
         'numpy',
@@ -23,9 +23,4 @@ setup(
     maintainer_email='18737950912@163.com',
     description='Quadruped RL deployment package for direct Python MuJoCo simulation.',
     license='Apache-2.0',
-    extras_require={
-        'test': [
-            'pytest',
-        ],
-    },
 )

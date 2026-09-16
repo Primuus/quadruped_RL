@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import math
+import logging
 import time
-from collections.abc import Callable
 
 import numpy as np
 
@@ -26,7 +26,6 @@ class PolicyExecutor:
         config: RealPolicyConfig,
         *,
         max_inference_time_s: float,
-        clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         if backend.num_observations != config.num_observations:
             raise PolicyContractError(
@@ -47,8 +46,17 @@ class PolicyExecutor:
         self.backend = backend
         self.config = config
         self.max_inference_time_s = float(max_inference_time_s)
-        self._clock = clock
         self.last_inference_time_s: float | None = None
+        self._last_raw_action: np.ndarray | None = None
+        self.last_action_was_clipped = False
+        self.action_clip_count = 0
+        self._reported_action_clipping = False
+
+    @property
+    def last_raw_action(self) -> np.ndarray | None:
+        if self._last_raw_action is None:
+            return None
+        return self._last_raw_action.copy()
 
     @property
     def backend_name(self) -> str:
@@ -82,26 +90,56 @@ class PolicyExecutor:
         if elapsed_s < 0.0:
             raise PolicyInferenceError('Policy inference clock moved backwards')
         self.last_inference_time_s = elapsed_s
+        raw_array = np.asarray(raw_action)
+        if raw_array.shape == (self.config.num_actions,):
+            try:
+                self._last_raw_action = np.array(
+                    raw_array,
+                    dtype=np.float32,
+                    order='C',
+                    copy=True,
+                )
+            except (TypeError, ValueError):
+                pass
         if elapsed_s > self.max_inference_time_s:
             raise PolicyInferenceTimeoutError(
                 f'Policy inference exceeded {self.max_inference_time_s:.6f}s '
                 f'deadline: {elapsed_s:.6f}s'
             )
-
         action = require_float32_vector(
             raw_action,
             size=self.config.num_actions,
             name='Policy action',
         )
-        action = np.clip(
+        self._last_raw_action = action.copy()
+        clipped_action = np.clip(
             action,
             -self.config.clip_actions,
             self.config.clip_actions,
         )
-        return np.array(action, dtype=np.float32, order='C', copy=True)
+        self.last_action_was_clipped = not np.array_equal(
+            action,
+            clipped_action,
+        )
+        if self.last_action_was_clipped:
+            self.action_clip_count += 1
+            if not self._reported_action_clipping:
+                logging.getLogger(__name__).warning(
+                    'Policy action exceeded clip_actions=%.6f; output is '
+                    'being saturated. raw_action=%s',
+                    self.config.clip_actions,
+                    np.array2string(action, precision=5),
+                )
+                self._reported_action_clipping = True
+        return np.array(
+            clipped_action,
+            dtype=np.float32,
+            order='C',
+            copy=True,
+        )
 
     def _read_clock(self) -> float:
-        timestamp = float(self._clock())
+        timestamp = float(time.perf_counter())
         if not math.isfinite(timestamp):
             raise PolicyInferenceError(
                 'Policy inference clock returned a non-finite timestamp'

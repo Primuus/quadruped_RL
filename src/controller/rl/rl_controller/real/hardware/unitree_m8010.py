@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 import ctypes
 from dataclasses import dataclass
@@ -36,9 +36,6 @@ class UnitreeM8010Backend:
     def __init__(
         self,
         config: RealMotorConfig,
-        *,
-        sdk_module: Any | None = None,
-        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if config.backend != 'unitree_m8010':
             raise ValueError(
@@ -82,9 +79,7 @@ class UnitreeM8010Backend:
         self._num_joints = len(config.joints)
         self._buses = buses
         self._joints_by_bus = joints_by_bus
-        self._injected_sdk = sdk_module
         self._sdk: Any | None = None
-        self._clock = clock
 
         self._lock = threading.RLock()
         self._ports: dict[str, Any] = {}
@@ -146,7 +141,7 @@ class UnitreeM8010Backend:
             if self._is_open:
                 return
 
-            sdk = self._injected_sdk or _load_unitree_sdk()
+            sdk = _load_unitree_sdk()
             self._validate_sdk_api(sdk)
             motor_type = sdk.MotorType.GO_M8010_6
             sdk_ratio = float(sdk.queryGearRatio(motor_type))
@@ -297,7 +292,6 @@ class UnitreeM8010Backend:
                 torque=torque,
                 temperature=temperature,
                 error=error,
-                valid=True,
                 timestamp=oldest_timestamp,
             )
 
@@ -500,24 +494,13 @@ class UnitreeM8010Backend:
             raise ValueError(
                 f'command has {command.num_joints} joints, expected {self._num_joints}'
             )
-        vectors = (
-            command.position,
-            command.velocity,
-            command.kp,
-            command.kd,
-            command.torque,
-        )
-        if not all(np.all(np.isfinite(vector)) for vector in vectors):
-            raise BackendError('Unitree motor command must contain only finite values')
-        if np.any(command.kp < 0.0) or np.any(command.kd < 0.0):
-            raise BackendError('Unitree motor kp and kd must be non-negative')
 
     def _require_open(self) -> None:
         if not self._is_open:
             raise BackendError('Unitree motor backend is not open')
 
     def _read_clock(self) -> float:
-        value = float(self._clock())
+        value = float(time.monotonic())
         if not np.isfinite(value) or value < 0.0:
             raise BackendCommunicationError(
                 'Unitree motor clock must return finite, non-negative time'

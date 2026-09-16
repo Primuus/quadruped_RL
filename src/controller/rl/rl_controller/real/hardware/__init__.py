@@ -5,8 +5,6 @@ from .base import (
     ImuBackend,
     MotorBackend,
 )
-from .mock_imu import MockImuBackend
-from .mock_motor import MockMotorBackend
 from .unitree_m8010 import UnitreeM8010Backend
 from .yesense_yis130 import (
     YesenseFrame,
@@ -22,8 +20,6 @@ __all__ = [
     'BackendError',
     'BackendUnavailableError',
     'ImuBackend',
-    'MockImuBackend',
-    'MockMotorBackend',
     'MotorBackend',
     'UnitreeM8010Backend',
     'YesenseFrame',
