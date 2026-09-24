@@ -122,10 +122,13 @@ class LeggedRobot(BaseTask):
             self.feet_vel[:] = rigid_body_states[:, self.feet_indices, 7:10]
 
         self._post_physics_step_callback()
+        if self.track_turn_steps:
+            self._update_turn_step_state()
 
         # compute observations, rewards, resets, ...
         self.check_termination()
         self.compute_reward()
+        self.extras["command_metrics"] = self._collect_command_metrics()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         if self.privileged_obs_buf is not None:
             termination_privileged_obs = build_him_privileged_observations(self)[env_ids].clone()
@@ -180,6 +183,12 @@ class LeggedRobot(BaseTask):
         self.last_last_actions[env_ids] = 0.
         self.last_dof_vel[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
+        self.turn_swing_time[env_ids] = 0.
+        self.turn_swing_peak[env_ids] = 0.
+        self.turn_ground_height[env_ids] = 0.
+        self.turn_last_raw_contacts[env_ids] = False
+        self.turn_last_filtered_contacts[env_ids] = False
+        self.turn_step_valid[env_ids] = False
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
         reset_observation_history(self, env_ids)
@@ -445,9 +454,16 @@ class LeggedRobot(BaseTask):
         self.last_dof_vel = torch.zeros_like(self.dof_vel)
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])
         self.commands = torch.zeros(self.num_envs, self.cfg.commands.num_commands, dtype=torch.float, device=self.device, requires_grad=False) # x vel, y vel, yaw vel, heading
+        self.command_modes = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         self.commands_scale = torch.tensor([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel], device=self.device, requires_grad=False,) # TODO change this
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
+        self.turn_swing_time = torch.zeros_like(self.feet_air_time)
+        self.turn_swing_peak = torch.zeros_like(self.feet_air_time)
+        self.turn_ground_height = torch.zeros_like(self.feet_air_time)
+        self.turn_last_raw_contacts = torch.zeros_like(self.feet_air_time, dtype=torch.bool)
+        self.turn_last_filtered_contacts = torch.zeros_like(self.feet_air_time, dtype=torch.bool)
+        self.turn_step_valid = torch.zeros_like(self.feet_air_time, dtype=torch.bool)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
@@ -663,6 +679,7 @@ class LeggedRobot(BaseTask):
         self.obs_scales = self.cfg.normalization.obs_scales
         self.reward_scales = class_to_dict(self.cfg.rewards.scales)
         self.use_rigid_body_state = reward_requires_rigid_body_state(self.reward_scales)
+        self.track_turn_steps = self.reward_scales.get("turn_step", 0.0) != 0.0
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
      
 
@@ -712,6 +729,61 @@ class LeggedRobot(BaseTask):
         height_error = torch.square(foot_pos_body[:, :, 2] - self.cfg.rewards.clearance_height_target)
         foot_lateral_vel = torch.norm(foot_vel_body[:, :, :2], dim=2)
         return torch.sum(height_error * foot_lateral_vel, dim=1)
+
+    def _update_turn_step_state(self):
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
+        contact_filt = contact | self.turn_last_raw_contacts
+        touchdown = contact_filt & ~self.turn_last_filtered_contacts
+        self.turn_step_valid[:] = (
+            touchdown
+            & (self.turn_swing_time >= self.cfg.rewards.turn_step_min_air_time)
+            & (self.turn_swing_time <= self.cfg.rewards.turn_step_max_air_time)
+            & (self.turn_swing_peak >= self.cfg.rewards.turn_step_min_height)
+        )
+
+        lift = (self.feet_pos[:, :, 2] - self.turn_ground_height).clamp(min=0.0)
+        self.turn_swing_peak[:] = torch.where(contact_filt, 0.0, torch.maximum(self.turn_swing_peak, lift))
+        self.turn_swing_time[:] = torch.where(contact_filt, 0.0, self.turn_swing_time + self.dt)
+        self.turn_ground_height[:] = torch.where(contact, self.feet_pos[:, :, 2], self.turn_ground_height)
+        self.turn_last_raw_contacts[:] = contact
+        self.turn_last_filtered_contacts[:] = contact_filt
+
+    def _reward_foot_slip(self):
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
+        return torch.sum(contact * torch.sum(torch.square(self.feet_vel[:, :, :2]), dim=2), dim=1)
+
+    def _reward_turn_step(self):
+        turning = torch.abs(self.commands[:, 2]) >= self.cfg.rewards.turn_step_min_yaw
+        tracking = self._reward_tracking_ang_vel()
+        yaw_progress = (
+            self.base_ang_vel[:, 2] * torch.sign(self.commands[:, 2])
+            / torch.abs(self.commands[:, 2]).clamp(min=self.cfg.rewards.turn_step_min_yaw)
+        ).clamp(min=0.0, max=1.0)
+        return self.turn_step_valid.sum(dim=1) * turning * yaw_progress * tracking / self.dt
+
+    def _collect_command_metrics(self):
+        yaw_error = torch.abs(self.commands[:, 2] - self.base_ang_vel[:, 2])
+        linear_error = torch.linalg.vector_norm(self.commands[:, :2] - self.base_lin_vel[:, :2], dim=1)
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
+        slip = torch.zeros_like(yaw_error)
+        if self.use_rigid_body_state:
+            slip = torch.sum(contact * torch.linalg.vector_norm(self.feet_vel[:, :, :2], dim=2), dim=1)
+        steps = self.turn_step_valid.sum(dim=1)
+        contacts = contact.sum(dim=1)
+        tilt = torch.linalg.vector_norm(self.projected_gravity[:, :2], dim=1)
+        metrics = {}
+        for index, name in enumerate(("turn", "moving_turn", "translate", "stand")):
+            selected = (self.command_modes == index).to(yaw_error.dtype)
+            metrics[name] = torch.stack((
+                selected.sum(),
+                (yaw_error * selected).sum(),
+                (linear_error * selected).sum(),
+                (steps * selected).sum(),
+                (slip * selected).sum(),
+                (contacts * selected).sum(),
+                (tilt * selected).sum(),
+            ))
+        return metrics
     
     def _reward_torques(self):
         # Penalize torques

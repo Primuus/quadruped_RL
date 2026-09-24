@@ -257,6 +257,14 @@ ONNX opset：17
 
 ## 调参流程
 
+### 转向训练
+
+`quadruped_rl/envs/base/legged_robot_config.py` 定义四足通用默认值，Go2 实际值在 `quadruped_rl/envs/go2/go2_config.py`。`commands.mode_probabilities` 依次表示原地转向、边走边转、平移、站立，四项必须非负且总和为 1；当前 Go2 为 `[0.30, 0.30, 0.30, 0.10]`。`min_turn_yaw` 规定原地转向场景的最小偏航命令，边走边转仍采样完整 yaw 范围以覆盖小角速度；`min_translation_speed` 避免平移场景采到近零速度。Go2 的 `heading_command=False` 表示直接使用持续的偏航角速度命令。
+
+`rewards.scales.turn_step` 奖励有效离地并重新落地的转向步，`turn_step_min_air_time`、`turn_step_max_air_time`、`turn_step_min_height` 和 `turn_step_min_yaw` 控制有效换步条件。`rewards.scales.foot_slip` 惩罚接触地面时的足端水平滑移。不要单独提高 `tracking_ang_vel` 来解决扭身转向；先观察 TensorBoard 的 `Command/turn/*` 和 `Command/moving_turn/*`：`fraction` 是场景占比，`yaw_abs_error` 是偏航跟踪误差，`valid_steps_per_second` 是有效落脚频率，`foot_slip_speed` 是足端滑移，`feet_in_contact` 与 `tilt` 用于排查跺脚或姿态失稳。
+
+这次调整不改变 270 维 actor 观测和 12 维动作，但命令分布及奖励定义已改变。比较新旧策略时应保留独立实验日志；续训可以作为对照，重新训练更适合判断新目标本身的效果。
+
 每次只调整一个参数组：
 
 ```text

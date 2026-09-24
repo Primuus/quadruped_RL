@@ -48,6 +48,9 @@ class LeggedRobotCfg(BaseConfig):
         num_commands = 4  # 命令维度：前向速度、侧向速度、偏航角速度、heading
         resampling_time = 10.  # 命令重采样周期 [s]
         heading_command = True  # 是否根据朝向误差自动计算偏航速度命令
+        mode_probabilities = [0.30, 0.30, 0.30, 0.10]  # 原地转向、边走边转、平移、站立的采样比例
+        min_translation_speed = 0.25  # 平移场景最小平面命令速度 [m/s]
+        min_turn_yaw = 0.35  # 原地转向场景最小偏航速度绝对值 [rad/s]；边走边转覆盖小 yaw
 
         class ranges:
             lin_vel_x = [-1.0, 1.0]  # 前向速度范围 [m/s]
@@ -116,6 +119,8 @@ class LeggedRobotCfg(BaseConfig):
             base_height = -0.0  # 机身高度偏差惩罚，零权重表示关闭
             feet_air_time = 0.0  # 足端腾空时长奖励，walk 默认不额外鼓励跳跃步态
             foot_clearance = -0.0  # 足端抬脚约束，零权重表示关闭
+            foot_slip = -0.0  # 接触地面的足端水平滑移惩罚
+            turn_step = 0.0  # 有效转向换步落地奖励，按每次落地计分
             action_rate = -0.01  # 动作变化率惩罚
             smoothness = -0.0  # 二阶动作平滑惩罚，零权重表示关闭
             torques = -0.0002  # 力矩惩罚
@@ -135,6 +140,10 @@ class LeggedRobotCfg(BaseConfig):
         soft_torque_limit = 1.0  # 关节扭矩软限制比例
         base_height_target = 1.0  # 期望机身高度
         clearance_height_target = -0.20  # 机身坐标系下的足端目标高度 [m]，启用 foot_clearance 时使用
+        turn_step_min_air_time = 0.08  # 有效换步最短腾空时间 [s]
+        turn_step_max_air_time = 0.45  # 有效换步最长腾空时间 [s]，防止鼓励长时间悬空
+        turn_step_min_height = 0.035  # 足端相对上次接触高度的最小抬升 [m]
+        turn_step_min_yaw = 0.35  # 启用转向换步奖励的最小偏航命令 [rad/s]
         max_contact_force = 100.  # 超过该接触力会被惩罚
 
     class normalization:

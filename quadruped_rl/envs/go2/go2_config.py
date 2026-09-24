@@ -38,7 +38,10 @@ class GO2RoughCfg( LeggedRobotCfg ):
         curriculum = False  # 当前关闭速度命令课程学习，稳定后再单独启用
         max_curriculum = 2.0  # 当前机器人 walk 阶段命令课程上限
         resampling_time = 10.0  # 命令重采样周期 [s]
-        heading_command = True  # 使用 heading 误差生成偏航速度命令
+        heading_command = False  # 直接训练持续偏航速度命令，与遥控器 yaw 输入一致
+        mode_probabilities = [0.30, 0.30, 0.30, 0.10]  # 原地转向、边走边转、平移、站立
+        min_translation_speed = 0.25  # 平移场景的最小命令速度 [m/s]
+        min_turn_yaw = 0.35  # 原地转向场景避免采到近零偏航命令 [rad/s]
 
         class ranges(LeggedRobotCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0]  # 前向速度范围 [m/s]
@@ -90,6 +93,8 @@ class GO2RoughCfg( LeggedRobotCfg ):
             base_height = -0.0  # 机身高度偏差惩罚，当前关闭
             feet_air_time = 0.0  # 参考 HIMLoco walk，避免把步态推得过于跳跃
             foot_clearance = -0.01  # 足端抬脚约束，参考 HIMLoco walk/go1/a1 配置
+            foot_slip = -0.10  # 惩罚接触地面时的足端水平滑移
+            turn_step = 0.05  # 原地/行进转向时的有效换步落地奖励，每次落地计分
             action_rate = -0.01  # 动作一阶差分惩罚
             smoothness = -0.01  # 二阶动作平滑惩罚，参考 HIMLoco walk 配置
             torques = -0.0002  # 力矩惩罚，安全基线保留基础约束

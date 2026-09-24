@@ -87,6 +87,7 @@ class HIMOnPolicyRunner:
         tot_iter = start_iteration + num_learning_iterations
         for it in range(self.current_learning_iteration, tot_iter):
             start = time.time()
+            command_metrics = {}
             with torch.inference_mode():
                 for _ in range(self.num_steps_per_env):
                     actions = self.alg.act(obs, critic_obs)
@@ -112,6 +113,10 @@ class HIMOnPolicyRunner:
                     if self.log_dir is not None:
                         if 'episode' in infos:
                             ep_infos.append(infos['episode'])
+                        for name, values in infos.get('command_metrics', {}).items():
+                            if name not in command_metrics:
+                                command_metrics[name] = torch.zeros_like(values)
+                            command_metrics[name] += values
                         cur_reward_sum += rewards
                         cur_episode_length += 1
                         new_ids = (dones > 0).nonzero(as_tuple=False)
@@ -160,6 +165,19 @@ class HIMOnPolicyRunner:
                 value = torch.mean(infotensor)
                 self.writer.add_scalar('Episode/' + key, value, completed_iteration)
                 ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
+
+        for name, values in locs['command_metrics'].items():
+            count = values[0].item()
+            if count == 0:
+                continue
+            prefix = f'Command/{name}'
+            self.writer.add_scalar(prefix + '/fraction', count / (self.num_steps_per_env * self.env.num_envs), completed_iteration)
+            self.writer.add_scalar(prefix + '/yaw_abs_error', (values[1] / count).item(), completed_iteration)
+            self.writer.add_scalar(prefix + '/linear_error', (values[2] / count).item(), completed_iteration)
+            self.writer.add_scalar(prefix + '/valid_steps_per_second', (values[3] / (count * self.env.dt)).item(), completed_iteration)
+            self.writer.add_scalar(prefix + '/foot_slip_speed', (values[4] / count).item(), completed_iteration)
+            self.writer.add_scalar(prefix + '/feet_in_contact', (values[5] / count).item(), completed_iteration)
+            self.writer.add_scalar(prefix + '/tilt', (values[6] / count).item(), completed_iteration)
 
         mean_std = self.alg.actor_critic.std.mean()
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))

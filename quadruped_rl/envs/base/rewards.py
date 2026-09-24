@@ -3,6 +3,8 @@
 
 QUADRUPED_RIGID_BODY_STATE_REWARDS = frozenset({
     "foot_clearance",
+    "foot_slip",
+    "turn_step",
 })
 
 

@@ -18,36 +18,55 @@ def post_quadruped_command_step(env):
 
 
 def resample_quadruped_commands(env, env_ids):
-    """随机采样四足机器人速度/朝向命令。"""
-    env.commands[env_ids, 0] = torch_rand_float(
+    """按原地转向、边走边转、平移和站立场景采样命令。"""
+    if len(env_ids) == 0:
+        return
+
+    probabilities = torch.as_tensor(env.cfg.commands.mode_probabilities, device=env.device)
+    if probabilities.shape != (4,) or torch.any(probabilities < 0) or not torch.isclose(probabilities.sum(), probabilities.new_tensor(1.0)):
+        raise ValueError("commands.mode_probabilities must contain four nonnegative values summing to 1")
+    modes = torch.searchsorted(torch.cumsum(probabilities, dim=0), torch.rand(len(env_ids), device=env.device))
+    env.command_modes[env_ids] = modes
+
+    linear_x = torch_rand_float(
         env.command_ranges["lin_vel_x"][0],
         env.command_ranges["lin_vel_x"][1],
         (len(env_ids), 1),
         device=env.device,
     ).squeeze(1)
-    env.commands[env_ids, 1] = torch_rand_float(
+    linear_y = torch_rand_float(
         env.command_ranges["lin_vel_y"][0],
         env.command_ranges["lin_vel_y"][1],
         (len(env_ids), 1),
         device=env.device,
     ).squeeze(1)
-    if env.cfg.commands.heading_command:
-        env.commands[env_ids, 3] = torch_rand_float(
-            env.command_ranges["heading"][0],
-            env.command_ranges["heading"][1],
-            (len(env_ids), 1),
-            device=env.device,
-        ).squeeze(1)
-    else:
-        env.commands[env_ids, 2] = torch_rand_float(
-            env.command_ranges["ang_vel_yaw"][0],
-            env.command_ranges["ang_vel_yaw"][1],
-            (len(env_ids), 1),
-            device=env.device,
-        ).squeeze(1)
+    linear = torch.stack((linear_x, linear_y), dim=1)
+    linear_speed = torch.linalg.vector_norm(linear, dim=1, keepdim=True)
+    linear *= (env.cfg.commands.min_translation_speed / linear_speed.clamp(min=1e-6)).clamp(min=1.0)
+    env.commands[env_ids, :2] = linear * ((modes == 1) | (modes == 2)).unsqueeze(1)
 
-    # 很小的平面速度命令置零，避免机器人在近零命令下学到抖动。
-    env.commands[env_ids, :2] *= (torch.norm(env.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
+    yaw_range = env.command_ranges["ang_vel_yaw"]
+    max_yaw = min(-yaw_range[0], yaw_range[1], 1.0 if env.cfg.commands.heading_command else float("inf"))
+    min_yaw = env.cfg.commands.min_turn_yaw
+    if not 0.0 < min_yaw <= max_yaw:
+        raise ValueError("commands.min_turn_yaw must fit the positive and negative yaw ranges")
+    yaw_magnitude = torch_rand_float(min_yaw, max_yaw, (len(env_ids), 1), device=env.device).squeeze(1)
+    yaw_sign = torch.where(torch.rand(len(env_ids), device=env.device) < 0.5, -1.0, 1.0)
+    pure_turn_yaw = yaw_magnitude * yaw_sign
+    combined_yaw = torch_rand_float(
+        max(yaw_range[0], -1.0) if env.cfg.commands.heading_command else yaw_range[0],
+        min(yaw_range[1], 1.0) if env.cfg.commands.heading_command else yaw_range[1],
+        (len(env_ids), 1), device=env.device,
+    ).squeeze(1)
+    yaw = torch.where(modes == 0, pure_turn_yaw, torch.where(modes == 1, combined_yaw, 0.0))
+    env.commands[env_ids, 2] = yaw
+
+    if env.cfg.commands.heading_command:
+        forward = quat_apply(env.base_quat[env_ids], env.forward_vec[env_ids])
+        heading = torch.atan2(forward[:, 1], forward[:, 0])
+        env.commands[env_ids, 3] = wrap_to_pi(heading + yaw / 0.5)
+    else:
+        env.commands[env_ids, 3] = 0.0
 
 
 def update_quadruped_command_curriculum(env, env_ids):
