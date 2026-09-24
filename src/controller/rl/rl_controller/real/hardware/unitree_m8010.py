@@ -303,7 +303,6 @@ class UnitreeM8010Backend:
         with self._lock:
             if not self._is_open or self._safe_stopped:
                 return
-            self._safe_stopped = True
             executor = self._bus_executor
             if executor is None:
                 raise BackendError('Unitree motor bus workers are unavailable')
@@ -332,15 +331,16 @@ class UnitreeM8010Backend:
                     self._bus_errors[bus_name] = None
             if failures:
                 raise BackendCommunicationError(' | '.join(failures))
+            self._safe_stopped = True
 
     def close(self) -> None:
         with self._lock:
             if not self._is_open:
                 return
-            stop_error: BackendCommunicationError | None = None
+            stop_error: BackendError | None = None
             try:
                 self.safe_stop()
-            except BackendCommunicationError as exc:
+            except BackendError as exc:
                 stop_error = exc
             finally:
                 executor = self._bus_executor
@@ -348,7 +348,7 @@ class UnitreeM8010Backend:
                 self._close_ports(self._ports)
                 self._ports = {}
                 self._is_open = False
-                self._safe_stopped = True
+                self._safe_stopped = stop_error is None
                 self._sdk = None
                 self._motor_type = None
                 self._foc_mode = None
