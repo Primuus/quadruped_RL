@@ -38,6 +38,8 @@ def build_him_history_observations(env):
     """构造 policy 输入观测：当前 45 维观测加 5 帧历史。"""
     current_obs = build_him_one_step_observations(env)
     env.current_obs_buf = current_obs
+    if env.add_noise:
+        current_obs = current_obs + (2 * torch.rand_like(current_obs) - 1) * env.noise_scale_vec[:env.num_one_step_obs]
 
     env.obs_history_buf = torch.cat(
         (current_obs, env.obs_history_buf[:, :-env.num_one_step_obs]),

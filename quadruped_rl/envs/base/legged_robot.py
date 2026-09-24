@@ -219,10 +219,6 @@ class LeggedRobot(BaseTask):
         self.obs_buf = build_him_history_observations(self)
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = build_him_privileged_observations(self, self.current_obs_buf)
-        # add perceptive inputs if not blind
-        # add noise if needed
-        if self.add_noise:
-            self.obs_buf = self.obs_buf + (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
 
     def create_sim(self):
         """ Creates simulation, terrain and evironments

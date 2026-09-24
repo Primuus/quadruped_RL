@@ -37,7 +37,9 @@ def push_quadruped_robots(env):
         return
 
     max_vel = env.cfg.domain_rand.max_push_vel_xy
-    env.root_states[:, 7:9] = torch_rand_float(-max_vel, max_vel, (env.num_envs, 2), device=env.device)
+    env.root_states[push_env_ids, 7:9] = torch_rand_float(
+        -max_vel, max_vel, (len(push_env_ids), 2), device=env.device
+    )
 
     env_ids_int32 = push_env_ids.to(dtype=torch.int32)
     env.gym.set_actor_root_state_tensor_indexed(

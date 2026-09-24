@@ -82,7 +82,9 @@ class HIMOnPolicyRunner:
         cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
-        tot_iter = self.current_learning_iteration + num_learning_iterations
+        start_iteration = self.current_learning_iteration
+        start_total_time = self.tot_time
+        tot_iter = start_iteration + num_learning_iterations
         for it in range(self.current_learning_iteration, tot_iter):
             start = time.time()
             with torch.inference_mode():
@@ -128,17 +130,22 @@ class HIMOnPolicyRunner:
             learn_time = stop - start
             if self.log_dir is not None:
                 self.log(locals())
-            if it % self.save_interval == 0:
-                self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
+            self.current_learning_iteration = it + 1
+            if self.current_learning_iteration % self.save_interval == 0:
+                self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
             ep_infos.clear()
 
-        self.current_learning_iteration += num_learning_iterations
+        self.current_learning_iteration = tot_iter
         self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
 
     def log(self, locs, width=80, pad=35):
         self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
         self.tot_time += locs['collection_time'] + locs['learn_time']
         iteration_time = locs['collection_time'] + locs['learn_time']
+        completed_iteration = locs['it'] + 1
+        completed_in_call = completed_iteration - locs['start_iteration']
+        remaining_iterations = locs['tot_iter'] - completed_iteration
+        eta = (self.tot_time - locs['start_total_time']) / completed_in_call * remaining_iterations
 
         ep_string = ''
         if locs['ep_infos']:
@@ -151,26 +158,26 @@ class HIMOnPolicyRunner:
                         ep_info[key] = ep_info[key].unsqueeze(0)
                     infotensor = torch.cat((infotensor, ep_info[key].to(self.device)))
                 value = torch.mean(infotensor)
-                self.writer.add_scalar('Episode/' + key, value, locs['it'])
+                self.writer.add_scalar('Episode/' + key, value, completed_iteration)
                 ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
 
         mean_std = self.alg.actor_critic.std.mean()
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))
 
-        self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], locs['it'])
-        self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], locs['it'])
-        self.writer.add_scalar('Loss/estimation', locs['mean_estimation_loss'], locs['it'])
-        self.writer.add_scalar('Loss/swap', locs['mean_swap_loss'], locs['it'])
-        self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
-        self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
-        self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
-        self.writer.add_scalar('Perf/collection time', locs['collection_time'], locs['it'])
-        self.writer.add_scalar('Perf/learning_time', locs['learn_time'], locs['it'])
+        self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], completed_iteration)
+        self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], completed_iteration)
+        self.writer.add_scalar('Loss/estimation', locs['mean_estimation_loss'], completed_iteration)
+        self.writer.add_scalar('Loss/swap', locs['mean_swap_loss'], completed_iteration)
+        self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, completed_iteration)
+        self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), completed_iteration)
+        self.writer.add_scalar('Perf/total_fps', fps, completed_iteration)
+        self.writer.add_scalar('Perf/collection time', locs['collection_time'], completed_iteration)
+        self.writer.add_scalar('Perf/learning_time', locs['learn_time'], completed_iteration)
         if len(locs['rewbuffer']) > 0:
-            self.writer.add_scalar('Train/mean_reward', statistics.mean(locs['rewbuffer']), locs['it'])
-            self.writer.add_scalar('Train/mean_episode_length', statistics.mean(locs['lenbuffer']), locs['it'])
+            self.writer.add_scalar('Train/mean_reward', statistics.mean(locs['rewbuffer']), completed_iteration)
+            self.writer.add_scalar('Train/mean_episode_length', statistics.mean(locs['lenbuffer']), completed_iteration)
 
-        header = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "
+        header = f" \033[1m Learning iteration {completed_iteration}/{locs['tot_iter']} \033[0m "
         log_string = (
             f"{'#' * width}\n"
             f"{header.center(width, ' ')}\n\n"
@@ -193,7 +200,7 @@ class HIMOnPolicyRunner:
             f"{'Total timesteps:':>{pad}} {self.tot_timesteps}\n"
             f"{'Iteration time:':>{pad}} {iteration_time:.2f}s\n"
             f"{'Total time:':>{pad}} {self.tot_time:.2f}s\n"
-            f"{'ETA:':>{pad}} {self.tot_time / (locs['it'] + 1) * (locs['num_learning_iterations'] - locs['it']):.1f}s\n"
+            f"{'ETA:':>{pad}} {eta:.1f}s\n"
         )
         print(log_string)
 

@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import random
+from pathlib import Path
 from isaacgym import gymapi
 from isaacgym import gymutil
 
@@ -70,28 +71,39 @@ def parse_sim_params(args, cfg):
     return sim_params
 
 def get_load_path(root, load_run=-1, checkpoint=-1):
-    try:
-        runs = os.listdir(root)
-        #TODO sort by date to handle change of month
-        runs.sort()
-        if 'exported' in runs: runs.remove('exported')
-        last_run = os.path.join(root, runs[-1])
-    except:
-        raise ValueError("No runs in this directory: " + root)
-    if load_run==-1:
-        load_run = last_run
-    else:
-        load_run = os.path.join(root, load_run)
+    root_path = Path(root)
+    if not root_path.is_dir():
+        raise ValueError(f"No runs in this directory: {root_path}")
 
-    if checkpoint==-1:
-        models = [file for file in os.listdir(load_run) if 'model' in file]
-        models.sort(key=lambda m: '{0:0>15}'.format(m))
-        model = models[-1]
+    if load_run in (-1, '-1'):
+        runs = []
+        for run_path in root_path.iterdir():
+            if not run_path.is_dir() or run_path.name == 'exported':
+                continue
+            checkpoints = list(run_path.glob('model_*.pt'))
+            if checkpoints:
+                runs.append((max(path.stat().st_mtime_ns for path in checkpoints), run_path))
+        if not runs:
+            raise ValueError(f"No runs with checkpoints in this directory: {root_path}")
+        run_path = max(runs, key=lambda run: (run[0], run[1].name))[1]
     else:
-        model = "model_{}.pt".format(checkpoint) 
+        run_path = root_path / str(load_run)
+        if not run_path.is_dir():
+            raise ValueError(f"Run directory does not exist: {run_path}")
 
-    load_path = os.path.join(load_run, model)
-    return load_path
+    if checkpoint == -1:
+        checkpoints = [
+            path for path in run_path.glob('model_*.pt')
+            if path.stem[len('model_'):].isdigit()
+        ]
+        if not checkpoints:
+            raise ValueError(f"No checkpoints in run directory: {run_path}")
+        model_path = max(checkpoints, key=lambda path: int(path.stem[len('model_'):]))
+    else:
+        model_path = run_path / f'model_{checkpoint}.pt'
+        if not model_path.is_file():
+            raise FileNotFoundError(f"Checkpoint does not exist: {model_path}")
+    return str(model_path)
 
 def update_cfg_from_args(env_cfg, cfg_train, args):
     # seed
