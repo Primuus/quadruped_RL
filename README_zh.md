@@ -82,13 +82,14 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
 
 3. 确认 Python 能导入 `isaacgym`。
 
-4. 安装当前工程：
+4. 先安装仓库自带的算法包，再安装训练工程：
 
    ```bash
-   pip install -e .
+   python -m pip install --no-deps -e ./rsl_rl
+   python -m pip install -e .
    ```
 
-`rsl_rl` 已随本仓库同步，不需要单独克隆。只有确认要更新算法库时，才从官方仓库重新同步。
+`rsl_rl` 已随本仓库同步，不需要单独克隆，但必须安装它。只把仓库根目录加入 `PYTHONPATH` 仍找不到 `rsl_rl.env`。只有确认要更新算法库时，才从官方仓库重新同步。
 
 ONNX 导出依赖 `onnx`。通过 `pip install -e .` 会自动安装；已有环境如果使用 `--no-deps` 安装，需要补充：
 
