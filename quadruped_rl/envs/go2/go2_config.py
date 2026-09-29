@@ -99,7 +99,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
             smoothness = -0.01  # 二阶动作平滑惩罚，参考 HIMLoco walk 配置
             torques = -0.0002  # 力矩惩罚，安全基线保留基础约束
             dof_vel = -0.0  # 关节速度惩罚
-            collision = -0.0  # walk 阶段先关闭非足端碰撞硬惩罚
+            collision = -0.3  # 持续大腿/小腿触地惩罚，避免用非足端支撑机身
             feet_stumble = -0.0  # 足端绊倒惩罚
             stand_still = -0.0  # 静止姿态惩罚
             feet_contact_forces = -0.0  # 足端接触力惩罚

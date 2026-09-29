@@ -265,6 +265,10 @@ ONNX opset：17
 
 这次调整不改变 270 维 actor 观测和 12 维动作，但命令分布及奖励定义已改变。比较新旧策略时应保留独立实验日志；续训可以作为对照，重新训练更适合判断新目标本身的效果。
 
+### 非足端触地
+
+Go2 的 `asset.penalize_contacts_on` 包含大腿和小腿；`rewards.scales.collision=-0.3` 对持续的非足端接触计罚，不会直接终止回合。通用参数 `rewards.collision_force_threshold=5.0`（N）和 `collision_min_contact_time=0.06`（s）过滤低力噪声与单次短碰撞。TensorBoard 中的 `Episode/contact_<body>` 是对应部位超过力阈值的回合触地时间占比，`Episode/rew_collision` 是该项的加权奖励；观察四条小腿的占比是否随训练下降，再结合实际仿真姿态判断，不能仅凭总奖励推断足端是否正确着地。
+
 每次只调整一个参数组：
 
 ```text

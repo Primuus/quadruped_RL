@@ -144,6 +144,8 @@ class LeggedRobotCfg(BaseConfig):
         turn_step_max_air_time = 0.45  # 有效换步最长腾空时间 [s]，防止鼓励长时间悬空
         turn_step_min_height = 0.035  # 足端相对上次接触高度的最小抬升 [m]
         turn_step_min_yaw = 0.35  # 启用转向换步奖励的最小偏航命令 [rad/s]
+        collision_force_threshold = 5.0  # 非足端接触判定力阈值 [N]，过滤低力噪声
+        collision_min_contact_time = 0.06  # 非足端接触需持续的时间 [s]，短暂碰撞只记录不惩罚
         max_contact_force = 100.  # 超过该接触力会被惩罚
 
     class normalization:

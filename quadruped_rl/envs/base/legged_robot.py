@@ -1,3 +1,4 @@
+import math
 import time
 from warnings import WarningMessage
 import numpy as np
@@ -124,6 +125,7 @@ class LeggedRobot(BaseTask):
         self._post_physics_step_callback()
         if self.track_turn_steps:
             self._update_turn_step_state()
+        self._update_penalized_contact_state()
 
         # compute observations, rewards, resets, ...
         self.check_termination()
@@ -189,11 +191,18 @@ class LeggedRobot(BaseTask):
         self.turn_last_raw_contacts[env_ids] = False
         self.turn_last_filtered_contacts[env_ids] = False
         self.turn_step_valid[env_ids] = False
+        contact_metrics = {}
+        for i, name in enumerate(self.penalized_contact_names):
+            duty = self.penalized_contact_counts[env_ids, i] / self.episode_length_buf[env_ids].clamp(min=1)
+            contact_metrics["contact_" + name] = torch.mean(duty)
+        self.penalized_contact_streak[env_ids] = 0
+        self.penalized_contact_counts[env_ids] = 0
+        self.last_penalized_contacts[env_ids] = False
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
         reset_observation_history(self, env_ids)
         # fill extras
-        self.extras["episode"] = {}
+        self.extras["episode"] = contact_metrics
         for key in self.episode_sums.keys():
             self.extras["episode"]['rew_' + key] = torch.mean(self.episode_sums[key][env_ids]) / self.max_episode_length_s
             self.episode_sums[key][env_ids] = 0.
@@ -436,6 +445,11 @@ class LeggedRobot(BaseTask):
             self.feet_pos = torch.zeros(self.num_envs, self.feet_indices.shape[0], 3, dtype=torch.float, device=self.device, requires_grad=False)
             self.feet_vel = torch.zeros_like(self.feet_pos)
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
+        self.min_penalized_contact_steps = max(1, math.ceil(self.cfg.rewards.collision_min_contact_time / self.dt))
+        contact_shape = (self.num_envs, len(self.penalized_contact_names))
+        self.penalized_contact_streak = torch.zeros(contact_shape, dtype=torch.long, device=self.device)
+        self.penalized_contact_counts = torch.zeros(contact_shape, dtype=torch.float, device=self.device)
+        self.last_penalized_contacts = torch.zeros(contact_shape, dtype=torch.bool, device=self.device)
 
         # initialize some data used later on
         self.common_step_counter = 0
@@ -580,6 +594,7 @@ class LeggedRobot(BaseTask):
         penalized_contact_names = []
         for name in self.cfg.asset.penalize_contacts_on:
             penalized_contact_names.extend([s for s in body_names if name in s])
+        self.penalized_contact_names = list(dict.fromkeys(penalized_contact_names))
         termination_contact_names = []
         for name in self.cfg.asset.terminate_after_contacts_on:
             termination_contact_names.extend([s for s in body_names if name in s])
@@ -616,9 +631,9 @@ class LeggedRobot(BaseTask):
         for i in range(len(feet_names)):
             self.feet_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], feet_names[i])
 
-        self.penalised_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
-        for i in range(len(penalized_contact_names)):
-            self.penalised_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], penalized_contact_names[i])
+        self.penalised_contact_indices = torch.zeros(len(self.penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
+        for i, name in enumerate(self.penalized_contact_names):
+            self.penalised_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], name)
 
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(termination_contact_names)):
@@ -805,9 +820,17 @@ class LeggedRobot(BaseTask):
         # Penalize second-order action differences.
         return torch.sum(torch.square(self.actions - self.last_actions - self.last_actions + self.last_last_actions), dim=1)
     
+    def _update_penalized_contact_state(self):
+        contact = torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > self.cfg.rewards.collision_force_threshold
+        filtered_contact = contact | self.last_penalized_contacts
+        self.penalized_contact_streak[:] = torch.where(filtered_contact, (self.penalized_contact_streak + 1).clamp(max=self.min_penalized_contact_steps), 0)
+        self.penalized_contact_counts += contact.float()
+        self.last_penalized_contacts[:] = contact
+
     def _reward_collision(self):
-        # Penalize collisions on selected bodies
-        return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1)
+        # Count only sustained non-foot contacts; brief swing-leg impacts are tracked but not penalized.
+        sustained = self.last_penalized_contacts & (self.penalized_contact_streak >= self.min_penalized_contact_steps)
+        return sustained.sum(dim=1).float()
     
     def _reward_termination(self):
         # Terminal reward / penalty
