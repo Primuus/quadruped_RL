@@ -110,13 +110,7 @@ class LeggedRobot(BaseTask):
         self.episode_length_buf += 1
         self.common_step_counter += 1
 
-        # prepare quantities
-        self.base_pos[:] = self.root_states[:, 0:3]
-        self.base_quat[:] = self.root_states[:, 3:7]
-        self.rpy[:] = get_euler_xyz_in_tensor(self.base_quat[:])
-        self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
-        self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
-        self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self._update_base_state()
         if self.use_rigid_body_state:
             rigid_body_states = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)
             self.feet_pos[:] = rigid_body_states[:, self.feet_indices, 0:3]
@@ -145,6 +139,7 @@ class LeggedRobot(BaseTask):
         
         if self.cfg.domain_rand.push_robots:
             push_quadruped_robots(self)
+            self._update_base_state()
 
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
 
@@ -157,6 +152,17 @@ class LeggedRobot(BaseTask):
         """ Check if environments need to be reset
         """
         update_quadruped_termination(self)
+
+    def _update_base_state(self, env_ids=None):
+        """在物理推进、重置或外推后，从当前 root state 更新机身观测缓存。"""
+        selected = slice(None) if env_ids is None else env_ids
+        self.base_pos[selected] = self.root_states[selected, :3]
+        self.base_quat[selected] = self.root_states[selected, 3:7]
+        quat = self.base_quat[selected]
+        self.rpy[selected] = get_euler_xyz_in_tensor(quat)
+        self.base_lin_vel[selected] = quat_rotate_inverse(quat, self.root_states[selected, 7:10])
+        self.base_ang_vel[selected] = quat_rotate_inverse(quat, self.root_states[selected, 10:13])
+        self.projected_gravity[selected] = quat_rotate_inverse(quat, self.gravity_vec[selected])
 
     def reset_idx(self, env_ids):
         """ Reset some environments.
@@ -177,6 +183,7 @@ class LeggedRobot(BaseTask):
         # reset robot states
         self._reset_dofs(env_ids)
         self._reset_root_states(env_ids)
+        self._update_base_state(env_ids)
 
         self._resample_commands(env_ids)
 
@@ -192,6 +199,8 @@ class LeggedRobot(BaseTask):
         self.turn_last_raw_contacts[env_ids] = False
         self.turn_last_filtered_contacts[env_ids] = False
         self.turn_step_valid[env_ids] = False
+        self.turn_step_elapsed[env_ids] = 0.
+        self.turn_step_credit[env_ids] = 0.
         self.stand_last_raw_contacts[env_ids] = False
         self.stand_contacts[env_ids] = False
         contact_metrics = {}
@@ -483,6 +492,8 @@ class LeggedRobot(BaseTask):
         self.turn_last_raw_contacts = torch.zeros_like(self.feet_air_time, dtype=torch.bool)
         self.turn_last_filtered_contacts = torch.zeros_like(self.feet_air_time, dtype=torch.bool)
         self.turn_step_valid = torch.zeros_like(self.feet_air_time, dtype=torch.bool)
+        self.turn_step_elapsed = torch.zeros_like(self.feet_air_time)
+        self.turn_step_credit = torch.zeros_like(self.feet_air_time)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
@@ -698,12 +709,33 @@ class LeggedRobot(BaseTask):
         self.dt = self.cfg.control.decimation * self.sim_params.dt
         self.obs_scales = self.cfg.normalization.obs_scales
         self.reward_scales = class_to_dict(self.cfg.rewards.scales)
+        if self.reward_scales.get("base_height", 0.0) != 0.0:
+            if not math.isfinite(cfg.rewards.base_height_target):
+                raise ValueError("rewards.base_height_target must be finite")
+            if not math.isfinite(cfg.rewards.base_height_tolerance) or cfg.rewards.base_height_tolerance < 0.0:
+                raise ValueError("rewards.base_height_tolerance must be finite and nonnegative")
+            if not math.isfinite(cfg.rewards.base_height_sigma) or cfg.rewards.base_height_sigma <= 0.0:
+                raise ValueError("rewards.base_height_sigma must be finite and positive")
+        if self.reward_scales.get("foot_clearance", 0.0) != 0.0:
+            if not math.isfinite(cfg.rewards.clearance_height_sigma) or cfg.rewards.clearance_height_sigma <= 0.0:
+                raise ValueError("rewards.clearance_height_sigma must be finite and positive")
+        if self.reward_scales.get("turn_step", 0.0) != 0.0:
+            if not math.isfinite(cfg.rewards.turn_step_reward_interval) or cfg.rewards.turn_step_reward_interval <= 0.0:
+                raise ValueError("rewards.turn_step_reward_interval must be finite and positive")
+            if not math.isfinite(cfg.rewards.turn_step_min_yaw) or cfg.rewards.turn_step_min_yaw <= 0.0:
+                raise ValueError("rewards.turn_step_min_yaw must be finite and positive")
         if self.reward_scales.get("stand_height", 0.0) != 0.0:
             if not math.isfinite(self.cfg.rewards.stand_height_sigma) or self.cfg.rewards.stand_height_sigma <= 0.0:
                 raise ValueError("rewards.stand_height_sigma must be finite and positive when stand_height is enabled")
         self.use_rigid_body_state = reward_requires_rigid_body_state(self.reward_scales)
         self.track_turn_steps = self.reward_scales.get("turn_step", 0.0) != 0.0
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
+        if not math.isfinite(cfg.commands.max_translation_speed) or not 0.0 < cfg.commands.min_translation_speed <= cfg.commands.max_translation_speed:
+            raise ValueError("commands translation speed limits must be finite, positive and ordered")
+        if not math.isfinite(cfg.commands.low_speed_probability) or not 0.0 <= cfg.commands.low_speed_probability <= 1.0:
+            raise ValueError("commands.low_speed_probability must be in [0, 1]")
+        if not math.isfinite(cfg.commands.low_speed_scale) or not 0.0 < cfg.commands.low_speed_scale <= 1.0:
+            raise ValueError("commands.low_speed_scale must be in (0, 1]")
      
 
         self.max_episode_length_s = self.cfg.env.episode_length_s
@@ -733,25 +765,29 @@ class LeggedRobot(BaseTask):
         return self.root_states[:, 2]
 
     def _reward_base_height(self):
-        # Penalize base height away from target
-        base_height = self._get_base_heights()
-        return torch.square(base_height - self.cfg.rewards.base_height_target)
+        height_error = torch.abs(self._get_base_heights() - self.cfg.rewards.base_height_target)
+        excess = (height_error - self.cfg.rewards.base_height_tolerance).clamp(min=0.0)
+        return torch.square(excess / self.cfg.rewards.base_height_sigma)
 
     def _reward_foot_clearance(self):
-        # HIMLoco-style clearance: foot height and lateral speed in the body frame.
+        # 仅约束摆动足；扣除机身旋转速度，得到真正的机身系相对速度。
         if not self.use_rigid_body_state:
             raise RuntimeError("foot_clearance requires rigid-body state acquisition")
         num_feet = len(self.feet_indices)
         feet_pos_rel = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
-        feet_vel_rel = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1)
+        angular_vel = self.root_states[:, 10:13].unsqueeze(1).expand_as(feet_pos_rel)
+        feet_vel_rel = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1) - torch.cross(angular_vel, feet_pos_rel, dim=-1)
         base_quat = self.base_quat.unsqueeze(1).repeat(1, num_feet, 1).reshape(-1, 4)
 
         foot_pos_body = quat_rotate_inverse(base_quat, feet_pos_rel.reshape(-1, 3)).view(self.num_envs, num_feet, 3)
         foot_vel_body = quat_rotate_inverse(base_quat, feet_vel_rel.reshape(-1, 3)).view(self.num_envs, num_feet, 3)
 
-        height_error = torch.square(foot_pos_body[:, :, 2] - self.cfg.rewards.clearance_height_target)
+        height_error = torch.square(
+            (foot_pos_body[:, :, 2] - self.cfg.rewards.clearance_height_target)
+            / self.cfg.rewards.clearance_height_sigma
+        )
         foot_lateral_vel = torch.norm(foot_vel_body[:, :, :2], dim=2)
-        return torch.sum(height_error * foot_lateral_vel, dim=1)
+        return torch.sum(height_error * foot_lateral_vel * ~self.stand_contacts, dim=1)
 
     def _update_turn_step_state(self):
         contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
@@ -763,6 +799,11 @@ class LeggedRobot(BaseTask):
             & (self.turn_swing_time <= self.cfg.rewards.turn_step_max_air_time)
             & (self.turn_swing_peak >= self.cfg.rewards.turn_step_min_height)
         )
+
+        # 每足只能消费自上次有效落地以来积累的时间，避免增加落地频率刷分。
+        self.turn_step_elapsed.add_(self.dt).clamp_(max=self.cfg.rewards.turn_step_reward_interval)
+        self.turn_step_credit[:] = torch.where(self.turn_step_valid, self.turn_step_elapsed, 0.0)
+        self.turn_step_elapsed.masked_fill_(self.turn_step_valid, 0.0)
 
         lift = (self.feet_pos[:, :, 2] - self.turn_ground_height).clamp(min=0.0)
         self.turn_swing_peak[:] = torch.where(contact_filt, 0.0, torch.maximum(self.turn_swing_peak, lift))
@@ -777,12 +818,13 @@ class LeggedRobot(BaseTask):
 
     def _reward_turn_step(self):
         turning = torch.abs(self.commands[:, 2]) >= self.cfg.rewards.turn_step_min_yaw
-        tracking = self._reward_tracking_ang_vel()
+        tracking = self._reward_tracking_ang_vel() * self._reward_tracking_lin_vel()
         yaw_progress = (
             self.base_ang_vel[:, 2] * torch.sign(self.commands[:, 2])
             / torch.abs(self.commands[:, 2]).clamp(min=self.cfg.rewards.turn_step_min_yaw)
         ).clamp(min=0.0, max=1.0)
-        return self.turn_step_valid.sum(dim=1) * turning * yaw_progress * tracking / self.dt
+        normal_support = self._reward_collision() == 0.0
+        return self.turn_step_credit.mean(dim=1) * turning * yaw_progress * tracking * normal_support / self.dt
 
     def _collect_command_metrics(self):
         yaw_error = torch.abs(self.commands[:, 2] - self.base_ang_vel[:, 2])

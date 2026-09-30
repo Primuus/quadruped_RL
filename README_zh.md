@@ -260,33 +260,59 @@ ONNX opset：17
 
 ### 转向训练
 
-`quadruped_rl/envs/base/legged_robot_config.py` 定义四足通用默认值，Go2 实际值在 `quadruped_rl/envs/go2/go2_config.py`。`commands.mode_probabilities` 依次表示原地转向、边走边转、平移、站立，四项必须非负且总和为 1；当前 Go2 为 `[0.30, 0.30, 0.30, 0.10]`。`min_turn_yaw` 规定原地转向场景的最小偏航命令，边走边转仍采样完整 yaw 范围以覆盖小角速度；`min_translation_speed` 避免平移场景采到近零速度。Go2 的 `heading_command=False` 表示直接使用持续的偏航角速度命令。
+`quadruped_rl/envs/base/legged_robot_config.py` 定义四足通用默认值，Go2 实际值在 `quadruped_rl/envs/go2/go2_config.py`。`commands.mode_probabilities` 依次表示原地转向、边走边转、平移、站立，四项必须非负且总和为 1；当前 Go2 为 `[0.25, 0.25, 0.30, 0.20]`，每 5 s 重采样一次。`min_turn_yaw=0.12` rad/s、`min_translation_speed=0.12` m/s 覆盖慢转和低速移动，同时高于站立阈值。`max_translation_speed=1.0` 限制 XY 合成后的速度模长，避免斜向命令超过目标速度。
+
+`low_speed_probability=0.30` 将 30% 命令划入低速子集，`low_speed_scale=0.35` 缩小其 XY/yaw 采样范围，其余保留完整范围。Go2 的 `heading_command=False` 表示直接使用持续的偏航角速度命令。
 
 `rewards.scales.turn_step` 奖励有效离地并重新落地的转向步，`turn_step_min_air_time`、`turn_step_max_air_time`、`turn_step_min_height` 和 `turn_step_min_yaw` 控制有效换步条件。`rewards.scales.foot_slip` 惩罚接触地面时的足端水平滑移。不要单独提高 `tracking_ang_vel` 来解决扭身转向；先观察 TensorBoard 的 `Command/turn/*` 和 `Command/moving_turn/*`：`fraction` 是场景占比，`yaw_abs_error` 是偏航跟踪误差，`valid_steps_per_second` 是有效落脚频率，`foot_slip_speed` 是足端滑移，`feet_in_contact` 与 `tilt` 用于排查跺脚或姿态失稳。
+
+当前 `turn_step=0.1` 按时间预算计分，而非直接累加落地次数。每足最多积累 `turn_step_reward_interval=0.5` s，符合条件的落地消费预算，四足平均后计分；长期平均贡献不超过约 0.1/s，提高落地频率不会增加单位时间预算。奖励同时乘以 XY/yaw 跟踪分数及同向转动进度，持续非足端接触时关闭。`valid_steps_per_second` 仍是原始有效落地频率，并非奖励大小。
 
 这次调整不改变 270 维 actor 观测和 12 维动作，但命令分布及奖励定义已改变。比较新旧策略时应保留独立实验日志；续训可以作为对照，重新训练更适合判断新目标本身的效果。
 
 ### 非足端触地
 
-Go2 的 `asset.penalize_contacts_on` 包含大腿和小腿；`rewards.scales.collision=-0.3` 对持续的非足端接触计罚，不会直接终止回合。通用参数 `rewards.collision_force_threshold=5.0`（N）和 `collision_min_contact_time=0.06`（s）过滤低力噪声与单次短碰撞。TensorBoard 中的 `Episode/contact_<body>` 是对应部位超过力阈值的回合触地时间占比，`Episode/rew_collision` 是该项的加权奖励；观察四条小腿的占比是否随训练下降，再结合实际仿真姿态判断，不能仅凭总奖励推断足端是否正确着地。
+Go2 的 `asset.penalize_contacts_on` 包含大腿和小腿；`rewards.scales.collision=-1.0` 对持续的非足端接触计罚，不会直接终止回合。通用参数 `rewards.collision_force_threshold=5.0`（N）和 `collision_min_contact_time=0.06`（s）过滤低力噪声与单次短碰撞。TensorBoard 中的 `Episode/contact_<body>` 是对应部位超过力阈值的回合触地时间占比，`Episode/rew_collision` 是该项的加权奖励；观察四条小腿的占比是否随训练下降，再结合实际仿真姿态判断，不能仅凭总奖励推断足端是否正确着地。
+
+`foot_clearance=-0.01` 仅惩罚摆动足，不要求支撑足抬升。使用机身系足端位置及扣除机身平移、旋转后的相对速度；高度误差先除以 `clearance_height_sigma=0.05` m 再平方，避免原始米制误差过小。`clearance_height_target=-0.20` m 是相对机身的目标高度，不是离地抬脚 20 cm。
+
+### 站立和运动共用高度
+
+Go2 使用 `base_height_target=0.28` m、`base_height_tolerance=0.03` m。站立、平移和转向时，0.25-0.31 m 为无惩罚区间；超出后采用连续平方惩罚，不强制固定高度，也不会因高度越界直接终止回合。
+
+```text
+excess = max(abs(base_z - base_height_target) - base_height_tolerance, 0)
+raw_height_penalty = (excess / base_height_sigma)^2
+weighted_height_reward = base_height * raw_height_penalty * control_dt
+```
+
+当前 `base_height=-0.4`、`base_height_sigma=0.05` m。这里的高度是平地上的机身根节点世界 z；0.42 m 仅为初始落地高度。新增机器人时按其正常承重姿态设定目标、容差和默认角。
+
+`only_positive_rewards=False` 保留负总奖励，区分不同程度的低趴和碰撞。总奖励数值不能直接与旧版比较。摩擦随机化范围为 `[0.4, 1.25]`，包含当前 MuJoCo 足端配置值，但并不消除两种引擎的动力学差异。
 
 ### 零命令站立
 
 站立奖励要求平移命令模长不超过 `rewards.stand_lin_vel_threshold=0.1` m/s，且偏航命令绝对值不超过 `stand_ang_vel_threshold=0.1` rad/s。原地转向不满足这一条件，因此不会被要求保持默认站姿或四足同时支撑。
 
-Go2 启用以下三项：
+Go2 启用以下两项站立专用约束，高度由全局 `base_height` 负责：
 
 | 参数 | 当前权重 | 含义 |
 | --- | --- | --- |
 | `stand_still` | `-0.1` | 惩罚实际关节角相对默认站姿的绝对偏差之和 |
 | `stand_contacts` | `-0.4` | 惩罚缺少支撑的足端比例；四足支撑时为 0 |
-| `stand_height` | `-0.4` | 惩罚机身高度偏离 `base_height_target`，单项原始惩罚限制在 0 到 1 |
+| `stand_height` | `0.0` | 当前关闭，避免与全局高度奖励重复 |
 
-足端向上接触力超过 `stand_contact_force_threshold=5.0` N 才算支撑，允许一次控制步的接触力漏检，历史在回合重置时清空。Go2 的 `base_height_target=0.28` m 是本轮站立目标；0.42 m 是初始落地高度，不是站立目标。`stand_height_sigma=0.05` m 控制高度误差惩罚的变化尺度，必须为正数。全局 `base_height` 项仍关闭，本轮高度约束仅作用于站立命令。新增机器人时应按其正常承重站姿重新设定目标高度和默认角。
+足端向上接触力超过 `stand_contact_force_threshold=5.0` N 才算支撑，允许一次控制步的接触力漏检，历史在回合重置时清空。原地转向和行走不要求四足同时支撑。回合重置后重新计算机身速度、姿态和重力投影，避免首帧观测混入上一回合状态。Go2 关闭单独的 `stand_height`，站立和运动共用上述高度约束。
 
-观察 `Episode/rew_stand_still`、`Episode/rew_stand_contacts`、`Episode/rew_stand_height`，以及 `Command/stand/base_height`、`joint_pose_error`、`supporting_feet`。后者分别是平均机身高度、关节角绝对偏差之和、按上述力阈值与漏检过滤统计的支撑足数；不要把原有未经滤波的 `feet_in_contact` 与 `supporting_feet` 混为同一指标。
+观察 `Episode/rew_base_height`、`Episode/rew_stand_still`、`Episode/rew_stand_contacts`，以及各 `Command/<mode>/base_height`、`joint_pose_error`、`supporting_feet`。后者分别是平均机身高度、关节角绝对偏差之和、按上述力阈值与漏检过滤统计的支撑足数；不要把原有未经滤波的 `feet_in_contact` 与 `supporting_feet` 混为同一指标。
 
-修正奖励不会改变已经导出的模型。建议另建 `--run_name stand_fix` 从头训练并比较零命令站立和原地转向；新策略验证后再导出到部署侧。
+本轮不改变 HIM-PPO、4096 环境、270 维策略输入、238 维 critic、12 维动作、PD 和动作缩放。奖励定义及命令分布已改变，建议新建实验从头训练；旧 checkpoint 虽然维度兼容，但其奖励值和收敛曲线不能与新目标直接比较。已经导出的模型不会随源码修改而变化。
+
+```bash
+cd ~/quadruped_train
+conda activate isaacgym
+python quadruped_rl/scripts/train_go2.py --headless --max_iterations 1500 --run_name locomotion_fix
+```
 
 
 每次只调整一个参数组：

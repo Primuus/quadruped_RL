@@ -27,6 +27,8 @@ def resample_quadruped_commands(env, env_ids):
         raise ValueError("commands.mode_probabilities must contain four nonnegative values summing to 1")
     modes = torch.searchsorted(torch.cumsum(probabilities, dim=0), torch.rand(len(env_ids), device=env.device))
     env.command_modes[env_ids] = modes
+    low_speed = torch.rand(len(env_ids), device=env.device) < env.cfg.commands.low_speed_probability
+    sampling_scale = torch.where(low_speed, env.cfg.commands.low_speed_scale, 1.0)
 
     linear_x = torch_rand_float(
         env.command_ranges["lin_vel_x"][0],
@@ -40,9 +42,13 @@ def resample_quadruped_commands(env, env_ids):
         (len(env_ids), 1),
         device=env.device,
     ).squeeze(1)
-    linear = torch.stack((linear_x, linear_y), dim=1)
+    linear = torch.stack((linear_x, linear_y), dim=1) * sampling_scale.unsqueeze(1)
     linear_speed = torch.linalg.vector_norm(linear, dim=1, keepdim=True)
-    linear *= (env.cfg.commands.min_translation_speed / linear_speed.clamp(min=1e-6)).clamp(min=1.0)
+    target_speed = linear_speed.clamp(
+        min=env.cfg.commands.min_translation_speed,
+        max=env.cfg.commands.max_translation_speed,
+    )
+    linear *= target_speed / linear_speed.clamp(min=1e-6)
     env.commands[env_ids, :2] = linear * ((modes == 1) | (modes == 2)).unsqueeze(1)
 
     yaw_range = env.command_ranges["ang_vel_yaw"]
@@ -50,14 +56,15 @@ def resample_quadruped_commands(env, env_ids):
     min_yaw = env.cfg.commands.min_turn_yaw
     if not 0.0 < min_yaw <= max_yaw:
         raise ValueError("commands.min_turn_yaw must fit the positive and negative yaw ranges")
-    yaw_magnitude = torch_rand_float(min_yaw, max_yaw, (len(env_ids), 1), device=env.device).squeeze(1)
+    yaw_upper = (max_yaw * sampling_scale).clamp(min=min_yaw)
+    yaw_magnitude = min_yaw + (yaw_upper - min_yaw) * torch.rand(len(env_ids), device=env.device)
     yaw_sign = torch.where(torch.rand(len(env_ids), device=env.device) < 0.5, -1.0, 1.0)
     pure_turn_yaw = yaw_magnitude * yaw_sign
     combined_yaw = torch_rand_float(
         max(yaw_range[0], -1.0) if env.cfg.commands.heading_command else yaw_range[0],
         min(yaw_range[1], 1.0) if env.cfg.commands.heading_command else yaw_range[1],
         (len(env_ids), 1), device=env.device,
-    ).squeeze(1)
+    ).squeeze(1) * sampling_scale
     yaw = torch.where(modes == 0, pure_turn_yaw, torch.where(modes == 1, combined_yaw, 0.0))
     env.commands[env_ids, 2] = yaw
 

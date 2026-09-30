@@ -51,6 +51,9 @@ class LeggedRobotCfg(BaseConfig):
         mode_probabilities = [0.30, 0.30, 0.30, 0.10]  # 原地转向、边走边转、平移、站立的采样比例
         min_translation_speed = 0.25  # 平移场景最小平面命令速度 [m/s]
         min_turn_yaw = 0.35  # 原地转向场景最小偏航速度绝对值 [rad/s]；边走边转覆盖小 yaw
+        max_translation_speed = 1.0  # 平面速度模长上限 [m/s]，避免 XY 组合后超过目标速度
+        low_speed_probability = 0.30  # 命令采样中低速子集的比例，取值 [0, 1]
+        low_speed_scale = 0.35  # 低速子集相对完整 XY/yaw 范围的缩放，取值 (0, 1]
 
         class ranges:
             lin_vel_x = [-1.0, 1.0]  # 前向速度范围 [m/s]
@@ -116,11 +119,11 @@ class LeggedRobotCfg(BaseConfig):
             orientation = -0.2  # 姿态偏差惩罚
             dof_acc = -2.5e-7  # 关节加速度惩罚
             joint_power = -0.0  # 关节功率惩罚，零权重表示关闭
-            base_height = -0.0  # 机身高度偏差惩罚，零权重表示关闭
+            base_height = -0.0  # 所有命令下的高度容差惩罚，零权重表示关闭
             feet_air_time = 0.0  # 足端腾空时长奖励，walk 默认不额外鼓励跳跃步态
             foot_clearance = -0.0  # 足端抬脚约束，零权重表示关闭
             foot_slip = -0.0  # 接触地面的足端水平滑移惩罚
-            turn_step = 0.0  # 有效转向换步落地奖励，按每次落地计分
+            turn_step = 0.0  # 有效转向换步奖励，按每足时间预算计分而非累加落地次数
             action_rate = -0.01  # 动作变化率惩罚
             smoothness = -0.0  # 二阶动作平滑惩罚，零权重表示关闭
             torques = -0.0002  # 力矩惩罚
@@ -141,15 +144,19 @@ class LeggedRobotCfg(BaseConfig):
         soft_dof_vel_limit = 1.0  # 关节速度软限制比例
         soft_torque_limit = 1.0  # 关节扭矩软限制比例
         base_height_target = 1.0  # 期望机身高度
+        base_height_tolerance = 0.03  # 目标高度上下的无惩罚浮动范围 [m]
+        base_height_sigma = 0.05  # 超出高度容差后的归一化误差尺度 [m]，必须为正数
         stand_lin_vel_threshold = 0.1  # 站立命令的最大平移速度模长 [m/s]
         stand_ang_vel_threshold = 0.1  # 站立命令的最大偏航角速度绝对值 [rad/s]
         stand_contact_force_threshold = 5.0  # 足端支撑判定的最小向上接触力 [N]
         stand_height_sigma = 0.05  # 站立高度惩罚的误差尺度 [m]，必须大于 0
         clearance_height_target = -0.20  # 机身坐标系下的足端目标高度 [m]，启用 foot_clearance 时使用
+        clearance_height_sigma = 0.05  # 摆动足高度误差的归一化尺度 [m]，避免米制平方误差过小
         turn_step_min_air_time = 0.08  # 有效换步最短腾空时间 [s]
         turn_step_max_air_time = 0.45  # 有效换步最长腾空时间 [s]，防止鼓励长时间悬空
         turn_step_min_height = 0.035  # 足端相对上次接触高度的最小抬升 [m]
         turn_step_min_yaw = 0.35  # 启用转向换步奖励的最小偏航命令 [rad/s]
+        turn_step_reward_interval = 0.5  # 每足换步最多积累的奖励时间 [s]，高频落地不会增加单位时间预算
         collision_force_threshold = 5.0  # 非足端接触判定力阈值 [N]，过滤低力噪声
         collision_min_contact_time = 0.06  # 非足端接触需持续的时间 [s]，短暂碰撞只记录不惩罚
         max_contact_force = 100.  # 超过该接触力会被惩罚
@@ -213,7 +220,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         activation = 'elu'  # 激活函数：elu / relu / selu / crelu / lrelu / tanh / sigmoid
         estimator_hidden_dims = [128, 64, 16]  # HIMEstimator encoder 隐藏层，最后一维为 latent 维度
         estimator_target_hidden_dims = [128, 64]  # HIMEstimator target 分支隐藏层
-        estimator_learning_rate = 1.e-3  # HIMPPO 中 HIMEstimator 的独立学习率
+        estimator_learning_rate = 1.e-3  # HIMEstimator 初始学习率，更新时跟随 HIMPPO 学习率调度
         estimator_max_grad_norm = 10.0  # HIMEstimator 梯度裁剪上限
         estimator_num_prototype = 32  # HIM 对比学习原型数量
         estimator_temperature = 3.0  # HIM 对比学习温度系数
