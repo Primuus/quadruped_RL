@@ -127,7 +127,9 @@ class LeggedRobotCfg(BaseConfig):
             dof_vel = -0.0  # 关节速度惩罚
             collision = -0.0  # 非预期碰撞惩罚，walk 阶段先不让硬惩罚压制步态探索
             feet_stumble = -0.0  # 足端绊倒惩罚
-            stand_still = -0.0  # 静止状态惩罚/奖励项
+            stand_still = -0.0  # 零平移和零偏航命令下的默认关节角偏差惩罚
+            stand_contacts = -0.0  # 站立时缺少足端支撑的比例惩罚，零权重表示关闭
+            stand_height = -0.0  # 站立时的有界机身高度偏差惩罚，零权重表示关闭
             feet_contact_forces = -0.0  # 足端接触力过大的惩罚
             dof_pos_limits = -0.0  # 关节位置接近极限的惩罚
             dof_vel_limits = -0.0  # 关节速度接近极限的惩罚
@@ -139,6 +141,10 @@ class LeggedRobotCfg(BaseConfig):
         soft_dof_vel_limit = 1.0  # 关节速度软限制比例
         soft_torque_limit = 1.0  # 关节扭矩软限制比例
         base_height_target = 1.0  # 期望机身高度
+        stand_lin_vel_threshold = 0.1  # 站立命令的最大平移速度模长 [m/s]
+        stand_ang_vel_threshold = 0.1  # 站立命令的最大偏航角速度绝对值 [rad/s]
+        stand_contact_force_threshold = 5.0  # 足端支撑判定的最小向上接触力 [N]
+        stand_height_sigma = 0.05  # 站立高度惩罚的误差尺度 [m]，必须大于 0
         clearance_height_target = -0.20  # 机身坐标系下的足端目标高度 [m]，启用 foot_clearance 时使用
         turn_step_min_air_time = 0.08  # 有效换步最短腾空时间 [s]
         turn_step_max_air_time = 0.45  # 有效换步最长腾空时间 [s]，防止鼓励长时间悬空

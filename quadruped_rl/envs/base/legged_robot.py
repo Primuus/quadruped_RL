@@ -126,6 +126,7 @@ class LeggedRobot(BaseTask):
         if self.track_turn_steps:
             self._update_turn_step_state()
         self._update_penalized_contact_state()
+        self._update_stand_contact_state()
 
         # compute observations, rewards, resets, ...
         self.check_termination()
@@ -191,6 +192,8 @@ class LeggedRobot(BaseTask):
         self.turn_last_raw_contacts[env_ids] = False
         self.turn_last_filtered_contacts[env_ids] = False
         self.turn_step_valid[env_ids] = False
+        self.stand_last_raw_contacts[env_ids] = False
+        self.stand_contacts[env_ids] = False
         contact_metrics = {}
         for i, name in enumerate(self.penalized_contact_names):
             duty = self.penalized_contact_counts[env_ids, i] / self.episode_length_buf[env_ids].clamp(min=1)
@@ -472,6 +475,8 @@ class LeggedRobot(BaseTask):
         self.commands_scale = torch.tensor([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel], device=self.device, requires_grad=False,) # TODO change this
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
+        self.stand_last_raw_contacts = torch.zeros_like(self.last_contacts)
+        self.stand_contacts = torch.zeros_like(self.last_contacts)
         self.turn_swing_time = torch.zeros_like(self.feet_air_time)
         self.turn_swing_peak = torch.zeros_like(self.feet_air_time)
         self.turn_ground_height = torch.zeros_like(self.feet_air_time)
@@ -693,6 +698,9 @@ class LeggedRobot(BaseTask):
         self.dt = self.cfg.control.decimation * self.sim_params.dt
         self.obs_scales = self.cfg.normalization.obs_scales
         self.reward_scales = class_to_dict(self.cfg.rewards.scales)
+        if self.reward_scales.get("stand_height", 0.0) != 0.0:
+            if not math.isfinite(self.cfg.rewards.stand_height_sigma) or self.cfg.rewards.stand_height_sigma <= 0.0:
+                raise ValueError("rewards.stand_height_sigma must be finite and positive when stand_height is enabled")
         self.use_rigid_body_state = reward_requires_rigid_body_state(self.reward_scales)
         self.track_turn_steps = self.reward_scales.get("turn_step", 0.0) != 0.0
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
@@ -786,6 +794,9 @@ class LeggedRobot(BaseTask):
         steps = self.turn_step_valid.sum(dim=1)
         contacts = contact.sum(dim=1)
         tilt = torch.linalg.vector_norm(self.projected_gravity[:, :2], dim=1)
+        base_height = self._get_base_heights()
+        joint_pose_error = torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)
+        supporting_feet = self.stand_contacts.sum(dim=1)
         metrics = {}
         for index, name in enumerate(("turn", "moving_turn", "translate", "stand")):
             selected = (self.command_modes == index).to(yaw_error.dtype)
@@ -797,6 +808,9 @@ class LeggedRobot(BaseTask):
                 (slip * selected).sum(),
                 (contacts * selected).sum(),
                 (tilt * selected).sum(),
+                (base_height * selected).sum(),
+                (joint_pose_error * selected).sum(),
+                (supporting_feet * selected).sum(),
             ))
         return metrics
     
@@ -879,9 +893,28 @@ class LeggedRobot(BaseTask):
         return torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\
              5 *torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
         
+    def _standing_command_mask(self):
+        return (
+            (torch.norm(self.commands[:, :2], dim=1) <= self.cfg.rewards.stand_lin_vel_threshold)
+            & (torch.abs(self.commands[:, 2]) <= self.cfg.rewards.stand_ang_vel_threshold)
+        )
+
+    def _update_stand_contact_state(self):
+        # Preserve support across one missed force sample; reset history at episode boundaries.
+        contact = self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.stand_contact_force_threshold
+        self.stand_contacts[:] = contact | self.stand_last_raw_contacts
+        self.stand_last_raw_contacts[:] = contact
+
     def _reward_stand_still(self):
-        # Penalize motion at zero commands
-        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) * self._standing_command_mask()
+
+    def _reward_stand_contacts(self):
+        missing_support = (~self.stand_contacts).float().mean(dim=1)
+        return missing_support * self._standing_command_mask()
+
+    def _reward_stand_height(self):
+        height_error = (self._get_base_heights() - self.cfg.rewards.base_height_target) / self.cfg.rewards.stand_height_sigma
+        return (1.0 - torch.exp(-torch.square(height_error))) * self._standing_command_mask()
 
     def _reward_feet_contact_forces(self):
         # penalize high contact forces

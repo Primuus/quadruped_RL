@@ -178,6 +178,9 @@ class HIMOnPolicyRunner:
             self.writer.add_scalar(prefix + '/foot_slip_speed', (values[4] / count).item(), completed_iteration)
             self.writer.add_scalar(prefix + '/feet_in_contact', (values[5] / count).item(), completed_iteration)
             self.writer.add_scalar(prefix + '/tilt', (values[6] / count).item(), completed_iteration)
+            self.writer.add_scalar(prefix + '/base_height', (values[7] / count).item(), completed_iteration)
+            self.writer.add_scalar(prefix + '/joint_pose_error', (values[8] / count).item(), completed_iteration)
+            self.writer.add_scalar(prefix + '/supporting_feet', (values[9] / count).item(), completed_iteration)
 
         mean_std = self.alg.actor_critic.std.mean()
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))

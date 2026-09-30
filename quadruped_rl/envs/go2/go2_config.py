@@ -78,7 +78,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
 
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9  # 关节软限制比例
-        base_height_target = 0.25  # 期望机身相对地面高度，基础 reward 默认不启用
+        base_height_target = 0.28  # 站立目标机身高度 [m]，区别于 0.42 m 的初始落地高度
         clearance_height_target = -0.20  # 机身坐标系下足端目标高度，启用 foot_clearance 时使用
         only_positive_rewards = True  # 裁剪负总奖励，降低早期训练不稳定性
 
@@ -101,7 +101,9 @@ class GO2RoughCfg( LeggedRobotCfg ):
             dof_vel = -0.0  # 关节速度惩罚
             collision = -0.3  # 持续大腿/小腿触地惩罚，避免用非足端支撑机身
             feet_stumble = -0.0  # 足端绊倒惩罚
-            stand_still = -0.0  # 静止姿态惩罚
+            stand_still = -0.1  # 零命令下的默认站姿偏差惩罚，不作用于原地转向
+            stand_contacts = -0.4  # 站立时缺少足端支撑的比例惩罚，四足支撑时为 0
+            stand_height = -0.4  # 站立高度偏差惩罚，上限为 0.4，避免低趴解
             feet_contact_forces = -0.0  # 足端接触力惩罚
             dof_pos_limits = -10.0  # 关节位置限制惩罚，参考 Unitree Go2 配置
             dof_vel_limits = -0.0  # 关节速度限制惩罚

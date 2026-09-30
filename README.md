@@ -258,6 +258,25 @@ ONNX opset：17
 
 ## 调参流程
 
+### 零命令站立
+
+站立奖励要求平移命令模长不超过 `rewards.stand_lin_vel_threshold=0.1` m/s，且偏航命令绝对值不超过 `stand_ang_vel_threshold=0.1` rad/s。原地转向不满足这一条件，因此不会被要求保持默认站姿或四足同时支撑。
+
+Go2 启用以下三项：
+
+| 参数 | 当前权重 | 含义 |
+| --- | --- | --- |
+| `stand_still` | `-0.1` | 惩罚实际关节角相对默认站姿的绝对偏差之和 |
+| `stand_contacts` | `-0.4` | 惩罚缺少支撑的足端比例；四足支撑时为 0 |
+| `stand_height` | `-0.4` | 惩罚机身高度偏离 `base_height_target`，单项原始惩罚限制在 0 到 1 |
+
+足端向上接触力超过 `stand_contact_force_threshold=5.0` N 才算支撑，允许一次控制步的接触力漏检，历史在回合重置时清空。Go2 的 `base_height_target=0.28` m 是本轮站立目标；0.42 m 是初始落地高度，不是站立目标。`stand_height_sigma=0.05` m 控制高度误差惩罚的变化尺度，必须为正数。全局 `base_height` 项仍关闭，本轮高度约束仅作用于站立命令。新增机器人时应按其正常承重站姿重新设定目标高度和默认角。
+
+观察 `Episode/rew_stand_still`、`Episode/rew_stand_contacts`、`Episode/rew_stand_height`，以及 `Command/stand/base_height`、`joint_pose_error`、`supporting_feet`。后者分别是平均机身高度、关节角绝对偏差之和、按上述力阈值与漏检过滤统计的支撑足数；不要把原有未经滤波的 `feet_in_contact` 与 `supporting_feet` 混为同一指标。
+
+修正奖励不会改变已经导出的模型。建议另建 `--run_name stand_fix` 从头训练并比较零命令站立和原地转向；新策略验证后再导出到部署侧。
+
+
 每次只调整一个参数组：
 
 ```text
