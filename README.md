@@ -120,6 +120,15 @@ python3 src/controller/rl/tools/compare_policy_backends.py \
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py
 ```
 
+当前 `config/go2.yaml` 选择包含 Go2 模型的 `ROBOCON2027.xml`。临时切换到平地对照场景：
+
+```bash
+python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
+  --xml-path src/controller/rl/resources/robots/go2/scene_flat.xml
+```
+
+场景路径可以通过 YAML 的 `xml_path` 或 `--xml-path` 指定。`ROBOCON2027.xml` 使用平面和静态障碍物构建场地，不依赖外部高度图；场地欧拉角单位为弧度，与 `go2.xml` 一致。切换仿真场景不会改变训练侧地形，也不代表现有策略已经具备越障能力。
+
 无界面运行：
 
 ```bash

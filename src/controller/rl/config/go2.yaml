@@ -5,8 +5,8 @@ robot_name: go2
 
 # 训练导出的策略文件，部署时默认加载这个权重
 policy_path: models/policy_1.pt
-# MuJoCo 默认使用与当前平地训练环境一致的场景；障碍测试可通过 --xml-path 指定 scene_obstacles.xml
-xml_path: resources/robots/go2/scene_flat.xml
+# MuJoCo 使用包含 Go2 的 ROBOCON 场景；平地对照可通过 --xml-path 指定 scene_flat.xml
+xml_path: resources/robots/go2/ROBOCON2027.xml
 
 # 仿真总时长 [s]
 simulation_duration: 60.0
