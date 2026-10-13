@@ -135,13 +135,22 @@
           rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
       </material>
     </visual>
-    <collision>
+    <collision name="FL_thigh_motor_collision">
       <origin
         xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="../stl/FL_thigh_link.STL" />
+          filename="../collision/FL_thigh_motor.STL" />
+      </geometry>
+    </collision>
+    <collision name="FL_thigh_plate_collision">
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../collision/FL_thigh_plate.STL" />
       </geometry>
     </collision>
   </link>
@@ -371,13 +380,22 @@
           rgba="1 1 1 1" />
       </material>
     </visual>
-    <collision>
+    <collision name="FR_thigh_motor_collision">
       <origin
         xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="../stl/FR_thigh_link.STL" />
+          filename="../collision/FR_thigh_motor.STL" />
+      </geometry>
+    </collision>
+    <collision name="FR_thigh_plate_collision">
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../collision/FR_thigh_plate.STL" />
       </geometry>
     </collision>
   </link>
@@ -607,13 +625,22 @@
           rgba="0.180392156862745 0.180392156862745 0.180392156862745 1" />
       </material>
     </visual>
-    <collision>
+    <collision name="RL_thigh_motor_collision">
       <origin
         xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="../stl/RL_thigh_link.STL" />
+          filename="../collision/RL_thigh_motor.STL" />
+      </geometry>
+    </collision>
+    <collision name="RL_thigh_plate_collision">
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../collision/RL_thigh_plate.STL" />
       </geometry>
     </collision>
   </link>
@@ -843,13 +870,22 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision>
+    <collision name="RR_thigh_motor_collision">
       <origin
         xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="../stl/RR_thigh_link.STL" />
+          filename="../collision/RR_thigh_motor.STL" />
+      </geometry>
+    </collision>
+    <collision name="RR_thigh_plate_collision">
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../collision/RR_thigh_plate.STL" />
       </geometry>
     </collision>
   </link>
