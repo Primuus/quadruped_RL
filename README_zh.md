@@ -9,4 +9,4 @@
 - [训练调参教程](https://github.com/Primuus/quadruped_RL/blob/main/doc/训练调参教程.md)
 - [TensorBoard 使用指南](https://github.com/Primuus/quadruped_RL/blob/main/doc/TensorBoard使用指南.md)
 
-当前只注册 Go2 训练任务；Primuus 只有部署工程中的模型资源，尚无训练任务和匹配策略。参数与功能状态以主 README 和当前源码为准。
+当前已独立注册Go2与Primuus，通用入口默认Primuus；Go2专用入口保持不变。Primuus任务尚未进行训练或GPU仿真验收，也没有匹配策略。参数与功能状态以主README和当前源码为准。

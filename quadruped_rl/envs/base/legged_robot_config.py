@@ -66,6 +66,7 @@ class LeggedRobotCfg(BaseConfig):
         rot = [0.0, 0.0, 0.0, 1.0]  # 初始四元数姿态
         lin_vel = [0.0, 0.0, 0.0]  # 初始线速度 [m/s]
         ang_vel = [0.0, 0.0, 0.0]  # 初始角速度 [rad/s]
+        dof_pos_scale_range = [0.5, 1.5]  # 复位关节角相对默认角的倍率；各机器人可独立覆盖
         default_joint_angles = {  # action=0 时的目标关节角
             "joint_a": 0.,
             "joint_b": 0.
@@ -100,6 +101,8 @@ class LeggedRobotCfg(BaseConfig):
         max_linear_velocity = 1000.  # 最大线速度
         armature = 0.  # 转动惯量附加项
         thickness = 0.01  # 碰撞几何厚度
+        contact_offset = None  # 可选的单形状接触距离 [m]；None 保留导入器原值
+        rest_offset = None  # 可选的单形状静止接触偏移 [m]；需与 contact_offset 一起设置
 
     class domain_rand:
         randomize_friction = False  # 是否随机化地面摩擦，默认关闭

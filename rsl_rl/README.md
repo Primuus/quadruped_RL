@@ -2,7 +2,7 @@
 
 [返回训练首页](../README.md)
 
-这是随工程维护的 `rsl_rl` 分支，包版本元数据仍为 `1.0.2`，不能据此认为它与上游同版本源码完全相同。现有 Go2 任务使用 HIM-PPO；不要单独升级或用上游安装覆盖这些实现。
+这是随工程维护的 `rsl_rl` 分支，包版本元数据仍为 `1.0.2`，不能据此认为它与上游同版本源码完全相同。现有Go2与Primuus任务均使用HIM-PPO；不要单独升级或用上游安装覆盖这些实现。
 
 源码源自 RSL RL，保留 NVIDIA、ETH Zurich、Nikita Rudin 等原始文件声明，许可见 [LICENSE](LICENSE)。HIM 相关实现及当前工程的导出契约以本目录实际代码为准。
 
@@ -20,7 +20,7 @@ python -m pip install --no-deps -e ./rsl_rl
 HIMActorCritic -> HIMPPO -> HIMOnPolicyRunner
 ```
 
-当前通用基类仍有普通 PPO 默认值，Go2 配置显式覆盖为上述 HIM 组合。新增任务必须做同样的显式选择。
+当前通用基类仍有普通PPO默认值，Go2与Primuus分别在自身配置中显式选择上述HIM组合。新增任务必须做同样的显式选择。
 
 ## 文件职责
 
@@ -33,7 +33,7 @@ HIMActorCritic -> HIMPPO -> HIMOnPolicyRunner
 | `rsl_rl/storage/him_rollout_storage.py` | 存储 rollout、历史输入及下一时刻 critic 观测 |
 | `rsl_rl/runners/him_on_policy_runner.py` | 采样、终止前状态接续、优化调度、TensorBoard 和 checkpoint |
 | `rsl_rl/modules/actor_critic*.py` | 保留的普通 MLP / recurrent actor-critic 实现 |
-| `rsl_rl/algorithms/ppo.py`、`rsl_rl/storage/rollout_storage.py`、`rsl_rl/runners/on_policy_runner.py` | 保留的普通 PPO 链路；当前 Go2 不使用 |
+| `rsl_rl/algorithms/ppo.py`、`rsl_rl/storage/rollout_storage.py`、`rsl_rl/runners/on_policy_runner.py` | 保留的普通PPO链路；当前Go2、Primuus均不使用 |
 | 各目录 `__init__.py` | 暴露类名，供训练任务注册器选择 |
 
 机器人资产、奖励、命令和域随机化不在算法库里实现。导出工具也不在 runner 中，而在训练工程的 `quadruped_rl/utils/helpers.py`。

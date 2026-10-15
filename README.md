@@ -16,7 +16,7 @@
 
 `quadruped_train` 是强化学习训练工作区，负责在 Isaac Gym 中训练四足机器人策略，并从同一个部署模型直接导出给本地 `quadruped` 工程使用的 TorchScript 和 ONNX 策略。
 
-当前已经接入的机器人实例是 Go2。框架设计不是 Go2 专用，后续新增其他四足机器人时，应新增机器人配置、资产和任务注册，而不是改 HIM-PPO 主算法。
+当前已接入 Go2 和 Primuus 两个独立任务，通用入口默认选择 Primuus。二者的环境和配置分别继承 `base`，不互相导入、继承或读取对方资产；后续新增机器人也按相同方式扩展，不改 HIM-PPO 主算法。
 
 ## 工程定位
 
@@ -75,13 +75,13 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
 
 | 项目 | 当前状态 |
 | --- | --- |
-| 已注册训练任务 | 只有 `go2`，不是所有机器人都已有可运行任务 |
+| 已注册训练任务 | `go2`、`primuus`；通用入口默认 `primuus`，专用入口固定选择各自任务 |
 | 训练环境 | Isaac Gym Preview / PhysX；自定义 `quadruped_rl`，不是 Isaac Lab |
 | 默认并行规模 | 4096 环境，20 s 回合，50 Hz 策略周期 |
 | 训练地形 | 当前 `create_sim()` 只创建平地；配置保留地形字段不等于已接入粗糙地形 |
 | critic 外力与高度 | 3 + 187 维目前为零占位；没有实际外力/高度数据回填 |
-| 正式算法 | Go2 选择 HIM-PPO；普通 PPO 源码仍保留在算法包中，但不是当前任务所选链路 |
-| Primuus | 模型在部署工程中；未注册训练任务，未提供匹配策略 |
+| 正式算法 | Go2 和 Primuus 均选择 HIM-PPO；普通 PPO 源码仍保留，但不是这两个任务所选链路 |
+| Primuus | 独立资产、任务和 train/play 入口已接入；未执行训练或GPU仿真验收，没有匹配策略 |
 | 实机验收 | 不在本仓库进行，部署软件存在不等于硬件已经验证 |
 
 当前结构借鉴 HIMLoco 的历史观测、estimator 和非对称 actor-critic；不能把它理解为上游 HIMLoco 的所有地形、随机化和机器人能力均已复现。
@@ -90,10 +90,13 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
 
 - `quadruped_rl/envs/base/`：四足机器人通用环境基类、观测、reward、随机化、命令和终止条件。
 - `quadruped_rl/envs/go2/`：当前 Go2 机器人实例配置、资产适配和兼容封装。
+- `quadruped_rl/envs/primuus/`：Primuus独立配置与环境入口，只依赖通用base，不使用Go2兼容封装。
 - `quadruped_rl/scripts/train.py`：通用训练入口，通过 `--task <robot>` 选择机器人任务。
 - `quadruped_rl/scripts/play.py`：通用 play / 策略导出入口，通过 `--task <robot>` 选择机器人任务。
 - `quadruped_rl/scripts/train_go2.py`：Go2 快捷训练入口，会自动设置 `--task go2`。
 - `quadruped_rl/scripts/play_go2.py`：Go2 快捷 play / 策略导出入口。
+- `quadruped_rl/scripts/train_primuus.py` / `play_primuus.py`：Primuus专用训练和play/双格式导出入口。
+- `resources/robots/go2/` / `resources/robots/primuus/`：独立模型资产；Primuus包含URDF及全部引用的STL、凸分块和自碰撞排除规则。
 - `quadruped_rl/utils/`：任务注册、导出、日志和工具；`terrain.py` 尚未接入当前平地创建链路。
 - `rsl_rl/`：随工程同步的 RL 算法库，当前包含 HIM-PPO 相关实现。
 - `docker/`：Docker 训练环境构建脚本。
@@ -149,7 +152,7 @@ bash docker/build.sh
 直接在容器里执行训练检查：
 
 ```bash
-bash docker/build.sh python quadruped_rl/scripts/train_go2.py --headless --max_iterations 2
+bash docker/build.sh python quadruped_rl/scripts/train_primuus.py --headless --max_iterations 2
 ```
 
 ## 训练命令
@@ -157,17 +160,23 @@ bash docker/build.sh python quadruped_rl/scripts/train_go2.py --headless --max_i
 修改训练代码或配置后，先做小步稳定性检查：
 
 ```bash
-python quadruped_rl/scripts/train_go2.py --headless --max_iterations 2
-python quadruped_rl/scripts/train_go2.py --headless --max_iterations 100
+python quadruped_rl/scripts/train_primuus.py --headless --max_iterations 2
+python quadruped_rl/scripts/train_primuus.py --headless --max_iterations 100
 ```
 
 通用训练入口：
 
 ```bash
-python quadruped_rl/scripts/train.py --task go2 --headless
+python quadruped_rl/scripts/train.py --task primuus --headless
 ```
 
-Go2 快捷训练入口：
+Primuus快捷训练入口（本次只接入代码，以下命令留给用户执行）：
+
+```bash
+python quadruped_rl/scripts/train_primuus.py --headless
+```
+
+Go2快捷入口保持不变，始终训练Go2，不受通用入口默认值影响：
 
 ```bash
 python quadruped_rl/scripts/train_go2.py --headless
@@ -176,7 +185,7 @@ python quadruped_rl/scripts/train_go2.py --headless
 常用长训示例：
 
 ```bash
-python quadruped_rl/scripts/train_go2.py \
+python quadruped_rl/scripts/train_primuus.py \
   --headless \
   --num_envs 4096 \
   --seed 1 \
@@ -206,19 +215,39 @@ python quadruped_rl/scripts/train_go2.py \
 
 | 参数 | 示例 | 说明 |
 | --- | --- | --- |
-| `--task` | `--task go2` | 任务名，当前默认 Go2。 |
+| `--task` | `--task primuus` | 通用入口任务名，默认Primuus；两个机器人专用入口分别强制选择自己的task。 |
 | `--headless` | `--headless` | 无窗口运行，适合服务器。 |
 | `--num_envs` | `--num_envs 4096` | 并行环境数量。 |
 | `--seed` | `--seed 1` | 随机种子。 |
 | `--max_iterations` | `--max_iterations 10000` | 本次 `learn()` 执行的迭代数；resume 时是追加量，不是总迭代上限。 |
 | `--run_name` | `--run_name rough` | 本次实验名。 |
-| `--experiment_name` | `--experiment_name go2` | 日志目录名。 |
+| `--experiment_name` | `--experiment_name primuus` | 日志目录名；建议保留各机器人默认值，避免混合checkpoint。 |
 | `--resume` | `--resume` | 从 checkpoint 继续训练。 |
 | `--load_run` | `--load_run Oct15_20-00-00_rough` | 完整 run 目录名，不是 `--run_name` 的后缀。 |
 | `--checkpoint` | `--checkpoint 500` | 指定 checkpoint 编号。 |
 | `--rl_device` | `--rl_device cuda:0` | RL 算法设备。 |
 
 `--horovod` 虽仍在参数解析器中，但当前 runner 未实现分布式训练链路，不作为可用多 GPU 命令推荐。
+
+## Primuus 独立任务
+
+配置入口为 [primuus_config.py](quadruped_rl/envs/primuus/primuus_config.py)，资产说明见 [Primuus训练资产](resources/robots/primuus/README.md)。Go2的配置文件、模型和专用入口保持不变。
+
+| 项目 | Primuus初始配置 |
+| --- | --- |
+| 通用训练设置 | 沿用Go2的HIM-PPO、4096环境、45×6 actor、238维critic、12维动作、20 s回合、奖励权重、命令分布、噪声及摩擦随机化 |
+| PD / 动作缩放 | `20 / 0.5`、`0.25`，与部署 `config/primuus.yaml` 同步 |
+| 默认关节角 | 按FL/FR/RL/RR排列，每腿 `[0, -0.75, -1.5]`，不使用Go2默认姿态 |
+| 复位条件 | 机身从0.42 m落地，关节角倍率 `[0.9, 1.1]`；不改机械关节限位 |
+| 高度奖励 | 沿用0.28±0.03 m；既有模型承重参考高度约0.294 m，不代表新PD已验证 |
+| 物理及控制周期 | `dt=0.00025 / substeps=1 / decimation=80`，PD 4 kHz，策略50 Hz，与MuJoCo一致 |
+| 碰撞 | 21 link / 12 DOF / 169形状，保留固定足端和小腿碰撞载体，加载20对命名排除；不全局关闭自碰撞 |
+| 力矩 | 从Primuus URDF读取每关节 `23.7 N m` 上限；不假定与Go2相同 |
+| 输出 | checkpoint在 `logs/primuus/<run>/`，导出在 `logs/primuus/exported/policies/` |
+
+Primuus的主步数是Go2的20倍，且碰撞形状更多，4096环境吞吐与显存尚未测量；不要把相同环境数、相同电机理解为相同仿真成本或步态效果。当前配置是起点，不是已完成训练的参数。它没有依赖现有Go2策略，首次必须从头训练，不使用Go2的 `--resume` 或实验目录。
+
+本次仅完成代码、资产和静态契约检查，未启动训练、play或GPU物理仿真。
 
 ## 自碰撞配置
 
@@ -243,9 +272,9 @@ PhysX 会始终过滤 articulation 的直接父子 link，命名接口不能解�
 
 关节限位应来自机械设计。不能仅为消除穿插而收紧范围，也不能用 reward 替代实际碰撞约束。Primuus URDF/XML 已恢复原始小腿范围 `[-2.7227, -0.8378] rad`，通过分段凸几何、固定碰撞载体及接触求解处理穿插；不是依靠修改关节零位或添加新驱动关节。
 
-Primuus 的碰撞模型及接入条件维护在部署工程 `src/controller/rl/resources/robots/primuus/README.md`。其 21 个 link 包含 4 个仿真碰撞载体，仍只有 12 个驱动关节、4 个独立足端，不改变 `45 * 6` 观测契约。接入时必须完整复制模型目录、加载 20 对命名排除规则，并复核物理子步、接触偏移、策略周期和 PD 更新频率；不要把当前 Go2 参数视为所有机器人的默认物理参数。
+Primuus的碰撞模型说明维护在部署工程 `src/controller/rl/resources/robots/primuus/README.md`。训练资产已复制到本仓库，21个link包含4个仿真碰撞载体，仍只有12个驱动关节、4个独立足端，不改变 `45 * 6` 观测契约。模型更新时同步完整URDF引用资产和20对命名排除规则；不要把当前Go2参数视为所有机器人的默认物理参数。
 
-实现位于 `quadruped_rl/envs/base/self_collision.py`，在资产导入后、创建 actor 前应用。Primuus 模型提供 `collision/self_collision_exclusions.json` 作为列表来源，但本次没有新增 Primuus 训练任务，也没有更改 Go2 的奖励、PD、观测或训练开关。
+实现位于 `quadruped_rl/envs/base/self_collision.py`，在资产导入后、创建actor前应用。Primuus任务读取自身 `collision/self_collision_exclusions.json`。通用 `asset.contact_offset / rest_offset` 可成对显式设置每个形状的接触距离，默认均为 `None`，保留Go2导入行为；Primuus分别设为1 mm / 0.5 mm。
 
 ## 续训规则
 
@@ -271,26 +300,26 @@ Primuus 的碰撞模型及接入条件维护在部署工程 `src/controller/rl/r
 训练完成后，用 play 入口加载 checkpoint，并从同一个 `estimator + actor` 部署模块直接导出 TorchScript 和 ONNX：
 
 ```bash
-python quadruped_rl/scripts/play.py --task go2 --headless
+python quadruped_rl/scripts/play.py --task primuus --headless
 ```
 
-Go2 快捷入口等价于：
+Primuus快捷入口等价于：
 
 ```bash
-python quadruped_rl/scripts/play_go2.py --headless
+python quadruped_rl/scripts/play_primuus.py --headless
 ```
 
 默认同时生成：
 
 ```text
-logs/go2/exported/policies/policy_1.pt
-logs/go2/exported/policies/policy_1.onnx
+logs/primuus/exported/policies/policy_1.pt
+logs/primuus/exported/policies/policy_1.onnx
 ```
 
 指定某个 run 或 checkpoint：
 
 ```bash
-python quadruped_rl/scripts/play_go2.py \
+python quadruped_rl/scripts/play_primuus.py \
   --headless \
   --load_run Oct15_20-00-00_rough \
   --checkpoint 1000
@@ -299,12 +328,12 @@ python quadruped_rl/scripts/play_go2.py \
 两个模型都直接从当前 PyTorch `estimator + actor` 导出，ONNX 不经过 TorchScript 二次转换。两者外部输入、输出和权重来源一致：
 
 ```text
-输入：obs_history，当前 Go2 为 [batch, 270] float32
-输出：actions，当前 Go2 为 [batch, 12] float32
+输入：obs_history，Go2和Primuus均为 [batch, 270] float32
+输出：actions，Go2和Primuus均为 [batch, 12] float32
 ONNX opset：17
 ```
 
-部署模型外部输入维度必须和机器人任务配置一致。当前 Go2 实例保持 270 维历史观测。
+部署模型外部输入维度必须和机器人任务配置一致。Go2仍使用 `play_go2.py`，默认导出到 `logs/go2/exported/policies/`。两者输入形状相同不代表权重可互换。Primuus部署YAML预留路径为 `models/primuus/policy.pt`，得到导出的 `policy_1.pt` 后需要按YAML路径放置，或显式修改YAML，不能直接覆盖Go2模型。
 
 上例 run 名必须替换为实际目录。未指定 `--load_run` 时，从含 checkpoint 的 run 中选择 checkpoint 文件修改时间最新的目录；未指定 `--checkpoint` 时，在该 run 中选编号最大的 `model_*.pt`。这不是按最高 reward 选“最好策略”。
 
@@ -405,8 +434,8 @@ python quadruped_rl/scripts/train_go2.py --headless --max_iterations 1500 --run_
 
 ```text
 quadruped_train 训练
-  -> play_go2.py 同时导出 policy_1.pt / policy_1.onnx
-  -> 复制到 quadruped/src/controller/rl/models/
+  -> play_primuus.py / play_go2.py 分别导出 policy_1.pt / policy_1.onnx
+  -> 复制到 quadruped 中与机器人YAML匹配的独立模型路径
   -> quadruped 本地 MuJoCo 分别运行 TorchScript / ONNX Runtime
 ```
 

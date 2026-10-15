@@ -352,13 +352,14 @@ class LeggedRobot(BaseTask):
 
     def _reset_dofs(self, env_ids):
         """ Resets DOF position and velocities of selected environmments
-        Positions are randomly selected within 0.5:1.5 x default positions.
+        Positions are sampled within cfg.init_state.dof_pos_scale_range x default positions.
         Velocities are set to zero.
 
         Args:
             env_ids (List[int]): Environemnt ids
         """
-        self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof), device=self.device)
+        low, high = self.cfg.init_state.dof_pos_scale_range
+        self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(low, high, (len(env_ids), self.num_dof), device=self.device)
         self.dof_vel[env_ids] = 0.
 
         env_ids_int32 = env_ids.to(dtype=torch.int32)
@@ -606,6 +607,10 @@ class LeggedRobot(BaseTask):
         self.num_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
         dof_props_asset = self.gym.get_asset_dof_properties(robot_asset)
         rigid_shape_props_asset = self.gym.get_asset_rigid_shape_properties(robot_asset)
+        if self.cfg.asset.contact_offset is not None:
+            for shape in rigid_shape_props_asset:
+                shape.contact_offset = self.cfg.asset.contact_offset
+                shape.rest_offset = self.cfg.asset.rest_offset
 
         # save body names from the asset
         body_names = self.gym.get_asset_rigid_body_names(robot_asset)
@@ -678,6 +683,15 @@ class LeggedRobot(BaseTask):
         self.env_origins[:, 2] = 0.
 
     def _parse_cfg(self, cfg):
+        low, high = cfg.init_state.dof_pos_scale_range
+        if not math.isfinite(low) or not math.isfinite(high) or not 0.0 < low <= high:
+            raise ValueError("init_state.dof_pos_scale_range must contain two ordered positive finite values")
+        contact_offset, rest_offset = cfg.asset.contact_offset, cfg.asset.rest_offset
+        if contact_offset is not None or rest_offset is not None:
+            if (contact_offset is None or rest_offset is None
+                    or not math.isfinite(contact_offset) or not math.isfinite(rest_offset)
+                    or not 0.0 <= rest_offset < contact_offset):
+                raise ValueError("asset contact offsets require finite 0 <= rest_offset < contact_offset")
         self.num_one_step_obs = getattr(cfg.env, "num_one_step_observations", 45)
         self.history_length = getattr(cfg.env, "history_length", 6)
         if self.num_one_step_obs != 45:
