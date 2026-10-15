@@ -1,5 +1,5 @@
 # Primuus 的 sim2sim 配置；新增或修改参数时请保留中文说明。
-# 当前 PD / 默认姿态来自模型站立测试，尚不是已经训练验证的 Primuus 策略配置。
+# 已与独立 Primuus 训练任务对齐；尚未执行该任务的训练或 GPU 验收。
 
 # 机器人实例名称，不影响 Go2 的默认配置
 robot_name: primuus
@@ -27,12 +27,12 @@ history_length: 6
 num_obs: 270
 # 训练 critic 单帧维度：45 + 线速度3 + 外力3 + 高度187；部署 actor 不使用
 num_one_step_privileged_obs: 238
-# 保留当前框架的 critic 维度契约，未来须与 Primuus 训练配置同步
+# 与 Primuus 训练任务保持一致；部署 actor 不读取这些特权观测
 num_privileged_obs: 238
 # 当前部署框架的通用 45 * 6 历史观测模式
 obs_mode: quadruped_history_45x6
 
-# 与 Primuus XML 的关节名称、未来策略的动作输出顺序保持一致
+# 与 Primuus XML 的关节名称、训练策略的动作输出顺序保持一致
 joint_names:
   - FL_hip_joint
   - FL_thigh_joint
@@ -62,35 +62,35 @@ actuator_names:
   - RR_thigh
   - RR_calf
 
-# 关节端 PD 比例增益 [N m/rad]，当前仅为站立模型测试基线，不是厂家推荐值
+# 关节端 PD 比例增益 [N m/rad]，先沿用 Go2 基线，与 primuus_config.py 同步
 kps:
-  - 60.0
-  - 60.0
-  - 60.0
-  - 60.0
-  - 60.0
-  - 60.0
-  - 60.0
-  - 60.0
-  - 60.0
-  - 60.0
-  - 60.0
-  - 60.0
+  - 20.0
+  - 20.0
+  - 20.0
+  - 20.0
+  - 20.0
+  - 20.0
+  - 20.0
+  - 20.0
+  - 20.0
+  - 20.0
+  - 20.0
+  - 20.0
 
-# 关节端 PD 微分增益 [N m s/rad]，未来需要与 Primuus 训练侧同步
+# 关节端 PD 微分增益 [N m s/rad]，与 Primuus 训练侧同步
 kds:
-  - 1.5
-  - 1.5
-  - 1.5
-  - 1.5
-  - 1.5
-  - 1.5
-  - 1.5
-  - 1.5
-  - 1.5
-  - 1.5
-  - 1.5
-  - 1.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
+  - 0.5
 
 # action=0 时的关节目标 [rad]；Primuus 大腿轴为 -Y，不能套用 Go2 的正角度站姿
 # 四腿均为 hip=0、thigh=-0.75、calf=-1.5，与 XML 的 home 关键帧一致
@@ -108,11 +108,11 @@ default_angles:
   - -0.75
   - -1.5
 
-# action 到关节目标角偏移的比例 [rad]，暂沿用框架设置；训练新机器人时必须对齐
+# action 到关节目标角偏移的比例 [rad]，与 Primuus 训练任务一致
 action_scale: 0.25
-# 完整历史观测裁剪幅度，未来须与训练 normalization.clip_observations 一致
+# 完整历史观测裁剪幅度，与训练 normalization.clip_observations 一致
 clip_observations: 100.0
-# 策略动作裁剪幅度，未来须与训练 normalization.clip_actions 一致
+# 策略动作裁剪幅度，与训练 normalization.clip_actions 一致
 clip_actions: 100.0
 
 # 初始速度命令 [vx, vy, yaw_rate]，默认清零，不主动要求行走
@@ -121,7 +121,7 @@ command_init:
   - 0.0
   - 0.0
 
-# 键盘速度命令幅度上限 [m/s, m/s, rad/s]，未来须与训练命令范围匹配
+# 键盘速度命令幅度上限 [m/s, m/s, rad/s]，与训练命令范围匹配
 command_limits:
   - 1.0
   - 1.0
@@ -173,7 +173,8 @@ obs_scale_dof_pos: 1.0
 # 关节角速度的观测缩放
 obs_scale_dof_vel: 0.05
 
-# 初始机身位置 [m]，默认姿态下足端距平地约 2 mm；不是稳态站立高度目标
+# 初始机身位置 [m]，默认姿态下足端距平地约 2 mm；训练以 0.42 m 落地并扰动姿态
+# 初始落地条件可以不同，不改变共享的默认关节目标和观测契约
 initial_base_pos:
   - 0.0
   - 0.0
