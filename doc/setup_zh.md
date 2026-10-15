@@ -1,159 +1,145 @@
-# 安装配置文档
+# 训练环境安装与服务器使用
 
-## 系统要求
+[返回训练首页](../README.md) | [English](setup_en.md)
 
-- **操作系统**：推荐使用 Ubuntu 18.04 或更高版本  
-- **显卡**：Nvidia 显卡  
-- **驱动版本**：建议使用 525 或更高版本  
+本指南只对应本仓库的 Isaac Gym + HIM-PPO 训练链路。部署工程使用独立环境；不需要安装 ROS2、Unitree SDK2、`unitree_rl_gym`，也不要从上游克隆另一个 `rsl_rl` 覆盖本仓库的修改。
 
----
+## 当前服务器
 
-## 1. 创建虚拟环境
-
-建议在虚拟环境中运行训练或部署程序，推荐使用 Conda 创建虚拟环境。如果您的系统中已经安装了 Conda，可以跳过步骤 1.1。
-
-### 1.1 下载并安装 MiniConda
-
-MiniConda 是 Conda 的轻量级发行版，适用于创建和管理虚拟环境。使用以下命令下载并安装：
+优先连接：
 
 ```bash
-mkdir -p ~/miniconda3
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-rm ~/miniconda3/miniconda.sh
+ssh -p 2222 hurricane@10.109.69.166
 ```
 
-安装完成后，初始化 Conda：
+服务器内：
 
 ```bash
-~/miniconda3/bin/conda init --all
-source ~/.bashrc
+cd ~/quadruped_train
+conda activate isaacgym
 ```
 
-### 1.2 创建新环境
+不要在服务器 home 目录直接运行 `python quadruped_rl/scripts/train_go2.py`，脚本路径相对于仓库根目录。
 
-使用以下命令创建虚拟环境：
+2026-10-15 只读查询到的环境如下。这是现有服务器的版本记录，不是所有主机的兼容保证：
+
+| 组件 | 版本或路径 |
+| --- | --- |
+| Python | 3.8.10 |
+| Isaac Gym | 1.0rc4，源码位于 `~/RL/isaacgym` |
+| PyTorch | 2.4.1 |
+| NumPy | 1.23.2 |
+| ONNX | 1.17.0 |
+| TensorBoard | 2.12.0 |
+
+修改已工作的环境前先记录依赖，停训后再操作；不要在训练过程中升级 PyTorch、驱动、NumPy 或算法包。
+
+## 已有环境接入源码
+
+在已经有上述依赖的环境中执行：
 
 ```bash
-conda create -n unitree-rl python=3.8
+cd ~/quadruped_train
+python -m pip install --no-deps -e ./rsl_rl
+python -m pip install --no-deps -e .
 ```
 
-### 1.3 激活虚拟环境
+这两个 editable 安装分别暴露 `rsl_rl.env` 和 `quadruped_rl`。本仓库根目录下的 `rsl_rl/` 是一个独立 Python 项目，其真正包位于 `rsl_rl/rsl_rl/`，只设置根目录 `PYTHONPATH` 不够。
+
+`setup.py` 目前仍声明 `numpy==1.20`，与现有服务器 NumPy 不一致。这里使用 `--no-deps` 是为了保留现有已工作的环境，不表示元数据约束已修正；缺少的运行依赖仍需显式安装，不能把该选项当成依赖检查通过。
+
+## 新环境准备顺序
+
+新主机需要 NVIDIA GPU、可用驱动、C/C++ 构建工具及 NVIDIA 官方提供的 Isaac Gym Preview 安装包。先确认驱动正常，再复现训练环境；训练 Python 3.8 与部署 Python 3.10+ 不共用环境。
 
 ```bash
-conda activate unitree-rl
+conda create -n isaacgym python=3.8
+conda activate isaacgym
 ```
 
----
+先安装与目标 GPU、驱动和 Isaac Gym 匹配的 PyTorch，再安装 NumPy、ONNX、TensorBoard、matplotlib、PyYAML、ninja。优先复现现有工作环境，不直接选择“最新版本”。
 
-## 2. 安装依赖
-
-### 2.1 安装 PyTorch
-
-PyTorch 是一个神经网络计算框架，用于模型训练和推理。使用以下命令安装：
+解压官方 Isaac Gym 后，按实际位置设置路径并安装：
 
 ```bash
-conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=12.1 -c pytorch -c nvidia
+export ISAACGYM_ROOT="$HOME/RL/isaacgym"
+python -m pip install --no-deps -e "$ISAACGYM_ROOT/python"
+cd ~/quadruped_train
+python -m pip install --no-deps -e ./rsl_rl
+python -m pip install --no-deps -e .
 ```
 
-### 2.2 安装 Isaac Gym
+Isaac Gym 不随本仓库分发。额外系统依赖按安装包内的说明和 `docs/` 配置；本次文档整理未重新安装环境，也未在新主机上执行完整兼容验证。
 
-Isaac Gym 是 Nvidia 提供的刚体仿真和训练框架。
+## 检查安装
 
-#### 2.2.1 下载
-
-从 Nvidia 官网下载 [Isaac Gym](https://developer.nvidia.com/isaac-gym)。
-
-#### 2.2.2 安装
-
-解压后进入 `isaacgym/python` 文件夹，执行以下命令安装：
+先做只读检查：
 
 ```bash
-cd isaacgym/python
-pip install -e .
+which python
+python -m pip show isaacgym rsl_rl quadruped_rl
+nvidia-smi
 ```
 
-#### 2.2.3 验证安装
-
-运行以下命令，若弹出窗口并显示 1080 个球下落，则安装成功：
+需要导入检查时，保持 Isaac Gym 在 PyTorch 之前导入：
 
 ```bash
-cd examples
-python 1080_balls_of_solitude.py
+python -c "import isaacgym; import torch; import quadruped_rl; from rsl_rl.env import VecEnv; print(torch.__version__)"
 ```
 
-如有问题，可参考 `isaacgym/docs/index.html` 中的官方文档。
-
-### 2.3 安装 rsl_rl
-
-`rsl_rl` 是一个强化学习算法库。
-
-#### 2.3.1 下载
-
-通过 Git 克隆仓库：
+导入正常不等于物理仿真和训练已验证。训练验收由用户在确认 GPU 空闲后执行，例如：
 
 ```bash
-git clone https://github.com/leggedrobotics/rsl_rl.git
+python quadruped_rl/scripts/train_go2.py --headless --max_iterations 100
 ```
 
-#### 2.3.2 切换分支
+默认仍为 4096 环境。检查命令不是后台自动任务，不会因阅读文档而运行。
 
-切换到 v1.0.2 分支：
+## 常见问题
+
+| 现象 | 处理 |
+| --- | --- |
+| 找不到脚本 | 先 `cd ~/quadruped_train`，不要修改脚本里的相对路径来补救错误工作目录 |
+| `No module named quadruped_rl` | 在当前 Python 环境重新 editable 安装仓库根目录 |
+| `No module named rsl_rl.env` | 安装仓库自带的 `./rsl_rl`；核对是否误装其他版本 |
+| 提示 ninja 缺失 | 检查当前环境是否安装 ninja，以及激活环境后的 `PATH` |
+| `libpython3.8.so` 找不到 | 核对 conda 动态库路径；必要时给单次命令设置 `LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"` |
+| CUDA launch failure | 先停止新任务并查看 GPU 状态，不能仅凭报错栈就断定 reward 或 HIM-PPO 有错 |
+| `nvidia-smi` 也无法识别 GPU | 优先检查驱动、内核错误及硬件状态；不要继续反复启动训练或直接重装整个环境 |
+
+CUDA 调试可在单次复现命令前使用 `CUDA_LAUNCH_BLOCKING=1`。这改变执行同步行为，不能当作正式性能设置，也不能修复设备掉线。
+
+## Docker
+
+Docker 与 conda 环境独立。现有 Dockerfile 基于 `nvcr.io/nvidia/pytorch:22.12-py3`，其依赖版本不等于上表服务器环境；先核对本机驱动、Docker 和 NVIDIA Container Toolkit。
 
 ```bash
-cd rsl_rl
-git checkout v1.0.2
+cd ~/quadruped_train
+export ISAACGYM_ROOT="$HOME/RL/isaacgym"
+bash docker/build.sh
 ```
 
-#### 2.3.3 安装
+`docker/build.sh` 构建并启动容器，再进入 shell；容器把本仓库挂载到 `/workspace/quadruped_train`、Isaac Gym 挂载到 `/opt/isaacgym`。启动脚本会在缺少 Isaac Gym 安装映射时安装挂载目录，但不会自动训练。
+
+用户确认资源可用后，才执行训练命令。无头训练不需要可视化窗口；带窗口的 play 还需要可用的显示会话，SSH 本身不保证窗口能显示。
+
+## 同步和取回产物
+
+同步前先核对服务器改动。只传本次修改文件，使用 `rsync -n` 预览，不向正在训练的目录执行覆盖式全量同步或 `--delete`。
 
 ```bash
-pip install -e .
+rsync -anv -e "ssh -p 2222" README.md \
+  hurricane@10.109.69.166:~/quadruped_train/README.md
 ```
 
-### 2.4 安装 unitree_rl_gym
+确认后移除 `-n`。检查点和事件日志不是源码，不应在普通代码同步时覆盖。
 
-#### 2.4.1 下载
-
-通过 Git 克隆仓库：
+在本地部署仓库根目录取回 Go2 双模型：
 
 ```bash
-git clone https://github.com/unitreerobotics/unitree_rl_gym.git
+scp -P 2222 'hurricane@10.109.69.166:~/quadruped_train/logs/go2/exported/policies/policy_1.*' \
+  src/controller/rl/models/
 ```
 
-#### 2.4.2 安装
-
-进入目录并安装：
-
-```bash
-cd unitree_rl_gym
-pip install -e .
-```
-
-### 2.5 安装 unitree_sdk2py（可选）
-
-`unitree_sdk2py` 是用于与真实机器人通信的库。如果需要将训练的模型部署到物理机器人上运行，可以安装此库。
-
-#### 2.5.1 下载
-
-通过 Git 克隆仓库：
-
-```bash
-git clone https://github.com/unitreerobotics/unitree_sdk2_python.git
-```
-
-#### 2.5.2 安装
-
-进入目录并安装：
-
-```bash
-cd unitree_sdk2_python
-pip install -e .
-```
-
----
-
-## 总结
-
-按照上述步骤完成后，您已经准备好在虚拟环境中运行相关程序。若遇到问题，请参考各组件的官方文档或检查依赖安装是否正确。
+这会覆盖同名本地文件。先保存需要保留的版本，并确认 PT/ONNX 来自同一次成功导出。完整训练与导出命令见 [训练首页](../README.md)。
 

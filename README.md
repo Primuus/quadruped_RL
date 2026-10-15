@@ -1,4 +1,18 @@
-# 四足机器人 HIMLoco 训练工作区
+# 四足机器人 HIM-PPO 训练工程
+
+文档核对日期：2026-10-15。以下“当前配置”均指本分支源码，不代表已有 checkpoint 使用了这些参数。
+
+## 阅读入口
+
+| 需求 | 文档 |
+| --- | --- |
+| 安装、服务器连接和常见导入错误 | [中文安装指南](doc/setup_zh.md) / [Installation Guide](doc/setup_en.md) |
+| 算法、网络、存储和 runner 的职责 | [本地 rsl_rl 说明](rsl_rl/README.md) |
+| 参数生效、奖励、随机化和新增功能 | [训练调参教程](https://github.com/Primuus/quadruped_RL/blob/main/doc/训练调参教程.md) |
+| 日志、曲线和按命令模式评估 | [TensorBoard 使用指南](https://github.com/Primuus/quadruped_RL/blob/main/doc/TensorBoard使用指南.md) |
+| MuJoCo、模型资源和实机软件链路 | [部署工程](https://github.com/Primuus/quadruped_RL/tree/main) |
+
+两份训练教程维护在部署分支的 `doc/`，不在本仓库复制参数表。`README_zh.md` 仅保留导航，避免同一说明出现两个不同版本。
 
 `quadruped_train` 是强化学习训练工作区，负责在 Isaac Gym 中训练四足机器人策略，并从同一个部署模型直接导出给本地 `quadruped` 工程使用的 TorchScript 和 ONNX 策略。
 
@@ -57,6 +71,21 @@ critic privileged obs：45 + base_lin_vel3 + external_force3 + height_scan187 = 
 
 critic privileged obs 只用于训练 value function 和 estimator，不进入部署模型的外部输入。
 
+## 当前状态与边界
+
+| 项目 | 当前状态 |
+| --- | --- |
+| 已注册训练任务 | 只有 `go2`，不是所有机器人都已有可运行任务 |
+| 训练环境 | Isaac Gym Preview / PhysX；自定义 `quadruped_rl`，不是 Isaac Lab |
+| 默认并行规模 | 4096 环境，20 s 回合，50 Hz 策略周期 |
+| 训练地形 | 当前 `create_sim()` 只创建平地；配置保留地形字段不等于已接入粗糙地形 |
+| critic 外力与高度 | 3 + 187 维目前为零占位；没有实际外力/高度数据回填 |
+| 正式算法 | Go2 选择 HIM-PPO；普通 PPO 源码仍保留在算法包中，但不是当前任务所选链路 |
+| Primuus | 模型在部署工程中；未注册训练任务，未提供匹配策略 |
+| 实机验收 | 不在本仓库进行，部署软件存在不等于硬件已经验证 |
+
+当前结构借鉴 HIMLoco 的历史观测、estimator 和非对称 actor-critic；不能把它理解为上游 HIMLoco 的所有地形、随机化和机器人能力均已复现。
+
 ## 目录说明
 
 - `quadruped_rl/envs/base/`：四足机器人通用环境基类、观测、reward、随机化、命令和终止条件。
@@ -65,7 +94,7 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
 - `quadruped_rl/scripts/play.py`：通用 play / 策略导出入口，通过 `--task <robot>` 选择机器人任务。
 - `quadruped_rl/scripts/train_go2.py`：Go2 快捷训练入口，会自动设置 `--task go2`。
 - `quadruped_rl/scripts/play_go2.py`：Go2 快捷 play / 策略导出入口。
-- `quadruped_rl/utils/`：任务注册、地形、日志和通用工具。
+- `quadruped_rl/utils/`：任务注册、导出、日志和工具；`terrain.py` 尚未接入当前平地创建链路。
 - `rsl_rl/`：随工程同步的 RL 算法库，当前包含 HIM-PPO 相关实现。
 - `docker/`：Docker 训练环境构建脚本。
 - `logs/`：训练日志和 checkpoint 输出目录，通常不提交。
@@ -86,12 +115,14 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
 
    ```bash
    python -m pip install --no-deps -e ./rsl_rl
-   python -m pip install -e .
+   python -m pip install --no-deps -e .
    ```
 
 `rsl_rl` 已随本仓库同步，不需要单独克隆，但必须安装它。只把仓库根目录加入 `PYTHONPATH` 仍找不到 `rsl_rl.env`。只有确认要更新算法库时，才从官方仓库重新同步。
 
-ONNX 导出依赖 `onnx`。通过 `pip install -e .` 会自动安装；已有环境如果使用 `--no-deps` 安装，需要补充：
+已有服务器环境保留原依赖，不在训练过程中升级或降级包。当前 `setup.py` 声明 `numpy==1.20`，而已工作的服务器环境为 `numpy==1.23.2`；`--no-deps` 安装只建立源码映射，不代表依赖已经全部安装或元数据约束已经消除。环境清单和新环境步骤见安装指南。
+
+ONNX 导出依赖 `onnx`；若当前环境尚未安装，需要在停训后补充：
 
 ```bash
 pip install "onnx>=1.14,<2"
@@ -160,7 +191,6 @@ python quadruped_rl/scripts/train_go2.py \
 ```bash
 --headless
 --resume
---horovod
 ```
 
 带值参数在参数名后接值：
@@ -180,13 +210,15 @@ python quadruped_rl/scripts/train_go2.py \
 | `--headless` | `--headless` | 无窗口运行，适合服务器。 |
 | `--num_envs` | `--num_envs 4096` | 并行环境数量。 |
 | `--seed` | `--seed 1` | 随机种子。 |
-| `--max_iterations` | `--max_iterations 10000` | 最大训练迭代次数。 |
+| `--max_iterations` | `--max_iterations 10000` | 本次 `learn()` 执行的迭代数；resume 时是追加量，不是总迭代上限。 |
 | `--run_name` | `--run_name rough` | 本次实验名。 |
 | `--experiment_name` | `--experiment_name go2` | 日志目录名。 |
 | `--resume` | `--resume` | 从 checkpoint 继续训练。 |
-| `--load_run` | `--load_run Jul08_10-00-00_rough` | 指定要加载的 run。 |
+| `--load_run` | `--load_run Oct15_20-00-00_rough` | 完整 run 目录名，不是 `--run_name` 的后缀。 |
 | `--checkpoint` | `--checkpoint 500` | 指定 checkpoint 编号。 |
 | `--rl_device` | `--rl_device cuda:0` | RL 算法设备。 |
+
+`--horovod` 虽仍在参数解析器中，但当前 runner 未实现分布式训练链路，不作为可用多 GPU 命令推荐。
 
 ## 自碰撞配置
 
@@ -232,6 +264,8 @@ Primuus 的碰撞模型及接入条件维护在部署工程 `src/controller/rl/r
 - 同时打开多个强随机化项。
 - 需要公平比较两个参数版本的收敛速度。
 
+例如从 `model_1000.pt` 恢复并设置 `--max_iterations 500`，正常完成后保存 `model_1500.pt`。新进程创建新的日志目录，不把新曲线直接写回旧 run。`Ctrl+C` 不会额外强制保存当前更新；恢复点以磁盘上已经完整写出的 checkpoint 为准。
+
 ## 策略导出
 
 训练完成后，用 play 入口加载 checkpoint，并从同一个 `estimator + actor` 部署模块直接导出 TorchScript 和 ONNX：
@@ -258,7 +292,7 @@ logs/go2/exported/policies/policy_1.onnx
 ```bash
 python quadruped_rl/scripts/play_go2.py \
   --headless \
-  --load_run rough \
+  --load_run Oct15_20-00-00_rough \
   --checkpoint 1000
 ```
 
@@ -271,6 +305,10 @@ ONNX opset：17
 ```
 
 部署模型外部输入维度必须和机器人任务配置一致。当前 Go2 实例保持 270 维历史观测。
+
+上例 run 名必须替换为实际目录。未指定 `--load_run` 时，从含 checkpoint 的 run 中选择 checkpoint 文件修改时间最新的目录；未指定 `--checkpoint` 时，在该 run 中选编号最大的 `model_*.pt`。这不是按最高 reward 选“最好策略”。
+
+每次导出会覆盖同一实验目录下的 `policy_1.pt` 和 `policy_1.onnx`，不会覆盖训练 checkpoint。两个文件不是原子打包发布：如果 ONNX 导出失败，应重新完成双导出，不能混用新 PT 和旧 ONNX。导出后 `play` 仍继续运行仿真；`--headless` 只是不显示窗口，不是仅导出然后退出。
 
 ## 新增四足机器人
 
@@ -342,28 +380,23 @@ python quadruped_rl/scripts/train_go2.py --headless --max_iterations 1500 --run_
 
 ```text
 1. 修改一个参数组
-2. 本地 py_compile / import 检查
-3. 同步到服务器
-4. 服务器小步训练 2 或 100 iteration
+2. 核对修改范围并同步训练服务器
+3. 在服务器完成导入或语法检查
+4. 由用户在服务器做小步训练 2 或 100 iteration
 5. 短训 500 到 1000 iteration
 6. play 观察步态
 7. 导出 TorchScript / ONNX 后在 quadruped 中做双后端 MuJoCo 检查
 8. 记录结论并提交
 ```
 
-推荐调参顺序：
+推荐调参顺序，具体步骤见调参教程：
 
 ```text
-joint_power
-foot_clearance
-noise
-friction / base mass randomization
-push
-motor strength randomization
-kp/kd randomization
-delay
-command curriculum
-terrain curriculum / height scan 内容启用
+1. 核对模型、接触、站姿和训练/部署契约
+2. 按站立、平移、原地转向、边走边转分别评估
+3. 微调已有高度、接触、抬脚、滑移与换步奖励
+4. 调整现有噪声、摩擦、机身质量和 push
+5. 其他电机随机化、延迟、粗糙地形和真实高度输入：先实现并验证，再调参数
 ```
 
 判断参数是否有效时，不只看总 reward，还要看速度跟踪、力矩、动作平滑、脚是否拖地、是否频繁摔倒，以及 MuJoCo 部署效果。
