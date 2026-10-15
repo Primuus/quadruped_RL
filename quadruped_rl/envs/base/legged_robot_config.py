@@ -88,7 +88,8 @@ class LeggedRobotCfg(BaseConfig):
         collapse_fixed_joints = True  # 是否合并固定关节
         fix_base_link = False  # 是否固定机身底座
         default_dof_drive_mode = 3  # 默认驱动模式：3 表示力矩模式
-        self_collisions = 0  # 是否启用自碰撞过滤
+        self_collisions = 0  # Isaac Gym 过滤值：0=开启可用自碰撞，正数=全部关闭，-1=保留资产过滤位；相邻 link 始终过滤
+        self_collision_exclusions = []  # 按 URDF collision 名称排除装配接触对；非空时需 self_collisions=-1、独立 link 和预分解凸碰撞体
         replace_cylinder_with_capsule = True  # 是否用胶囊体替代圆柱体，提升稳定性
         flip_visual_attachments = True  # 是否翻转视觉贴图坐标系
 

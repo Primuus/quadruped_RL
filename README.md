@@ -188,6 +188,29 @@ python quadruped_rl/scripts/train_go2.py \
 | `--checkpoint` | `--checkpoint 500` | 指定 checkpoint 编号。 |
 | `--rl_device` | `--rl_device cuda:0` | RL 算法设备。 |
 
+## 自碰撞配置
+
+显示网格和碰撞体分别负责外观与物理约束。复杂的中空装配不能直接用一个 mesh 凸包代替，否则会填满关节的活动间隙。建议像 Go2 一样使用简化几何，或在 URDF 中引用离线分解的多个凸网格，并与 MuJoCo 使用相同的几何和装配排除规则。
+
+`asset.self_collisions` 是 Isaac Gym 的数值过滤参数，不是布尔开关：
+
+| 数值 | 行为 |
+| --- | --- |
+| `0` | 开启 actor 内可用的自碰撞；PhysX 仍过滤相邻父子 link。 |
+| 正数，例如 `1` | 关闭全部自碰撞；当前 Go2 任务维持这一已有设置。 |
+| `-1` | 使用导入资产的过滤位，适用于下面的命名排除接口。 |
+
+`asset.self_collision_exclusions` 接受 `[(collision_name_a, collision_name_b), ...]`，只排除正常装配接触，不应排除整条腿或所有相邻 link。启用时要求：
+
+- `self_collisions=-1`，否则 `create_actor` 会覆盖形状过滤位，环境会拒绝这类配置。
+- 保持独立 link（`collapse_fixed_joints=False`），每个 URDF collision 对应一个预分解凸形状；不要再对这些网格自动执行 VHACD。
+- 所有 collision 使用唯一且非空的名称；接口检查导入形状数量和引用名称，不匹配时直接报错。
+- 每个排除对占一个过滤位，当前最多支持 31 对；未列出的非相邻、非同体组合允许碰撞，环境间仍由独立 collision group 隔离。
+
+PhysX 会始终过滤 articulation 的相邻父子 link，命名接口不能解除这一限制。像小腿与本腿大腿这样的相邻组件，必须另外根据几何干涉边界设置安全工作限位；不能只配置过滤位就宣称相邻碰撞已经开启。MuJoCo 可恢复这类碰撞，但仍需和训练侧使用一致的工作限位。关节限位是模型的物理约束，不是依赖 reward 学出来的避碰行为。
+
+实现位于 `quadruped_rl/envs/base/self_collision.py`，在资产导入后、创建 actor 前应用。Primuus 模型提供 `collision/self_collision_exclusions.json` 作为列表来源，但本次没有新增 Primuus 训练任务，也没有更改 Go2 的奖励、PD、观测或训练开关。
+
 ## 续训规则
 
 适合 `--resume` 的情况：

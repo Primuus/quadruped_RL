@@ -31,6 +31,7 @@ from quadruped_rl.envs.base.observations import (
     reset_observation_history,
 )
 from quadruped_rl.envs.base.rewards import reward_requires_rigid_body_state
+from quadruped_rl.envs.base.self_collision import configure_urdf_self_collisions
 from quadruped_rl.envs.base.terminations import update_quadruped_termination
 from quadruped_rl.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
 from quadruped_rl.utils.helpers import class_to_dict
@@ -595,7 +596,12 @@ class LeggedRobot(BaseTask):
         asset_options.thickness = self.cfg.asset.thickness
         asset_options.disable_gravity = self.cfg.asset.disable_gravity
 
+        exclusions = self.cfg.asset.self_collision_exclusions
+        if exclusions and self.cfg.asset.self_collisions != -1:
+            raise ValueError("Named self-collision exclusions require asset.self_collisions=-1")
         robot_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
+        if exclusions:
+            configure_urdf_self_collisions(self.gym, robot_asset, asset_path, exclusions)
         self.num_dof = self.gym.get_asset_dof_count(robot_asset)
         self.num_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
         dof_props_asset = self.gym.get_asset_dof_properties(robot_asset)

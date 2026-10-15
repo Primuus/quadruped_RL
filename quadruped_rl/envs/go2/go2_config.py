@@ -68,7 +68,7 @@ class GO2RoughCfg( LeggedRobotCfg ):
         foot_name = "foot"  # 足端 body 名称
         penalize_contacts_on = ["thigh", "calf"]  # 大腿/小腿碰撞时施加惩罚
         terminate_after_contacts_on = ["base"]  # 机身触地时终止 episode
-        self_collisions = 1  # 是否启用自碰撞过滤
+        self_collisions = 1  # Isaac Gym 正数过滤值会关闭全部自碰撞；保持现有 Go2 任务行为不变
 
     class domain_rand(LeggedRobotCfg.domain_rand):
         randomize_friction = True  # 随机化地面摩擦，参考 legged_gym 的基础鲁棒性配置
