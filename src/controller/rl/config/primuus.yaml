@@ -1,0 +1,187 @@
+# Primuus 的 sim2sim 配置；新增或修改参数时请保留中文说明。
+# 当前 PD / 默认姿态来自模型站立测试，尚不是已经训练验证的 Primuus 策略配置。
+
+# 机器人实例名称，不影响 Go2 的默认配置
+robot_name: primuus
+
+# 未来放置 Primuus 专用 TorchScript / ONNX 策略；当前文件尚不存在，禁止复用 Go2 策略
+# 得到策略后填写实际路径；现有 RL 入口会拒绝不存在的策略，不会静默回退到 Go2
+policy_path: models/primuus/policy.pt
+# 平地场景，内部引用 Primuus 本体 XML
+xml_path: resources/robots/primuus/scene_flat.xml
+
+# 仿真总时长 [s]
+simulation_duration: 60.0
+# 物理步长 [s]，沿用当前模型 PD 测试的 1 ms 设置
+simulation_dt: 0.001
+# 每 20 个物理步更新一次策略目标，策略频率为 50 Hz；PD 仍在每个物理步更新
+control_decimation: 20
+
+# 12 个关节动作，按 FL / FR / RL / RR 的 hip / thigh / calf 排列
+num_actions: 12
+# 单帧 actor 观测：命令3 + 角速度3 + 重力投影3 + 关节位置12 + 速度12 + 上次动作12
+num_one_step_obs: 45
+# 最新帧在前的历史观测帧数
+history_length: 6
+# 策略输入维度：45 * 6
+num_obs: 270
+# 训练 critic 单帧维度：45 + 线速度3 + 外力3 + 高度187；部署 actor 不使用
+num_one_step_privileged_obs: 238
+# 保留当前框架的 critic 维度契约，未来须与 Primuus 训练配置同步
+num_privileged_obs: 238
+# 当前部署框架的通用 45 * 6 历史观测模式
+obs_mode: quadruped_history_45x6
+
+# 与 Primuus XML 的关节名称、未来策略的动作输出顺序保持一致
+joint_names:
+  - FL_hip_joint
+  - FL_thigh_joint
+  - FL_calf_joint
+  - FR_hip_joint
+  - FR_thigh_joint
+  - FR_calf_joint
+  - RL_hip_joint
+  - RL_thigh_joint
+  - RL_calf_joint
+  - RR_hip_joint
+  - RR_thigh_joint
+  - RR_calf_joint
+
+# 与 XML 中 12 个理想力矩执行器对应；每个执行器在 XML 内限矩 +/-23.7 N m
+actuator_names:
+  - FL_hip
+  - FL_thigh
+  - FL_calf
+  - FR_hip
+  - FR_thigh
+  - FR_calf
+  - RL_hip
+  - RL_thigh
+  - RL_calf
+  - RR_hip
+  - RR_thigh
+  - RR_calf
+
+# 关节端 PD 比例增益 [N m/rad]，当前仅为站立模型测试基线，不是厂家推荐值
+kps:
+  - 60.0
+  - 60.0
+  - 60.0
+  - 60.0
+  - 60.0
+  - 60.0
+  - 60.0
+  - 60.0
+  - 60.0
+  - 60.0
+  - 60.0
+  - 60.0
+
+# 关节端 PD 微分增益 [N m s/rad]，未来需要与 Primuus 训练侧同步
+kds:
+  - 1.5
+  - 1.5
+  - 1.5
+  - 1.5
+  - 1.5
+  - 1.5
+  - 1.5
+  - 1.5
+  - 1.5
+  - 1.5
+  - 1.5
+  - 1.5
+
+# action=0 时的关节目标 [rad]；Primuus 大腿轴为 -Y，不能套用 Go2 的正角度站姿
+# 四腿均为 hip=0、thigh=-0.75、calf=-1.5，与 XML 的 home 关键帧一致
+default_angles:
+  - 0.0
+  - -0.75
+  - -1.5
+  - 0.0
+  - -0.75
+  - -1.5
+  - 0.0
+  - -0.75
+  - -1.5
+  - 0.0
+  - -0.75
+  - -1.5
+
+# action 到关节目标角偏移的比例 [rad]，暂沿用框架设置；训练新机器人时必须对齐
+action_scale: 0.25
+# 完整历史观测裁剪幅度，未来须与训练 normalization.clip_observations 一致
+clip_observations: 100.0
+# 策略动作裁剪幅度，未来须与训练 normalization.clip_actions 一致
+clip_actions: 100.0
+
+# 初始速度命令 [vx, vy, yaw_rate]，默认清零，不主动要求行走
+command_init:
+  - 0.0
+  - 0.0
+  - 0.0
+
+# 键盘速度命令幅度上限 [m/s, m/s, rad/s]，未来须与训练命令范围匹配
+command_limits:
+  - 1.0
+  - 1.0
+  - 1.0
+
+# 命令进入观测后的缩放，沿用当前框架契约；不是速度上限
+command_scale:
+  - 2.0
+  - 2.0
+  - 0.25
+
+# 通用 Linux 键盘控制，与 Go2 共用输入模块，不包含机器人专有逻辑
+keyboard:
+  # 控制语义到 Linux evdev 键名的映射
+  bindings:
+    forward: KEY_W
+    backward: KEY_S
+    left: KEY_A
+    right: KEY_D
+    turn_left: KEY_Q
+    turn_right: KEY_E
+    stop: KEY_SPACE
+    enable: KEY_F
+    disable: KEY_I
+    speed_low: KEY_1
+    speed_medium: KEY_2
+    speed_high: KEY_3
+    reset_sim: KEY_R
+    print_status: KEY_P
+  # 低 / 中 / 高三档分别占速度命令上限的比例
+  speed_levels:
+    - 0.25
+    - 0.5
+    - 1.0
+  # 默认中速档；键盘控制仍需显式使能
+  default_speed_level: 2
+
+# 禁用机身绝对高度判跌倒，避免将低站姿或地形高度变化误判为摔倒
+fall_height_threshold: 0.0
+# 重力投影 z 大于该值时判定翻倒，停止力矩但不结束仿真
+fall_gravity_z_threshold: -0.2
+
+# 线速度缩放仅保留配置契约，45 维 actor 观测不使用真实机身线速度
+obs_scale_lin_vel: 2.0
+# 机身角速度的观测缩放
+obs_scale_ang_vel: 0.25
+# 相对默认关节角的观测缩放
+obs_scale_dof_pos: 1.0
+# 关节角速度的观测缩放
+obs_scale_dof_vel: 0.05
+
+# 初始机身位置 [m]，默认姿态下足端距平地约 2 mm；不是稳态站立高度目标
+initial_base_pos:
+  - 0.0
+  - 0.0
+  - 0.31212
+
+# 初始机身四元数 [w, x, y, z]，与 XML 的 home 关键帧一致
+initial_base_quat:
+  - 1.0
+  - 0.0
+  - 0.0
+  - 0.0

@@ -230,7 +230,7 @@
     <limit
       lower="-2.7227"
       upper="-0.8378"
-      effort="45.43"
+      effort="23.7"
       velocity="15.7" />
     <dynamics
       damping="0.02"
@@ -475,7 +475,7 @@
     <limit
       lower="-2.7227"
       upper="-0.8378"
-      effort="45.43"
+      effort="23.7"
       velocity="15.7" />
     <dynamics
       damping="0.02"
@@ -720,7 +720,7 @@
     <limit
       lower="-2.7227"
       upper="-0.8378"
-      effort="45.43"
+      effort="23.7"
       velocity="15.7" />
     <dynamics
       damping="0.02"
@@ -965,7 +965,7 @@
     <limit
       lower="-2.7227"
       upper="-0.8378"
-      effort="45.43"
+      effort="23.7"
       velocity="15.7" />
     <dynamics
       damping="0.02"
