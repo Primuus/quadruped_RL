@@ -1,11 +1,17 @@
 # RL 部署子工程说明
 
+[仓库首页](../../../README.md) | [文档导航](../../../doc/README.md) | [模型文件](models/README.md) | [Primuus 模型](resources/robots/primuus/README.md)
+
+核对日期：2026-10-15。本说明以文件职责为主，运行方式见仓库首页；训练参数以训练工程对应机器人配置为准。
+
 `src/controller/rl` 是纯 Python 四足机器人 RL 部署包，不依赖 ROS2、ament 或 `colcon`。它包含两条正式运行链路：
 
 - MuJoCo：读取机器人模型和 TorchScript/ONNX 策略，在本地完成闭环仿真；
 - 实机：读取真实机器人配置，通过电机和 IMU 构造 45×6 actor 观测，执行 ONNX 策略并发送目标关节角。
 
 当前 MuJoCo 示例使用 Go2。实机配置模板面向后续自研四足机器人，当前电机和 IMU 实现分别为 Unitree GO-M8010-6 与 Yesense YIS130。公共运行器不包含 Go2 专有分支。
+
+Primuus已提供机械模型和独立YAML，但没有训练任务或匹配策略，只能先用原生MuJoCo Viewer检查模型。通用接口目前面向12驱动关节四足，不表示任意关节数、任意硬件都已经适配。
 
 ## 总体数据契约
 
@@ -40,9 +46,12 @@ target_joint_position = default_angles + action_scale * action
 src/controller/rl/
 ├── config/
 │   ├── go2.yaml
+│   ├── primuus.yaml
 │   └── real/custom_quadruped.example.yaml
 ├── models/
-├── resources/robots/go2/
+├── resources/robots/
+│   ├── go2/
+│   └── primuus/
 ├── rl_controller/
 │   ├── deploy_mujoco_rl.py
 │   ├── deploy_real_rl.py
@@ -75,6 +84,12 @@ python3 -m pip install -e src/controller/rl
 
 Go2 MuJoCo 示例配置，负责策略路径、XML、关节/执行器顺序、PD、动作缩放、观测缩放、仿真频率、跌倒阈值和键盘参数。它只服务 MuJoCo，不应被复制为自研实机参数。
 
+当前默认场景是 `resources/robots/go2/ROBOCON2027.xml`，不是平地；物理步长2 ms、decimation=10、策略周期20 ms。机身高度跌倒阈值为0，表示关闭高度条件，重力投影条件仍生效。
+
+### `config/primuus.yaml`
+
+Primuus独立运行配置，引用自身 `scene_flat.xml`、关节名称和默认角。物理步长0.25 ms、decimation=80，策略周期仍为20 ms。`models/primuus/policy.pt` 只是预留路径，目前文件不存在，不能用Go2权重填充以绕过检查。
+
 ### `config/real/custom_quadruped.example.yaml`
 
 真实四足机器人配置格式模板。模板中的 `null` 表示必须通过机械设计、训练配置、硬件手册或实机标定确定；解析器会拒绝未填写模板，从而避免带着占位参数启动硬件。
@@ -92,7 +107,11 @@ policy_1.onnx
 
 ### `resources/robots/<robot>/`
 
-存放 MuJoCo XML、URDF 和网格资源。当前 `go2/scene_flat.xml` 是默认平地场景，和训练侧平地环境对齐；`go2/scene_obstacles.xml` 是可选障碍场景，`go2/go2.xml` 定义机器人本体。
+存放MuJoCo XML、URDF和网格资源。`go2/go2.xml` 定义Go2本体，`scene_flat.xml` 提供平地对照，`scene_obstacles.xml` 是可选障碍场景，`ROBOCON2027.xml` 是当前Go2 YAML选择的场地。
+
+Primuus的 `urdf/`、`stl/`、`collision/`、本体XML和场景XML职责见其README。当前保留17个原始物理部件，另加4个固定碰撞载体，共21个link、12个驱动关节、169个碰撞形状。载体用于恢复PhysX接触，不新增动作维度；原始小腿限位已恢复，不以缩小关节范围替代碰撞。
+
+URDF/XML机械与碰撞参数需同步，YAML负责运行契约。直接修改YAML默认XML路径不能修复XML内部缺失的网格或高度图资源。
 
 ### `tools/compare_policy_backends.py`
 
@@ -105,6 +124,8 @@ python3 src/controller/rl/tools/compare_policy_backends.py \
 ```
 
 该工具不参与 MuJoCo 或实机运行时导入。
+
+默认使用128组随机输入，也可通过 `--observations <file.npy>` 提供一维观测或二维样本矩阵。成功退出代表该输入集合内的数值一致性，不代表闭环行为或硬件安全已经验证。配置文件中的模型路径本身仍须有效，显式模型参数不会绕过配置的首次校验。
 
 ## MuJoCo 模块
 
@@ -122,6 +143,10 @@ MuJoCo 正式入口和主循环，负责：
 - 根据机身高度和重力投影检测跌倒，跌倒后停止力矩但保留仿真；
 - 使用 `--debug-steps N` 输出前 N 次策略周期的状态、原始动作、裁剪动作、目标角和力矩。
 
+默认 `--debug-steps=0`，不打印快照。每条快照包含 `base_z`、`projected_gravity`、`command`、`joint_pos`、`raw_action`、`clipped_action`、`torques`、`target_joint_pos`；`raw_action` 是模型输出，`clipped_action` 是饱和后的策略动作，两者都不是目标关节角或力矩。
+
+MuJoCo策略不使用critic特权观测，但使用已导出的estimator+actor。历史缓存由运行器维护，不能把270维外部输入误解为直接加载一个裸actor MLP。
+
 主要命令：
 
 ```bash
@@ -137,6 +162,8 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 ### `rl_controller/core/config.py`
 
 定义 `RobotRLConfig` 和 MuJoCo 默认配置。加载 YAML 后检查观测维度、历史长度、关节/执行器数量、时步、PD 数组、命令范围、有限值和模型/资源路径。
+
+默认配置路径为本包的 `config/go2.yaml`。YAML中的资源路径相对于RL包目录；CLI显式覆盖路径按当前工作目录解析。先校验YAML再应用CLI覆盖，因此原YAML引用的模型文件也必须存在。
 
 ### `rl_controller/core/observer.py`
 
@@ -157,6 +184,8 @@ torque = kp * (target - joint_pos) - kd * joint_vel
 
 可按 MuJoCo actuator 能力进一步裁剪力矩。
 
+`raw_action -> clipped_action -> target_joint_pos -> torques` 是四个不同阶段。调试时先核对动作/关节顺序和默认角，再检查裁剪、缩放和力矩，不把动作数值直接当成牛米。
+
 ## 键盘模块
 
 ### `rl_controller/input/keyboard_input.py`
@@ -166,6 +195,8 @@ torque = kp * (target - joint_pos) - kd * joint_vel
 ### `rl_controller/input/keyboard_controller.py`
 
 把 Linux `KEY_*` 映射成速度命令和控制事件。它负责三档速度、组合键、清零、使能、停机、重置和状态输出，不直接访问 MuJoCo 或电机。
+
+方向键按住时持续输出、释放后清零。F使能并请求独占键盘，I禁用并释放；这不是ThinkBook专用键盘实现，也不读取SSH客户端的终端字符。原生 `python3 -m mujoco.viewer` 不导入本模块。
 
 默认按键：
 
@@ -294,6 +325,7 @@ YIS130 私有 UART 后端，负责：
 
 根据已验证实机配置创建 `OnnxPolicy + PolicyExecutor`。当前实机链路不接受 TorchScript；TorchScript 只用于 MuJoCo 和导出对比。
 
+
 ## 状态机、安全和运行器
 
 ### `rl_controller/real/state_machine.py`
@@ -348,13 +380,15 @@ runner 负责：
 - 等待工作线程退出后才关闭其设备；线程超时仍存活时明确报错且不并发关闭设备；
 - FAULT 后禁止自动恢复，必须重启并从 INIT 初始化。
 
+watchdog只负责发现阻塞并锁存故障，不能强制打断底层SDK或ONNX Runtime同步调用。线程永久存活时主进程可能无法自行退出；关闭路径会明确报错，不与仍在运行的线程并发关闭后端。物理急停和驱动器超时仍是独立保障。
+
 ### `rl_controller/deploy_real_rl.py`
 
 实机正式 CLI。它不会提供默认机器人配置，必须显式传入完成后的 YAML 和硬件许可：
 
 ```bash
 python3 src/controller/rl/rl_controller/deploy_real_rl.py \
-  --config src/controller/rl/config/real/<robot>.yaml \
+  --config 'src/controller/rl/config/real/<robot>.yaml' \
   --allow-real-hardware
 ```
 
@@ -362,7 +396,7 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 
 ```bash
 python3 src/controller/rl/rl_controller/deploy_real_rl.py \
-  --config src/controller/rl/config/real/<robot>.yaml \
+  --config 'src/controller/rl/config/real/<robot>.yaml' \
   --allow-real-hardware \
   --no-keyboard --auto-enable --command 0.2 0.0 0.0
 ```
@@ -394,6 +428,8 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 5. **故障退出边界**：锁存根因、停止输出、`safe_stop()`、关闭资源并要求重新初始化。
 
 内部模块只消费经过边界校验的数据，不使用默认值、旧状态或上一帧动作掩盖外部故障。
+
+正式源码没有mock后端、实机dry-run或独立 `test/` 运行链路。MuJoCo debug与 `tools/compare_policy_backends.py` 是保留的正式诊断能力，不应因为它们能输出数据就把它们当作待删除的临时验证代码。
 
 ## 新增四足机器人
 

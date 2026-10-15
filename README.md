@@ -2,6 +2,18 @@
 
 `quadruped` 负责四足机器人强化学习策略的本地仿真和实机部署，不在本仓库训练策略。
 
+文档核对日期：2026-10-15。运行命令均从本仓库根目录执行；配置中存在字段、工程中存在驱动，不等于相应机器人已经完成训练或硬件验收。
+
+## 文档导航
+
+| 需求 | 入口 |
+| --- | --- |
+| 理解部署包每个文件负责什么 | [RL 子工程说明](src/controller/rl/README.md) |
+| 训练、日志和调参文档的阅读顺序 | [doc 导航](doc/README.md) |
+| 策略文件、版本和输入输出契约 | [模型目录](src/controller/rl/models/README.md) |
+| Primuus 机械模型、碰撞与当前验证边界 | [Primuus 模型说明](src/controller/rl/resources/robots/primuus/README.md) |
+| 官方电机 SDK 的固定版本与构建 | [第三方依赖说明](src/controller/rl/third_party/README.md) |
+
 相关工程：
 
 - RL 训练：`quadruped_train`，负责 Isaac Gym、HIM-PPO、策略训练及 TorchScript/ONNX 导出；
@@ -20,11 +32,20 @@
 - 比较同一策略的 TorchScript 与 ONNX 输出；
 - 解析严格的通用四足实机配置；
 - 接入 Unitree GO-M8010-6 电机和 Yesense YIS130 IMU；
-- 提供状态同步、ONNX 推理、输出安全门、watchdog、FAULT 锁存和确定性安全停机。
+- 提供状态同步、ONNX 推理、输出安全门、watchdog、FAULT 锁存和显式停机/故障报告。
 
 当前已有 Go2 的 MuJoCo 示例。公共观测、策略、状态机和安全接口不绑定 Go2；新增四足机器人时，应增加独立配置、物理模型和匹配策略，而不是复制控制主循环。
 
+| 机器人 | 训练与策略 | 本仓库状态 |
+| --- | --- | --- |
+| Go2 | 训练侧已注册任务；部署需自行提供匹配的导出模型 | 默认 YAML 与 MuJoCo 场景示例 |
+| Primuus | 尚未注册训练任务，没有匹配策略 | URDF、原始 STL、凸碰撞分段、XML、YAML 及模型接触验证 |
+
+通用接口当前针对12驱动关节四足：单帧45维、6帧历史、12维动作。通用化不代表任意关节数、任意驱动协议均能不改代码直接接入。
+
 实机链路尚未经过真实机器人验证。真实电机参数、机械零位、关节方向、限位、增益、温度阈值和急停系统必须在有实物后逐项确认。
+
+Python watchdog不能强制中断底层SDK或ONNX Runtime中的阻塞调用。线程永久阻塞时进程也可能无法自行退出；物理急停和驱动器自身超时不可省略。
 
 ## 数据流
 
@@ -98,11 +119,13 @@ src/controller/rl/models/policy_1.onnx
 从训练服务器复制示例：
 
 ```bash
-scp hurricane@192.168.0.214:~/quadruped_train/logs/go2/exported/policies/policy_1.{pt,onnx} \
-  /home/ry/project/quadruped/src/controller/rl/models/
+scp -P 2222 'hurricane@10.109.69.166:~/quadruped_train/logs/go2/exported/policies/policy_1.*' \
+  src/controller/rl/models/
 ```
 
 模型文件默认不提交到 Git。策略必须与部署配置中的关节顺序、默认角、动作缩放、观测缩放、裁剪范围和历史顺序完全一致。
+
+当前实机软件链路是 Python + ONNX Runtime，不是已实现的 C++ 部署。critic不导出，estimator与actor一起导出。重复play覆盖固定导出文件，不覆盖checkpoint；详情见模型目录说明。
 
 比较 TorchScript 与 ONNX 输出：
 
@@ -129,6 +152,8 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 
 场景路径可以通过 YAML 的 `xml_path` 或 `--xml-path` 指定。`ROBOCON2027.xml` 使用平面和静态障碍物构建场地，不依赖外部高度图；场地欧拉角单位为弧度，与 `go2.xml` 一致。切换仿真场景不会改变训练侧地形，也不代表现有策略已经具备越障能力。
 
+Go2当前物理步长为2 ms、每10步更新一次策略，策略频率50 Hz。默认高度跌倒检查关闭，但重力投影倾倒检查仍启用；不要把它理解成删除了全部输出保护。
+
 无界面运行：
 
 ```bash
@@ -153,6 +178,8 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
   --duration 30
 ```
 
+`--command` 必须与 `--no-keyboard` 同用。默认键盘模式启动时禁用控制，需要按F使能；固定命令模式不读取键盘，也不需要F。
+
 输出前 100 次策略周期的调试快照：
 
 ```bash
@@ -162,9 +189,25 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
   --debug-steps 100
 ```
 
+debug是正式运行器的可选输出，不是另一套部署链路。它区分模型原始 `raw_action`、裁剪后的 `clipped_action`、目标关节角和最终力矩；默认不打印快照。详细字段和排查顺序见RL子工程说明。
+
+### 只查看机械模型
+
+不加载策略、不运行PD，只查看Primuus：
+
+```bash
+python3 -m mujoco.viewer --mjcf=src/controller/rl/resources/robots/primuus/scene_flat.xml
+```
+
+这个原生Viewer不读取机器人YAML或evdev控制器，播放后无控制机器人会倒地。原生Viewer快捷键与本工程RL入口的WASD控制不同。当前Primuus没有匹配策略，不能拿Go2权重运行Primuus YAML。
+
+Primuus已恢复原始小腿范围 `[-2.7227, -0.8378] rad`，通过固定碰撞载体和凸分段处理接触，不再使用 `-2.4 rad` 限位规避。验证结果及残余数值接触误差见[模型说明](src/controller/rl/resources/robots/primuus/README.md)。
+
 ## 键盘控制
 
 程序默认读取运行主机的 Linux evdev 键盘。SSH 客户端按键不会自动转发为远端 evdev 事件。
+
+按住方向键持续给命令，释放方向键后相应命令归零；F使能时独占已选键盘，I禁用时释放。需要本机evdev读取权限，不能用“先sudo启动整个控制器”代替正确设备权限。
 
 | 按键 | 作用 |
 | --- | --- |
@@ -182,7 +225,7 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 
 ```bash
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
-  --keyboard-device /dev/input/by-path/<device>-event-kbd
+  --keyboard-device '/dev/input/by-path/<device>-event-kbd'
 ```
 
 ## 实机部署入口
@@ -212,7 +255,7 @@ bash src/controller/rl/third_party/build_unitree_actuator_sdk.sh
 
 ```bash
 python3 src/controller/rl/rl_controller/deploy_real_rl.py \
-  --config src/controller/rl/config/real/<robot>.yaml \
+  --config 'src/controller/rl/config/real/<robot>.yaml' \
   --allow-real-hardware
 ```
 
@@ -220,7 +263,7 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 
 ```bash
 python3 src/controller/rl/rl_controller/deploy_real_rl.py \
-  --config src/controller/rl/config/real/<robot>.yaml \
+  --config 'src/controller/rl/config/real/<robot>.yaml' \
   --allow-real-hardware \
   --no-keyboard --auto-enable --command 0.2 0.0 0.0
 ```
@@ -228,6 +271,8 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 固定命令在 `enable_rl()` 清空旧命令之后写入，站姿过渡期间不参与观测，进入 RL 后持续生效。
 
 `--allow-real-hardware` 是必须显式提供的启动许可。它不是安全认证，也不能替代物理急停、驱动器底层超时、吊架测试和单电机验证。
+
+本工程不再提供mock硬件、dry-run实机后端或独立的无实物测试链路。保留的正式诊断入口是MuJoCo debug和双模型输出对比；硬件到位后的检查由用户逐级执行。
 
 ## 辅助文档
 

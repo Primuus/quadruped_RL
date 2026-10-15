@@ -1,775 +1,320 @@
 # TensorBoard 使用指南
 
-这份文档用于查看和分析 `quadruped_train` 的训练日志。重点说明 TensorBoard 怎么启动、每条曲线代表什么、如何判断训练是否有效，以及如何根据曲线决定下一步调参方向。
+[文档导航](README.md) | [训练调参教程](训练调参教程.md)
 
-## 日志位置
+核对日期：2026-10-15。指标名称和统计口径来自当前 `HIMOnPolicyRunner` 与 `LeggedRobot`，不套用其他框架的同名曲线解释。TensorBoard 用于定位训练现象，不能代替 Isaac Gym play、MuJoCo 和实机验收。
 
-训练日志在服务器的 `quadruped_train` 工程中：
+## 1. 日志和启动
+
+训练侧默认日志位置：
 
 ```text
 ~/quadruped_train/logs/go2/
+  Oct15_20-00-00_rough/
+    events.out.tfevents...
+    model_50.pt
+    model_100.pt
+  exported/policies/
+    policy_1.pt
+    policy_1.onnx
 ```
 
-每次训练会生成一个 run 目录，格式类似：
+run 名是示例。事件文件记录标量，`model_*.pt` 是训练 checkpoint；导出的 `policy_1.*` 不能用于恢复训练优化器。
 
-```text
-logs/go2/Jul09_18-30-10_rough/
-```
-
-目录里一般包含：
-
-```text
-events.out.tfevents...   # TensorBoard 日志
-model_*.pt               # checkpoint
-```
-
-## 启动 TensorBoard
-
-在服务器上执行：
+在服务器启动 TensorBoard：
 
 ```bash
+ssh -p 2222 hurricane@10.109.69.166
 cd ~/quadruped_train
 conda activate isaacgym
-tensorboard --logdir logs/go2 --host 0.0.0.0 --port 6006
+tensorboard --logdir logs/go2 --host 127.0.0.1 --port 6006
 ```
 
-然后在本地浏览器打开：
-
-```text
-http://192.168.0.214:6006
-```
-
-如果浏览器不能直接访问端口，用 SSH 转发。在本地电脑终端执行：
+另开本地终端建立隧道：
 
 ```bash
-ssh -L 6006:localhost:6006 hurricane@192.168.0.214
+ssh -p 2222 -N -L 6006:127.0.0.1:6006 hurricane@10.109.69.166
 ```
 
-然后本地浏览器打开：
+浏览器访问 `http://127.0.0.1:6006`。隧道终端保持打开；本地6006被占用时，可改为 `-L 16006:127.0.0.1:6006`，浏览器对应改用16006。
 
-```text
-http://localhost:6006
-```
+只在持有事件文件的一侧安装 TensorBoard即可，浏览器所在电脑不需要安装训练依赖。若想离线查看，可把某个run的事件文件复制到本地，再在本地启动TensorBoard。绑定 `0.0.0.0` 会开放网络访问，默认不需要这样做。
 
-如果服务器没有 TensorBoard：
+## 2. 页面与横轴
 
-```bash
-conda activate isaacgym
-pip install tensorboard
-```
+1. 进入 Scalars，先只选一个完整run。
+2. 横轴 Step 对应已完成的训练迭代，不是单个环境的物理步或episode。
+3. 先看原始曲线，再适度平滑；平滑过强可能掩盖突发崩溃。
+4. 比较多个run时固定横轴、平滑系数与评估条件，同时记录代码和奖励版本。
+5. 新的resume进程有新run目录，checkpoint编号会继续累计。
 
-## TensorBoard 页面怎么设置
+当前4096环境、每环境24个控制步，每迭代采样98304个transition。100轮能跑通只代表短时稳定，不等于步态已经收敛。
 
-进入网页后：
+日志需要有episode结束后才出现 `Train/*` 与 `Episode/*` 的部分指标。TensorBoard刷新延迟或训练正在采样，不等于程序卡死。
 
-1. 打开 `Scalars` 页面。
-2. 左侧只勾选当前要看的 run，例如 `Jul09_18-30-10_rough`。
-3. 如果曲线波动太大，把 `Smoothing` 调到 `0.6 ~ 0.8`。
-4. 对比不同参数时，同时勾选多个 run。
-5. 不要只看最后一个点，要看趋势。
-
-## 最先看哪些曲线
-
-优先看：
-
-```text
-Train/mean_reward
-Train/mean_episode_length
-Episode/rew_tracking_lin_vel
-Episode/rew_tracking_ang_vel
-Episode/rew_torques
-Episode/rew_action_rate
-Episode/rew_smoothness
-Episode/rew_foot_clearance
-Episode/rew_dof_pos_limits
-Loss/value_function
-Loss/surrogate
-Loss/estimation
-Policy/mean_noise_std
-```
-
-判断顺序：
-
-```text
-1. mean_episode_length 是否接近最大 episode 长度
-2. mean_reward 是否整体上升
-3. tracking_lin_vel / tracking_ang_vel 是否上升
-4. torques / action_rate / smoothness 是否代价过大
-5. dof_pos_limits 是否接近 0
-6. loss 是否稳定，没有爆炸或 NaN
-7. mean_noise_std 是否逐渐下降
-```
-
-## Train 指标
+## 3. 两种奖励曲线的统计口径
 
 ### Train/mean_reward
 
-平均 episode 总奖励，代表整体训练表现。
+最近最多100个已结束episode的总回报均值。它是累计回报，不是“某一轮PPO的即时得分”，也不保证每个episode都完整运行20秒。
 
-一般希望：
+### Episode/rew_<name>
 
-```text
-长期上升
-后期趋于稳定
-没有突然大幅崩掉
-```
-
-注意：
-
-- 它不是越高就一定越好。
-- 有时 reward 上升，但动作很抖或部署效果差。
-- 必须结合 tracking、torques、smoothness、episode length 一起看。
-
-常见现象：
+环境初始化会将非零奖励权重乘以控制周期：
 
 ```text
-持续上升：策略在学习
-长期不动：可能 reward 设计不合适或训练太难
-突然大跌：可能参数太激进、训练崩了、随机化太强
+每控制步贡献 = 配置权重 × control_dt × 原始奖励函数
+Episode/rew_name = 已结束回合该项累计贡献 / 配置的episode_length_s
 ```
+
+runner再对收集到的episode统计取均值。分母使用配置的最大回合时长，不是该回合实际存活时间，所以短回合会拉低日志值。
+
+当前Go2控制周期 `0.005*4=0.02 s`，配置回合长20 s。完整回合中，理论上限为1的线速度跟踪函数，对应日志接近权重1.0；角速度跟踪对应权重0.5。但如果回合很短，不能仅用“日志值/权重”解释跟踪准确率。
+
+因此：
+
+- `Train/mean_reward` 与所有 `Episode/rew_*` 不能直接逐点相加对账。
+- 负奖励项的数值表示已加权代价，不是原始米、牛米或接触次数。
+- 改奖励公式、权重、回合长度或采样分布后，总reward不能直接横向比较。
+- 本轮源码默认 `only_positive_rewards=False`；旧日志不一定使用相同定义。
+
+## 4. 先看这六组指标
+
+| 顺序 | 指标 | 要回答的问题 |
+| --- | --- | --- |
+| 1 | `Train/mean_episode_length` | 是否频繁提前终止？ |
+| 2 | `Train/mean_reward` | 当前目标下是否在学习，是否突然退化？ |
+| 3 | `Command/<mode>/fraction` 和误差 | 四类命令是否都有覆盖，哪类不会？ |
+| 4 | 高度、支撑足和非足端接触 | 是否用趴行、膝部支撑或扭身取巧？ |
+| 5 | 滑移、换步、抬脚与动作代价 | 是否真正迈步，代价是否合理？ |
+| 6 | loss、学习率、探索标准差和性能 | 更新是否稳定，计算是否异常？ |
+
+总reward高、episode长，仅说明能存活并获得当前目标的回报；不证明机器人使用足端正常走路。
+
+## 5. 存活与跟踪
 
 ### Train/mean_episode_length
 
-平均 episode 持续 step 数。当前配置：
+单位是控制步。当前20 s / 0.02 s约1000步，终止条件的比较可能带来一控制步差异。
 
-```text
-episode_length_s = 20
-sim.dt = 0.005
-control.decimation = 4
-control_dt = 0.02
-最大 episode length 约为 20 / 0.02 = 1000
-```
-
-判断：
-
-```text
-接近 1000：基本不摔，能活完整局
-逐渐上升：稳定性变好
-很低：频繁摔倒或 reset
-```
-
-如果 `mean_reward` 上升，但 `mean_episode_length` 很低，说明策略可能在短时间内刷到 reward，但仍然不稳定。
-
-## 速度跟踪指标
+接近1000说明大多未提前终止，不等于站姿或步态正确。低趴但未触发机身/姿态终止的策略仍可能活满一局。
 
 ### Episode/rew_tracking_lin_vel
 
-线速度跟踪奖励。看机器人是否按命令前进、后退、侧移。
-
-计算逻辑近似：
-
-```python
-lin_vel_error = sum((command_xy - base_lin_vel_xy) ** 2)
-reward = exp(-lin_vel_error / tracking_sigma)
-```
-
-判断：
+原始函数为：
 
 ```text
-接近 1.0：线速度跟踪很好
-长期很低：机器人没有按命令走
-上升后又下降：可能训练变难或动作代价压制了步态
+exp(-||command_xy - base_lin_vel_xy||² / tracking_sigma)
 ```
 
-当前 Go2 权重：
-
-```python
-tracking_lin_vel = 1.0
-```
-
-所以这项最高大约接近 1.0。
+比较的是机身坐标系XY速度，当前 `tracking_sigma=0.25`、权重1.0。不检查支撑部位，滑动或非足端支撑也可能取得高分。
 
 ### Episode/rew_tracking_ang_vel
 
-yaw 角速度跟踪奖励。看机器人是否会按命令转向。
-
-计算逻辑近似：
-
-```python
-ang_vel_error = (command_yaw - base_ang_vel_yaw) ** 2
-reward = exp(-ang_vel_error / tracking_sigma)
-```
-
-当前 Go2 权重：
-
-```python
-tracking_ang_vel = 0.5
-```
-
-所以这项最高大约接近 0.5。
-
-如果 `tracking_lin_vel` 很高，但 `tracking_ang_vel` 很低，说明会走直线但转向能力差。
-
-## 动作代价指标
-
-这些指标用来判断机器人是不是用很粗暴的方式走路。
-
-### Episode/rew_torques
-
-力矩惩罚。
-
-```python
-torques = -0.0002
-```
-
-越负说明用力越大。
-
-判断：
+原始函数为：
 
 ```text
-轻微变负：正常，走路需要用力
-持续很负：动作可能很暴力，部署可能抖或不稳
-突然变得很负：某个 reward 可能逼机器人用大力矩
+exp(-(command_yaw - base_ang_vel_z)² / tracking_sigma)
 ```
 
-如果脚抬不起来，可以考虑减弱力矩惩罚：
+当前权重0.5。它只衡量偏航速度跟踪，不保证转向时抬脚、不滑移或机身姿态自然。
 
-```python
-torques = -0.0001
-```
+两项都高仍需看四类命令的误差；平均值会混入更容易的站立或低速样本。
 
-如果动作太暴力，可以增强：
+## 6. Command 分组指标
 
-```python
-torques = -0.0003
-torques = -0.0004
-```
-
-### Episode/rew_action_rate
-
-一阶动作变化惩罚。
-
-```python
-action_rate = -0.01
-```
-
-它反映相邻 action 的变化幅度。
-
-判断：
+当前模式名固定为：
 
 ```text
-越负：动作变化越快
-太负：可能抖动
-太弱：动作可能不够平滑
+Command/turn/*          原地转向
+Command/moving_turn/*   边走边转
+Command/translate/*     平移
+Command/stand/*         零命令站立
 ```
 
-如果动作抖：
+Go2配置比例为25%、25%、30%、20%，但曲线是本迭代实际采样占比，不保证每次都恰好等于配置概率。
 
-```python
-action_rate = -0.02
-```
+| 后缀 | 统计含义 |
+| --- | --- |
+| `fraction` | 本轮采样中该模式占比 |
+| `yaw_abs_error` | 偏航命令与实际角速度的绝对误差，rad/s |
+| `linear_error` | XY命令与实际线速度误差的向量模长，m/s |
+| `valid_steps_per_second` | 按有效腾空、抬升与落地条件计数的足端落地频率，四足合计，不是reward |
+| `foot_slip_speed` | 每环境接触足端水平速度模长之和再平均，m/s；不是单只足端平均速度 |
+| `feet_in_contact` | 向上接触力超过1 N的足端数，未使用站立支撑滤波 |
+| `tilt` | 重力投影XY分量模长，不是以度表示的倾角 |
+| `base_height` | 当前平地机身根节点世界z，m |
+| `joint_pose_error` | 所有关节相对默认角的绝对误差之和，rad |
+| `supporting_feet` | 5 N阈值且允许一帧漏检的支撑足数 |
 
-如果脚抬不起来或动作迟钝：
+某模式本轮没有样本时不会写该模式曲线，不能把缺失值当成零误差。
 
-```python
-action_rate = -0.005
-```
-
-### Episode/rew_smoothness
-
-二阶动作变化惩罚，更关注高频抖动。
-
-```python
-smoothness = -0.01
-```
-
-判断：
+转向故障的典型组合：
 
 ```text
-越负：动作二阶变化越大，可能高频抖
-接近 0：动作更平滑
+turn/yaw_abs_error 低
+turn/foot_slip_speed 高
+turn/valid_steps_per_second 低
 ```
 
-如果 MuJoCo 里抖动明显：
+这支持“通过滑动扭身而非正常换步”的判断，但仍需play画面确认。不能只提高 `tracking_ang_vel` 权重。
 
-```python
-smoothness = -0.02
-```
+## 7. 高度、足端与非足端支撑
 
-如果机器人不愿迈腿：
+### Episode/rew_base_height
 
-```python
-smoothness = -0.005
-```
-
-### Episode/rew_dof_pos_limits
-
-关节位置限制惩罚。
-
-当前：
-
-```python
-dof_pos_limits = -10.0
-soft_dof_pos_limit = 0.9
-```
-
-判断：
+当前目标0.28 m、容差0.03 m，0.25-0.31 m区间内代价为零：
 
 ```text
-接近 0：基本没有接近关节极限
-明显变负：关节经常打到极限附近
+max(abs(base_z - target) - tolerance, 0)² / sigma²
 ```
 
-如果这项很负，说明策略可能通过极端关节角完成动作，需要重点检查 play 画面。
+配合各模式 `base_height` 判断是站立矮、行走矮还是仅转向时下沉。初始0.42 m不是行走高度目标。
 
-## 抬腿相关指标
+### Episode/contact_<body>
+
+某个非足端body超过5 N力阈值的回合时间占比，近似范围0到1。这不是加权reward，也不是足端接触率。
+
+逐条比较四腿大腿/小腿；长期同侧偏高值得检查关节映射、碰撞形状和奖励取巧。配置Primuus固定碰撞载体时，需要看其 `calf_collision_link`，不能只看不承载形状的原 `calf_link`。
+
+### Episode/rew_collision
+
+当前权重-1.0，只惩罚持续约0.06 s的非足端接触。短碰撞可以出现在 `contact_<body>` 中而尚未产生明显collision代价。惩罚不是硬碰撞约束，也不会自动修复模型穿插。
+
+### Episode/rew_stand_still 与 rew_stand_contacts
+
+只作用于XY命令模长不超过0.1 m/s、偏航命令不超过0.1 rad/s的站立样本。
+
+- `stand_still`：偏离默认关节角的绝对偏差之和。
+- `stand_contacts`：缺少支撑足的比例，四足正常支撑时为零。
+
+原地转向不应被四足同时支撑的站立目标压制。全局 `stand_contacts` 曲线还受站立采样占比影响，应结合 `Command/stand/supporting_feet`。
 
 ### Episode/rew_foot_clearance
 
-足端抬脚约束。当前已经打开：
+当前仅约束非支撑足。使用机身系足端高度、扣除机身平移/旋转后的相对速度，高度误差除以0.05 m再平方。目标-0.20 m是相对机身的坐标，不是离地抬20 cm。
 
-```python
-foot_clearance = -0.01
-clearance_height_target = -0.20
-```
+接近零可能是高度合适，也可能是足端没有摆动或一直支撑，不能据此断言抬腿成功。
 
-`foot_clearance` 权重非零时，训练环境会自动获取并刷新所需的 rigid-body state。
+### Episode/rew_foot_slip 与 rew_turn_step
 
-这项是惩罚项，通常是负值。不要简单理解为越高越好，要结合实际画面看。
+`foot_slip` 是接触足端水平速度平方和的负权重贡献。数值更接近零可能是滑移变小，也可能是机器人不动。
 
-判断：
+`turn_step` 按每足可积累的时间预算奖励有效落地，还要求XY/yaw跟踪、同向转动和没有持续非足端支撑。高频跺脚不会无限增加单位时间回报；`valid_steps_per_second` 与它不是同一个统计量。
 
-```text
-数值很小：这个 reward 对总 reward 影响不大
-越来越负：可能脚高度误差变大，或摆腿速度增大
-突然很负：可能 foot_clearance 过强或动作过大
-```
+## 8. 动作代价
 
-如果 play 发现仍然拖脚：
+| 曲线 | 原始含义 | 不能直接推出 |
+| --- | --- | --- |
+| `Episode/rew_torques` | 关节力矩平方和 | 真实电功率、能耗或峰值力矩 |
+| `Episode/rew_action_rate` | 相邻动作差平方和 | 机器人一定在抖；正常摆腿也会变化 |
+| `Episode/rew_smoothness` | 二阶动作差平方和 | 越接近零步态越好；不动作也可以很小 |
+| `Episode/rew_dof_acc` | 关节速度差除以控制周期后的平方和 | 某个电机的单独加速度 |
+| `Episode/rew_dof_pos_limits` | 超出软位置范围的偏差 | 超出机械硬限位的次数 |
 
-```python
-foot_clearance = -0.02
-```
+这些代价必须与跟踪、实际动作和接触一起解释。只在MuJoCo抖而Isaac Gym正常时，先查模型、关节顺序、默认角、裁剪、缩放、控制周期与逐物理步PD，不先盲目增加smoothness。
 
-如果脚抬得太夸张或动作变大：
+## 9. Loss 与探索
 
-```python
-foot_clearance = -0.005
-```
+| 曲线 | 当前含义和阅读方法 |
+| --- | --- |
+| `Loss/value_function` | critic返回值预测损失；受reward量级和数据分布影响，不要求单调归零 |
+| `Loss/surrogate` | clipped PPO目标的损失；符号和大小不能直接解释为步态好坏 |
+| `Loss/estimation` | 预测速度与下一时刻critic缩放线速度的MSE；不是未经缩放的m/s误差 |
+| `Loss/swap` | estimator的原型对比损失；归约含原型维度，不能套用普通分类交叉熵的量级 |
+| `Loss/learning_rate` | KL自适应后的学习率，当前代码范围1e-5到1e-2 |
+| `Policy/mean_noise_std` | 训练动作正态分布的平均探索标准差，不是传感器噪声或PD增益 |
 
-## Loss 指标
+速度估计loss降低通常是有用信号，但是否接近零取决于状态噪声、目标缩放和运动复杂度。探索标准差也不要求一直下降；例如稳定在0.5不能单独判为异常。play和导出的部署模型使用确定性动作，不把训练探索噪声原样带入部署。
 
-### Loss/value_function
+遇到NaN、突然巨大变化或reward崩溃时，检查观测/动作有限性、更新幅度、命令分布和设备状态，不凭某一条loss直接断定根因。
 
-critic/value 网络损失。critic 用来估计当前状态未来能获得多少 reward。
-
-判断：
-
-```text
-稳定较低：正常
-剧烈爆炸：训练不稳定
-长期很高：critic 学不准，PPO 更新质量差
-```
-
-这项不需要单调下降到 0，只要不爆炸即可。
-
-### Loss/surrogate
-
-PPO actor 更新损失。
-
-这不是普通意义上的“越小越好”。重点看是否稳定。
-
-判断：
+## 10. 性能指标
 
 ```text
-小幅波动：正常
-突然巨大波动：策略更新过猛
-长期异常大：学习率、reward、KL 可能有问题
+Perf/total_fps
+Perf/collection time
+Perf/learning_time
 ```
 
-### Loss/estimation
+`total_fps` 是并行采样控制步数除以采样加优化时间，不是单台机器人实时频率。采样慢可能来自物理接触、刚体状态刷新或CPU/GPU资源争用；学习慢可能与网络、mini-batch和设备有关。
 
-HIM estimator 估计损失。当前 HIM-PPO 会从历史观测估计隐含信息，再给 actor 使用。
+这些曲线不能诊断GPU硬件健康。若出现CUDA launch failure且 `nvidia-smi` 也失败，应停止继续启动任务并检查驱动/硬件状态。
 
-判断：
+## 11. 从曲线到参数决策
 
-```text
-逐渐下降：estimator 在学
-很高不降：历史观测不足或 estimator 学不动
-突然爆炸：数据或训练不稳定
-```
+| 现象 | 先核实 | 再做单组对照实验 |
+| --- | --- | --- |
+| reward升、episode短 | 终止条件与命令难度 | 缩小过难命令或调整姿态代价 |
+| 活满一局但趴着走 | 高度、非足端接触、支撑足 | 高度/站立/碰撞奖励组合 |
+| 转向滑步、不换脚 | turn分组滑移、有效落地和非足端接触 | 转向采样比例、滑移和换步门槛 |
+| 不抬腿 | 碰撞模型、限位、动作映射、摆动状态 | clearance与动作代价的平衡 |
+| MuJoCo单独变差 | 训练与部署契约和模型接触 | 先修对齐，再讨论重新训练 |
+| loss突然异常 | 数据与设备状态 | 最后才考虑学习率和随机化强度 |
 
-这项是 HIMLoco 化后很重要的指标。正常情况下应该明显下降。
+本表是排查顺序，不是“看到曲线就自动改参数”的规则。详细数值及新增reward/随机化步骤见[训练调参教程](训练调参教程.md)。
 
-### Loss/swap
+比较多个run时，尽量保持源码、训练种子、训练预算、命令模式和评估动作一致。若reward定义已不同，使用共同的速度误差、接触率和评估画面，而不是比较谁的总reward更大。
 
-HIM 对比/原型相关损失。主要看是否稳定，不需要像 `estimation` 一样明显降到很低。
+## 12. 导出、复制与回放
 
-判断：
-
-```text
-小幅波动：正常
-突然爆炸：HIM estimator 相关训练不稳定
-```
-
-### Loss/learning_rate
-
-当前自适应学习率。配置：
-
-```python
-schedule = 'adaptive'
-desired_kl = 0.01
-learning_rate = 1e-3
-```
-
-如果 KL 偏大，学习率会下降；如果 KL 偏小，学习率可能上升。
-
-判断：
-
-```text
-缓慢调整：正常
-快速降到很低：策略更新可能过猛，adaptive schedule 在压制学习率
-长期很低且 reward 不涨：可能学习停滞
-```
-
-## Policy 指标
-
-### Policy/mean_noise_std
-
-策略动作分布的平均标准差，也就是探索噪声大小。
-
-判断：
-
-```text
-从 1.0 逐渐下降：策略逐渐确定，正常
-一直很高：策略还没学稳
-过早降得很低：可能探索不足
-突然异常：训练可能不稳定
-```
-
-例如某次训练：
-
-```text
-1.00 -> 0.245
-```
-
-说明策略已经从随机探索逐渐变得稳定。
-
-## 一次训练如何分析
-
-以一个 run 为例：
-
-```text
-logs/go2/Jul09_18-30-10_rough
-```
-
-如果看到：
-
-```text
-Train/mean_reward: 0 -> 23
-Train/mean_episode_length: 低 -> 1000
-rew_tracking_lin_vel: 接近 1.0
-rew_tracking_ang_vel: 接近 0.5
-Loss/estimation: 明显下降
-Policy/mean_noise_std: 从 1.0 降到 0.2~0.3
-```
-
-可以判断：
-
-```text
-训练是健康的
-机器人大概率学到了速度跟踪
-不是完全不会走的策略
-```
-
-再看：
-
-```text
-rew_torques
-rew_action_rate
-rew_smoothness
-rew_dof_pos_limits
-rew_foot_clearance
-```
-
-判断走得是否粗暴、是否抖动、是否打关节极限、是否拖脚。
-
-## 根据曲线改参数
-
-### 1. reward 上升，episode length 很低
-
-现象：
-
-```text
-Train/mean_reward 上升
-Train/mean_episode_length 很低
-```
-
-说明策略可能短时间拿到 reward，但仍然频繁摔倒。
-
-优先考虑：
-
-```python
-orientation = -0.3
-ang_vel_xy = -0.1
-lin_vel_z = -3.0
-```
-
-也可以缩小命令范围：
-
-```python
-lin_vel_x = [-0.5, 0.8]
-lin_vel_y = [-0.3, 0.3]
-ang_vel_yaw = [-0.5, 0.5]
-```
-
-### 2. tracking 很高，但 MuJoCo 里动作抖
-
-现象：
-
-```text
-rew_tracking_lin_vel 高
-rew_tracking_ang_vel 高
-rew_action_rate 很负
-rew_smoothness 很负
-```
-
-优先考虑：
-
-```python
-action_rate = -0.02
-smoothness = -0.02
-```
-
-如果还抖，降低学习率：
-
-```python
-learning_rate = 5e-4
-```
-
-### 3. 机器人不抬腿或拖脚
-
-现象：
-
-```text
-play 里拖脚
-rew_foot_clearance 影响很小
-tracking 还不错
-```
-
-优先考虑：
-
-```python
-foot_clearance = -0.02
-```
-
-如果动作被压得太保守：
-
-```python
-torques = -0.0001
-action_rate = -0.005
-smoothness = -0.005
-```
-
-### 4. 力矩太大，动作暴力
-
-现象：
-
-```text
-rew_torques 很负
-机器人动作大
-MuJoCo 里冲击明显
-```
-
-优先考虑：
-
-```python
-torques = -0.0003
-torques = -0.0004
-```
-
-如果同时脚抬太高：
-
-```python
-foot_clearance = -0.005
-```
-
-### 5. 关节接近极限
-
-现象：
-
-```text
-rew_dof_pos_limits 明显变负
-play 里关节姿态很极端
-```
-
-优先考虑：
-
-```python
-soft_dof_pos_limit = 0.85
-dof_pos_limits = -10.0  # 保持或增强
-```
-
-如果已经很强还不行，检查 default joint angles 和 action_scale。
-
-### 6. estimator 学不好
-
-现象：
-
-```text
-Loss/estimation 长期很高
-Train/mean_reward 不涨
-```
-
-优先考虑：
-
-```text
-确认 obs 维度和 history_length 没改错
-确认 actor obs 顺序和部署侧一致
-降低学习率到 5e-4
-先关闭过强随机化
-```
-
-## 多个 run 怎么比较
-
-每次改参数后建议用不同 `run_name`：
-
-```bash
-python quadruped_rl/scripts/train_go2.py \
-  --headless \
-  --max_iterations 1000 \
-  --run_name foot_clearance_002
-```
-
-TensorBoard 里同时勾选多个 run，看：
-
-```text
-谁的 mean_episode_length 更快接近 1000
-谁的 mean_reward 更稳定
-谁的 tracking 更高
-谁的 torques/action_rate/smoothness 代价更低
-谁的 dof_pos_limits 更接近 0
-```
-
-不要只比较最终 reward。一个 run 最终 reward 高，但动作代价很大，不一定更好。
-
-## 从 TensorBoard 到 play
-
-TensorBoard 只能判断趋势，最终必须看 play。
-
-推荐节奏：
-
-```text
-100 iteration：检查是否能跑、是否 NaN、是否频繁摔
-500 iteration：看曲线趋势
-1000 iteration：导出并 play
-2000~5000 iteration：判断是否值得长训
-```
-
-导出指定 checkpoint：
+在训练服务器指定实际run与checkpoint：
 
 ```bash
 cd ~/quadruped_train
 python quadruped_rl/scripts/play_go2.py \
   --headless \
-  --load_run Jul09_18-30-10_rough \
-  --checkpoint 950
+  --load_run Oct15_20-00-00_rough \
+  --checkpoint 1000
 ```
 
-导出后会生成：
+run名为示例，需要替换为真实目录。默认选择最新有效run和最大编号checkpoint，不会选择reward最高的模型。
+
+每次成功双导出得到：
 
 ```text
 logs/go2/exported/policies/policy_1.pt
+logs/go2/exported/policies/policy_1.onnx
 ```
 
-复制到本地部署：
+重复play会覆盖固定导出文件，不覆盖checkpoint；ONNX失败时不应混用新PT和旧ONNX。导出成功后play继续执行约10个配置回合长度的仿真，`--headless` 只关闭窗口，终端暂时无输出不一定是卡住。
+
+从本地部署仓库根目录复制：
 
 ```bash
-scp hurricane@192.168.0.214:~/quadruped_train/logs/go2/exported/policies/policy_1.pt \
-  /home/ry/project/quadruped/src/controller/rl/models/policy_1.pt
+scp -P 2222 'hurricane@10.109.69.166:~/quadruped_train/logs/go2/exported/policies/policy_1.*' \
+  src/controller/rl/models/
 ```
 
-本地 MuJoCo 检查：
+这会覆盖同名文件。需要留存时使用独立版本目录，并相应修改机器人YAML；模型不会因源码更新自动变成新训练结果。
+
+先在相同输入上比较双模型，再用平地MuJoCo观察：
 
 ```bash
-cd /home/ry/project/quadruped
-python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py
+python3 src/controller/rl/tools/compare_policy_backends.py \
+  --torchscript-path src/controller/rl/models/policy_1.pt \
+  --onnx-path src/controller/rl/models/policy_1.onnx
+
+python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
+  --xml-path src/controller/rl/resources/robots/go2/scene_flat.xml
 ```
 
-## 常见误区
+Go2默认配置实际选择ROBOCON场地，不是平地；比较训练与部署时应显式选择上述平地场景。Primuus不能使用Go2权重。
 
-### 只看 mean_reward
-
-错误。必须同时看：
+## 13. 记录模板
 
 ```text
-mean_episode_length
-tracking_lin_vel
-tracking_ang_vel
-torques
-action_rate
-smoothness
-dof_pos_limits
+源码commit / 机器人 / URDF或XML版本：
+完整run目录 / checkpoint / 是否resume：
+追加迭代数 / 控制周期：
+修改的单个参数组：
+各模式fraction与速度误差：
+各模式高度 / supporting_feet / 非足端接触率：
+滑移 / 换步 / 抬脚与动作代价：
+loss / 学习率 / 探索标准差：
+Isaac Gym play现象：
+MuJoCo现象与双模型一致性：
+结论与下一项实验：
 ```
 
-### 看到 reward 上升就继续加复杂随机化
-
-不建议。先 play 看步态。如果基础步态还有拖脚、抖动、关节极限问题，不要急着开 push 和 rough terrain。
-
-### 看到 foot_clearance 为负就认为不好
-
-不对。它是惩罚项，本来就是负值。重点看它是否异常变大，以及实际 play 是否抬腿合适。
-
-### TensorBoard 显示好，MuJoCo 就一定好
-
-不一定。TensorBoard 是训练仿真的统计，MuJoCo 是另一套物理模型。最终要用 MuJoCo 验证。
-
-## 调参记录建议
-
-每次训练记录：
-
-```text
-run_name:
-commit:
-是否 resume:
-checkpoint:
-max_iterations:
-
-改动参数:
-- 
-
-TensorBoard:
-- mean_reward:
-- mean_episode_length:
-- tracking_lin_vel:
-- tracking_ang_vel:
-- foot_clearance:
-- torques:
-- action_rate:
-- smoothness:
-- dof_pos_limits:
-- estimation loss:
-- mean_noise_std:
-
-play 现象:
-- 是否抬腿:
-- 是否拖脚:
-- 是否抖动:
-- 是否摔倒:
-- 速度是否偏大:
-- 转向是否稳定:
-
-结论:
-- 保留 / 回退 / 继续微调
-```
-
-## 当前建议
-
-当前训练参数已经打开：
-
-```text
-foot_clearance
-noise
-friction randomization
-dof_pos_limits
-smoothness
-```
-
-下一步建议：
-
-```text
-1. 先用 TensorBoard 判断 1000 iteration 左右曲线是否健康
-2. 导出 900~1000 左右 checkpoint
-3. 用 play 和 MuJoCo 看是否抬腿、是否抖动
-4. 再决定是否增强 foot_clearance 或调整 action_rate/smoothness/torques
-```
+训练曲线只能说明当前日志对应的实验。当前源码的参数表、历史checkpoint的参数和硬件的真实行为必须分别记录，不相互代替。
