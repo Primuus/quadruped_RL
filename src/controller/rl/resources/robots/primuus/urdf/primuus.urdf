@@ -32,7 +32,7 @@
       <material
         name="">
         <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="base_link_collision">
@@ -72,7 +72,7 @@
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="FL_hip_link_collision">
@@ -133,7 +133,7 @@
       <material
         name="">
         <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="FL_thigh_motor_collision">
@@ -399,7 +399,7 @@
       <material
         name="">
         <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="FL_foot_link_collision">
@@ -452,7 +452,7 @@
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="FR_hip_link_collision">
@@ -513,7 +513,7 @@
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="FR_thigh_motor_collision">
@@ -779,7 +779,7 @@
       <material
         name="">
         <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="FR_foot_link_collision">
@@ -832,7 +832,7 @@
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="RL_hip_link_collision">
@@ -893,7 +893,7 @@
       <material
         name="">
         <color
-          rgba="0.180392156862745 0.180392156862745 0.180392156862745 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="RL_thigh_motor_collision">
@@ -1159,7 +1159,7 @@
       <material
         name="">
         <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="RL_foot_link_collision">
@@ -1212,7 +1212,7 @@
       <material
         name="">
         <color
-          rgba="1 1 1 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="RR_hip_link_collision">
@@ -1539,7 +1539,7 @@
       <material
         name="">
         <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
     <collision name="RR_foot_link_collision">

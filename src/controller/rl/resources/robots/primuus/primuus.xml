@@ -10,7 +10,7 @@
   <default>
     <default class="primuus">
       <!--摩擦为当前平地仿真假设；不表示实物辨识结果。-->
-      <geom friction="0.8 0.005 0.0001" condim="3" conaffinity="1023" margin="0.001" solref="0.002 1" />
+      <geom rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" friction="0.8 0.005 0.0001" condim="3" conaffinity="1023" margin="0.001" solref="0.002 1" />
       <!--12 个理想关节力矩执行器：ctrl 与 force 均为关节端 N m，统一限矩 23.7。-->
       <motor ctrllimited="true" ctrlrange="-23.7 23.7" forcelimited="true" forcerange="-23.7 23.7" gear="1" />
       <default class="primuus_visual">
@@ -199,18 +199,18 @@
     <body name="base_link" pos="0 0 0.31212" childclass="primuus">
       <inertial pos="0.00694057390579392 -2.05071386552569E-07 -0.0112955170442756" mass="5.23587068482454" fullinertia="0.00751609551085018 0.0153383867968764 0.0165636657600055 1.17149366176653E-17 -8.67878106322231E-18 4.49664047226623E-19" />
       <freejoint name="floating_base" />
-      <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="base_link" class="primuus_visual" name="base_link_visual" />
-      <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="base_link" class="primuus_collision" name="base_link_collision" contype="2" conaffinity="963" />
+      <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="base_link" class="primuus_visual" name="base_link_visual" />
+      <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="base_link" class="primuus_collision" name="base_link_collision" contype="2" conaffinity="963" />
       <body name="FL_hip_link" pos="0.13115 0.064 0.0005">
         <inertial pos="0.0762500629573417 -0.000155921440403689 1.06671073855855E-05" mass="0.634929506480724" fullinertia="0.000462807877495446 0.000733341970995072 0.000402548773067429 8.33143376406467E-07 -1.63589107671244E-07 1.18579440717836E-07" />
         <joint name="FL_hip_joint" pos="0 0 0" axis="-1 0 0" range="-0.8378 0.8378" actuatorfrcrange="-23.7 23.7" damping="0.02" frictionloss="0.05" />
-        <geom type="mesh" rgba="1 1 1 1" mesh="FL_hip_link" class="primuus_visual" name="FL_hip_link_visual" />
-        <geom type="mesh" rgba="1 1 1 1" mesh="FL_hip_link" class="primuus_collision" name="FL_hip_link_collision" contype="4" conaffinity="957" />
+        <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FL_hip_link" class="primuus_visual" name="FL_hip_link_visual" />
+        <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FL_hip_link" class="primuus_collision" name="FL_hip_link_collision" contype="4" conaffinity="957" />
         <body name="FL_thigh_link" pos="0.082063 0.0343 0" quat="0.93050762191231429 0 0.36627252908604757 0">
           <inertial pos="-0.00416039398593621 0.0292209782643491 -0.0259811181940743" mass="0.879951412075438" fullinertia="0.00180628272541959 0.00225846552975432 0.000573712411406707 2.20257776510964E-07 -0.000156255163485927 3.89124091146592E-06" />
           <joint name="FL_thigh_joint" pos="0 0 0" axis="0 -1 0" ref="-0.75" range="-3.4907 1.5708" actuatorfrcrange="-23.7 23.7" damping="0.02" frictionloss="0.05" />
-          <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="FL_thigh_link" class="primuus_visual" name="FL_thigh_link_visual" />
-          <geom name="FL_thigh_motor_collision" contype="64" conaffinity="1019" type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="FL_thigh_motor" class="primuus_collision" />
+          <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FL_thigh_link" class="primuus_visual" name="FL_thigh_link_visual" />
+          <geom name="FL_thigh_motor_collision" contype="64" conaffinity="1019" type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FL_thigh_motor" class="primuus_collision" />
           <geom name="FL_thigh_inner_collision" type="mesh" mesh="FL_thigh_inner" class="primuus_collision" />
           <geom name="FL_thigh_outer_collision" type="mesh" mesh="FL_thigh_outer" class="primuus_collision" />
           <geom name="FL_thigh_wall_00_collision" type="mesh" mesh="FL_thigh_wall_00" class="primuus_collision" />
@@ -254,8 +254,8 @@
             <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FL_calf_main" class="primuus_collision" name="FL_calf_link_collision" />
             <body name="FL_foot_link" pos="-0.050324895550549 0 -0.225428475799682" quat="0.93961872331799168 -0.00017376513449589713 0.34222305677817105 6.3287835813517442e-05">
               <inertial pos="-0.000282921045976103 0.000143266661708163 0.0225797670997474" mass="0.0474923595951078" fullinertia="6.21855390730973E-06 7.0393672448095E-06 9.83238423380605E-06 1.35071830861399E-08 1.32276163705843E-07 -4.06288855502682E-08" />
-              <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="FL_foot_link" class="primuus_visual" name="FL_foot_link_visual" />
-              <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="FL_foot_link" class="primuus_collision" name="FL_foot_link_collision" />
+              <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FL_foot_link" class="primuus_visual" name="FL_foot_link_visual" />
+              <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FL_foot_link" class="primuus_collision" name="FL_foot_link_collision" />
             </body>
           </body>
         </body>
@@ -263,13 +263,13 @@
       <body name="FR_hip_link" pos="0.13115 -0.064 0.0005">
         <inertial pos="0.0761552572757807 0.000155921440403793 1.06433601473541E-05" mass="0.634929506480769" fullinertia="0.000462807877495464 0.000733341970995102 0.000402548773067464 2.36416383494435E-07 1.63589107671511E-07 -1.18360621253865E-07" />
         <joint name="FR_hip_joint" pos="0 0 0" axis="1 0 0" range="-0.8378 0.8378" actuatorfrcrange="-23.7 23.7" damping="0.02" frictionloss="0.05" />
-        <geom type="mesh" rgba="1 1 1 1" mesh="FR_hip_link" class="primuus_visual" name="FR_hip_link_visual" />
-        <geom type="mesh" rgba="1 1 1 1" mesh="FR_hip_link" class="primuus_collision" name="FR_hip_link_collision" contype="8" conaffinity="893" />
+        <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FR_hip_link" class="primuus_visual" name="FR_hip_link_visual" />
+        <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FR_hip_link" class="primuus_collision" name="FR_hip_link_collision" contype="8" conaffinity="893" />
         <body name="FR_thigh_link" pos="0.082063 -0.0343 0" quat="0.93050762191231429 0 0.36627252908604757 0">
           <inertial pos="-0.00411135549103739 -0.0292209785263389 -0.0260288180330094" mass="0.879951426788298" fullinertia="0.00180660898356108 0.00225846593596403 0.000573386565189001 -9.73812494324138E-07 -0.000156255478146303 -3.1321471198253E-06" />
           <joint name="FR_thigh_joint" pos="0 0 0" axis="0 -1 0" ref="-0.75" range="-3.4907 1.5708" actuatorfrcrange="-23.7 23.7" damping="0.02" frictionloss="0.05" />
-          <geom type="mesh" rgba="1 1 1 1" mesh="FR_thigh_link" class="primuus_visual" name="FR_thigh_link_visual" />
-          <geom name="FR_thigh_motor_collision" contype="128" conaffinity="1015" type="mesh" rgba="1 1 1 1" mesh="FR_thigh_motor" class="primuus_collision" />
+          <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FR_thigh_link" class="primuus_visual" name="FR_thigh_link_visual" />
+          <geom name="FR_thigh_motor_collision" contype="128" conaffinity="1015" type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FR_thigh_motor" class="primuus_collision" />
           <geom name="FR_thigh_inner_collision" type="mesh" mesh="FR_thigh_inner" class="primuus_collision" />
           <geom name="FR_thigh_outer_collision" type="mesh" mesh="FR_thigh_outer" class="primuus_collision" />
           <geom name="FR_thigh_wall_00_collision" type="mesh" mesh="FR_thigh_wall_00" class="primuus_collision" />
@@ -313,8 +313,8 @@
             <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FR_calf_main" class="primuus_collision" name="FR_calf_link_collision" />
             <body name="FR_foot_link" pos="-0.050325 0 -0.22543" quat="0.93961935576201916 0 0.34222137028152988 0">
               <inertial pos="-0.000282921043541828 0.000151618021139194 0.0225797125719309" mass="0.0474923594995402" fullinertia="6.21855385110693E-06 7.03933757109131E-06 9.83241384952833E-06 1.35561030567211E-08 1.32271157760041E-07 -3.95958235733473E-08" />
-              <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="FR_foot_link" class="primuus_visual" name="FR_foot_link_visual" />
-              <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="FR_foot_link" class="primuus_collision" name="FR_foot_link_collision" />
+              <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FR_foot_link" class="primuus_visual" name="FR_foot_link_visual" />
+              <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FR_foot_link" class="primuus_collision" name="FR_foot_link_collision" />
             </body>
           </body>
         </body>
@@ -322,13 +322,13 @@
       <body name="RL_hip_link" pos="-0.13115 0.064 0.0005">
         <inertial pos="-0.0761552572757813 9.40882760813305E-05 1.06433601476871E-05" mass="0.634929506480745" fullinertia="0.000462807877495457 0.000733341970995089 0.000402548773067442 2.3641638348446E-07 -1.63589107677567E-07 1.1836062124279E-07" />
         <joint name="RL_hip_joint" pos="0 0 0" axis="-1 0 0" range="-0.8378 0.8378" actuatorfrcrange="-23.7 23.7" damping="0.02" frictionloss="0.05" />
-        <geom type="mesh" rgba="1 1 1 1" mesh="RL_hip_link" class="primuus_visual" name="RL_hip_link_visual" />
-        <geom type="mesh" rgba="1 1 1 1" mesh="RL_hip_link" class="primuus_collision" name="RL_hip_link_collision" contype="16" conaffinity="765" />
+        <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_hip_link" class="primuus_visual" name="RL_hip_link_visual" />
+        <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_hip_link" class="primuus_collision" name="RL_hip_link_collision" contype="16" conaffinity="765" />
         <body name="RL_thigh_link" pos="-0.082063 0.0346 0" quat="0.93050762191231429 0 0.36627252908604757 0">
           <inertial pos="-0.00416039398592849 0.0292209782643449 -0.0259811181921453" mass="0.879951412075178" fullinertia="0.00180628272541908 0.00225846552975373 0.00057371241140659 2.20257776554532E-07 -0.000156255163485827 3.89124091148382E-06" />
           <joint name="RL_thigh_joint" pos="0 0 0" axis="0 -1 0" ref="-0.75" range="-3.4907 1.5708" actuatorfrcrange="-23.7 23.7" damping="0.02" frictionloss="0.05" />
-          <geom type="mesh" rgba="0.180392156862745 0.180392156862745 0.180392156862745 1" mesh="RL_thigh_link" class="primuus_visual" name="RL_thigh_link_visual" />
-          <geom name="RL_thigh_motor_collision" contype="256" conaffinity="1007" type="mesh" rgba="0.180392156862745 0.180392156862745 0.180392156862745 1" mesh="RL_thigh_motor" class="primuus_collision" />
+          <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_thigh_link" class="primuus_visual" name="RL_thigh_link_visual" />
+          <geom name="RL_thigh_motor_collision" contype="256" conaffinity="1007" type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_thigh_motor" class="primuus_collision" />
           <geom name="RL_thigh_inner_collision" type="mesh" mesh="RL_thigh_inner" class="primuus_collision" />
           <geom name="RL_thigh_outer_collision" type="mesh" mesh="RL_thigh_outer" class="primuus_collision" />
           <geom name="RL_thigh_wall_00_collision" type="mesh" mesh="RL_thigh_wall_00" class="primuus_collision" />
@@ -372,8 +372,8 @@
             <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_calf_main" class="primuus_collision" name="RL_calf_link_collision" />
             <body name="RL_foot_link" pos="-0.050325 0 -0.22543" quat="0.93961935576201916 0 0.34222137028152988 0">
               <inertial pos="-0.000282921045977158 0.000151618073683274 0.022579712566259" mass="0.0474923595951084" fullinertia="6.21855390730976E-06 7.03933757264475E-06 9.83241390597101E-06 1.3556106229105E-08 1.32271158850188E-07 -3.95958406922497E-08" />
-              <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="RL_foot_link" class="primuus_visual" name="RL_foot_link_visual" />
-              <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="RL_foot_link" class="primuus_collision" name="RL_foot_link_collision" />
+              <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_foot_link" class="primuus_visual" name="RL_foot_link_visual" />
+              <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_foot_link" class="primuus_collision" name="RL_foot_link_collision" />
             </body>
           </body>
         </body>
@@ -381,8 +381,8 @@
       <body name="RR_hip_link" pos="-0.13115 -0.064 0.0005">
         <inertial pos="-0.0762500629573426 0.000155921440403183 1.0667107383476E-05" mass="0.634929506480741" fullinertia="0.000462807877495449 0.000733341970995079 0.000402548773067442 8.33143376412833E-07 1.63589107670181E-07 -1.18579440716107E-07" />
         <joint name="RR_hip_joint" pos="0 0 0" axis="1 0 0" range="-0.8378 0.8378" actuatorfrcrange="-23.7 23.7" damping="0.02" frictionloss="0.05" />
-        <geom type="mesh" rgba="1 1 1 1" mesh="RR_hip_link" class="primuus_visual" name="RR_hip_link_visual" />
-        <geom type="mesh" rgba="1 1 1 1" mesh="RR_hip_link" class="primuus_collision" name="RR_hip_link_collision" contype="32" conaffinity="509" />
+        <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RR_hip_link" class="primuus_visual" name="RR_hip_link_visual" />
+        <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RR_hip_link" class="primuus_collision" name="RR_hip_link_collision" contype="32" conaffinity="509" />
         <body name="RR_thigh_link" pos="-0.082063 -0.0343 0" quat="0.93050762191231429 0 0.36627252908604757 0">
           <inertial pos="-0.00411135549104005 -0.0292209785263358 -0.0260288180330055" mass="0.879951426788245" fullinertia="0.00180660898356077 0.00225846593596375 0.000573386565189021 -9.73812494351874E-07 -0.000156255478146225 -3.13214711983833E-06" />
           <joint name="RR_thigh_joint" pos="0 0 0" axis="0 -1 0" ref="-0.75" range="-3.4907 1.5708" actuatorfrcrange="-23.7 23.7" damping="0.02" frictionloss="0.05" />
@@ -431,8 +431,8 @@
             <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RR_calf_main" class="primuus_collision" name="RR_calf_link_collision" />
             <body name="RR_foot_link" pos="-0.0503248955505491 0 -0.225428475799682" quat="0.93961873938531237 0 0.34222306263014535 0">
               <inertial pos="-0.000282921043543632 0.000151618021140942 0.0225797125719236" mass="0.0474923594995392" fullinertia="6.21855385110678E-06 7.0393375710911E-06 9.83241384952807E-06 1.3556103056777E-08 1.32271157759964E-07 -3.95958235733304E-08" />
-              <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="RR_foot_link" class="primuus_visual" name="RR_foot_link_visual" />
-              <geom type="mesh" rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" mesh="RR_foot_link" class="primuus_collision" name="RR_foot_link_collision" />
+              <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RR_foot_link" class="primuus_visual" name="RR_foot_link_visual" />
+              <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RR_foot_link" class="primuus_collision" name="RR_foot_link_collision" />
             </body>
           </body>
         </body>
