@@ -12,10 +12,10 @@ xml_path: resources/robots/primuus/scene_flat.xml
 
 # 仿真总时长 [s]
 simulation_duration: 60.0
-# 物理步长 [s]，沿用当前模型 PD 测试的 1 ms 设置
-simulation_dt: 0.001
-# 每 20 个物理步更新一次策略目标，策略频率为 50 Hz；PD 仍在每个物理步更新
-control_decimation: 20
+# 物理步长 [s]，与 XML 的 0.25 ms 一致，用于解析快速折膝时的薄壁碰撞
+simulation_dt: 0.00025
+# 每 80 个物理步更新一次策略目标，策略频率仍为 50 Hz；PD 在每个物理步更新
+control_decimation: 80
 
 # 12 个关节动作，按 FL / FR / RL / RR 的 hip / thigh / calf 排列
 num_actions: 12

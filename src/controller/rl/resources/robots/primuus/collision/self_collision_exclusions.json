@@ -7,8 +7,16 @@
   ["FR_hip_link_collision", "FR_thigh_motor_collision"],
   ["RL_hip_link_collision", "RL_thigh_motor_collision"],
   ["RR_hip_link_collision", "RR_thigh_motor_collision"],
-  ["FL_calf_link_collision", "FL_foot_link_collision"],
-  ["FR_calf_link_collision", "FR_foot_link_collision"],
-  ["RL_calf_link_collision", "RL_foot_link_collision"],
-  ["RR_calf_link_collision", "RR_foot_link_collision"]
+  ["FL_calf_part_00_collision", "FL_foot_link_collision"],
+  ["FL_calf_part_01_collision", "FL_foot_link_collision"],
+  ["FL_calf_part_02_collision", "FL_foot_link_collision"],
+  ["FR_calf_part_00_collision", "FR_foot_link_collision"],
+  ["FR_calf_part_01_collision", "FR_foot_link_collision"],
+  ["FR_calf_part_02_collision", "FR_foot_link_collision"],
+  ["RL_calf_part_00_collision", "RL_foot_link_collision"],
+  ["RL_calf_part_01_collision", "RL_foot_link_collision"],
+  ["RL_calf_part_02_collision", "RL_foot_link_collision"],
+  ["RR_calf_part_00_collision", "RR_foot_link_collision"],
+  ["RR_calf_part_01_collision", "RR_foot_link_collision"],
+  ["RR_calf_part_02_collision", "RR_foot_link_collision"]
 ]

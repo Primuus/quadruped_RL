@@ -4,7 +4,6 @@
      For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
 <robot
   name="primuus">
-  <!--仿真小腿工作下限为 -2.4 rad，早于约 -2.6296 rad 的实体干涉；不是实测机械硬限位。-->
   <link
     name="base_link">
     <inertial>
@@ -314,18 +313,9 @@
   <link
     name="FL_calf_link">
     <inertial>
-      <origin
-        xyz="-0.00456699402960861 2.09248528712513E-06 -0.0779092199058013"
-        rpy="0 0 0" />
-      <mass
-        value="0.139391607667656" />
-      <inertia
-        ixx="0.000723481334796727"
-        ixy="-2.32829526362136E-09"
-        ixz="-6.56187319022933E-05"
-        iyy="0.000733560419834782"
-        iyz="5.32426566096124E-09"
-        izz="1.9374294419952E-05" />
+      <origin xyz="-0.00456699402960861 2.09248528712513E-06 -0.0779092199058013" rpy="0 0 0" />
+      <mass value="0.069695803833827993" />
+      <inertia ixx="0.00036174066739836351" ixy="-1.1641476318106799e-09" ixz="-3.2809365951146648e-05" iyy="0.00036678020991739101" iyz="2.6621328304806198e-09" izz="9.6871472099759992e-06" />
     </inertial>
     <visual>
       <origin
@@ -341,16 +331,35 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision name="FL_calf_link_collision">
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+  </link>
+  <!--固定碰撞载体绕开 PhysX 的父子过滤；两部分各承担原小腿一半惯量，总动力学不变。-->
+  <link name="FL_calf_collision_link">
+    <inertial>
+      <origin xyz="-0.00456699402960861 2.09248528712513E-06 -0.0779092199058013" rpy="0 0 0" />
+      <mass value="0.069695803833827993" />
+      <inertia ixx="0.00036174066739836351" ixy="-1.1641476318106799e-09" ixz="-3.2809365951146648e-05" iyy="0.00036678020991739101" iyz="2.6621328304806198e-09" izz="9.6871472099759992e-06" />
+    </inertial>
+    <collision name="FL_calf_part_00_collision">
       <geometry>
-        <mesh
-          filename="../collision/convex/FL_calf_main.obj" />
+        <mesh filename="../collision/convex/FL_calf_part_00.obj" />
+      </geometry>
+    </collision>
+    <collision name="FL_calf_part_01_collision">
+      <geometry>
+        <mesh filename="../collision/convex/FL_calf_part_01.obj" />
+      </geometry>
+    </collision>
+    <collision name="FL_calf_part_02_collision">
+      <geometry>
+        <mesh filename="../collision/convex/FL_calf_part_02.obj" />
       </geometry>
     </collision>
   </link>
+  <joint name="FL_calf_collision_joint" type="fixed" dont_collapse="true">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="FL_calf_link" />
+    <child link="FL_calf_collision_link" />
+  </joint>
   <joint
     name="FL_calf_joint"
     type="revolute">
@@ -364,7 +373,7 @@
     <axis
       xyz="0 1 0" />
     <limit
-      lower="-2.4"
+      lower="-2.7227"
       upper="-0.8378"
       effort="23.7"
       velocity="15.7" />
@@ -694,18 +703,9 @@
   <link
     name="FR_calf_link">
     <inertial>
-      <origin
-        xyz="-0.004566994029609 2.09248528550143E-06 -0.0779092199058022"
-        rpy="0 0 0" />
-      <mass
-        value="0.139391607667656" />
-      <inertia
-        ixx="0.00072348133479673"
-        ixy="-2.32829526363685E-09"
-        ixz="-6.56187319023015E-05"
-        iyy="0.000733560419834787"
-        iyz="5.3242656611848E-09"
-        izz="1.93742944199544E-05" />
+      <origin xyz="-0.004566994029609 2.09248528550143E-06 -0.0779092199058022" rpy="0 0 0" />
+      <mass value="0.069695803833827993" />
+      <inertia ixx="0.00036174066739836502" ixy="-1.164147631818425e-09" ixz="-3.2809365951150748e-05" iyy="0.00036678020991739351" iyz="2.6621328305924001e-09" izz="9.6871472099772003e-06" />
     </inertial>
     <visual>
       <origin
@@ -721,16 +721,35 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision name="FR_calf_link_collision">
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+  </link>
+  <!--固定碰撞载体绕开 PhysX 的父子过滤；两部分各承担原小腿一半惯量，总动力学不变。-->
+  <link name="FR_calf_collision_link">
+    <inertial>
+      <origin xyz="-0.004566994029609 2.09248528550143E-06 -0.0779092199058022" rpy="0 0 0" />
+      <mass value="0.069695803833827993" />
+      <inertia ixx="0.00036174066739836502" ixy="-1.164147631818425e-09" ixz="-3.2809365951150748e-05" iyy="0.00036678020991739351" iyz="2.6621328305924001e-09" izz="9.6871472099772003e-06" />
+    </inertial>
+    <collision name="FR_calf_part_00_collision">
       <geometry>
-        <mesh
-          filename="../collision/convex/FR_calf_main.obj" />
+        <mesh filename="../collision/convex/FR_calf_part_00.obj" />
+      </geometry>
+    </collision>
+    <collision name="FR_calf_part_01_collision">
+      <geometry>
+        <mesh filename="../collision/convex/FR_calf_part_01.obj" />
+      </geometry>
+    </collision>
+    <collision name="FR_calf_part_02_collision">
+      <geometry>
+        <mesh filename="../collision/convex/FR_calf_part_02.obj" />
       </geometry>
     </collision>
   </link>
+  <joint name="FR_calf_collision_joint" type="fixed" dont_collapse="true">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="FR_calf_link" />
+    <child link="FR_calf_collision_link" />
+  </joint>
   <joint
     name="FR_calf_joint"
     type="revolute">
@@ -744,7 +763,7 @@
     <axis
       xyz="0 1 0" />
     <limit
-      lower="-2.4"
+      lower="-2.7227"
       upper="-0.8378"
       effort="23.7"
       velocity="15.7" />
@@ -1074,18 +1093,9 @@
   <link
     name="RL_calf_link">
     <inertial>
-      <origin
-        xyz="-0.00456699402961047 2.09248528709738E-06 -0.0779092199057949"
-        rpy="0 0 0" />
-      <mass
-        value="0.139391607667643" />
-      <inertia
-        ixx="0.00072348133479667"
-        ixy="-2.32829526356528E-09"
-        ixz="-6.56187319023185E-05"
-        iyy="0.000733560419834722"
-        iyz="5.32426566072616E-09"
-        izz="1.93742944199495E-05" />
+      <origin xyz="-0.00456699402961047 2.09248528709738E-06 -0.0779092199057949" rpy="0 0 0" />
+      <mass value="0.069695803833821499" />
+      <inertia ixx="0.00036174066739833499" ixy="-1.1641476317826399e-09" ixz="-3.2809365951159252e-05" iyy="0.00036678020991736098" iyz="2.6621328303630799e-09" izz="9.6871472099747507e-06" />
     </inertial>
     <visual>
       <origin
@@ -1101,16 +1111,35 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision name="RL_calf_link_collision">
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+  </link>
+  <!--固定碰撞载体绕开 PhysX 的父子过滤；两部分各承担原小腿一半惯量，总动力学不变。-->
+  <link name="RL_calf_collision_link">
+    <inertial>
+      <origin xyz="-0.00456699402961047 2.09248528709738E-06 -0.0779092199057949" rpy="0 0 0" />
+      <mass value="0.069695803833821499" />
+      <inertia ixx="0.00036174066739833499" ixy="-1.1641476317826399e-09" ixz="-3.2809365951159252e-05" iyy="0.00036678020991736098" iyz="2.6621328303630799e-09" izz="9.6871472099747507e-06" />
+    </inertial>
+    <collision name="RL_calf_part_00_collision">
       <geometry>
-        <mesh
-          filename="../collision/convex/RL_calf_main.obj" />
+        <mesh filename="../collision/convex/RL_calf_part_00.obj" />
+      </geometry>
+    </collision>
+    <collision name="RL_calf_part_01_collision">
+      <geometry>
+        <mesh filename="../collision/convex/RL_calf_part_01.obj" />
+      </geometry>
+    </collision>
+    <collision name="RL_calf_part_02_collision">
+      <geometry>
+        <mesh filename="../collision/convex/RL_calf_part_02.obj" />
       </geometry>
     </collision>
   </link>
+  <joint name="RL_calf_collision_joint" type="fixed" dont_collapse="true">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="RL_calf_link" />
+    <child link="RL_calf_collision_link" />
+  </joint>
   <joint
     name="RL_calf_joint"
     type="revolute">
@@ -1124,7 +1153,7 @@
     <axis
       xyz="0 1 0" />
     <limit
-      lower="-2.4"
+      lower="-2.7227"
       upper="-0.8378"
       effort="23.7"
       velocity="15.7" />
@@ -1454,18 +1483,9 @@
   <link
     name="RR_calf_link">
     <inertial>
-      <origin
-        xyz="-0.00456699402961119 2.09248528718065E-06 -0.0779092199058043"
-        rpy="0 0 0" />
-      <mass
-        value="0.139391607667651" />
-      <inertia
-        ixx="0.000723481334796711"
-        ixy="-2.32829526368906E-09"
-        ixz="-6.5618731902329E-05"
-        iyy="0.000733560419834741"
-        iyz="5.32426566166088E-09"
-        izz="1.93742944199267E-05" />
+      <origin xyz="-0.00456699402961119 2.09248528718065E-06 -0.0779092199058043" rpy="0 0 0" />
+      <mass value="0.069695803833825495" />
+      <inertia ixx="0.00036174066739835548" ixy="-1.16414763184453e-09" ixz="-3.2809365951164497e-05" iyy="0.00036678020991737052" iyz="2.6621328308304399e-09" izz="9.6871472099633496e-06" />
     </inertial>
     <visual>
       <origin
@@ -1481,16 +1501,35 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision name="RR_calf_link_collision">
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+  </link>
+  <!--固定碰撞载体绕开 PhysX 的父子过滤；两部分各承担原小腿一半惯量，总动力学不变。-->
+  <link name="RR_calf_collision_link">
+    <inertial>
+      <origin xyz="-0.00456699402961119 2.09248528718065E-06 -0.0779092199058043" rpy="0 0 0" />
+      <mass value="0.069695803833825495" />
+      <inertia ixx="0.00036174066739835548" ixy="-1.16414763184453e-09" ixz="-3.2809365951164497e-05" iyy="0.00036678020991737052" iyz="2.6621328308304399e-09" izz="9.6871472099633496e-06" />
+    </inertial>
+    <collision name="RR_calf_part_00_collision">
       <geometry>
-        <mesh
-          filename="../collision/convex/RR_calf_main.obj" />
+        <mesh filename="../collision/convex/RR_calf_part_00.obj" />
+      </geometry>
+    </collision>
+    <collision name="RR_calf_part_01_collision">
+      <geometry>
+        <mesh filename="../collision/convex/RR_calf_part_01.obj" />
+      </geometry>
+    </collision>
+    <collision name="RR_calf_part_02_collision">
+      <geometry>
+        <mesh filename="../collision/convex/RR_calf_part_02.obj" />
       </geometry>
     </collision>
   </link>
+  <joint name="RR_calf_collision_joint" type="fixed" dont_collapse="true">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="RR_calf_link" />
+    <child link="RR_calf_collision_link" />
+  </joint>
   <joint
     name="RR_calf_joint"
     type="revolute">
@@ -1504,7 +1543,7 @@
     <axis
       xyz="0 1 0" />
     <limit
-      lower="-2.4"
+      lower="-2.7227"
       upper="-0.8378"
       effort="23.7"
       velocity="15.7" />
