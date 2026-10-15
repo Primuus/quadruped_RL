@@ -207,7 +207,11 @@ python quadruped_rl/scripts/train_go2.py \
 - 所有 collision 使用唯一且非空的名称；接口检查导入形状数量和引用名称，不匹配时直接报错。
 - 每个排除对占一个过滤位，当前最多支持 31 对；未列出的非相邻、非同体组合允许碰撞，环境间仍由独立 collision group 隔离。
 
-PhysX 会始终过滤 articulation 的相邻父子 link，命名接口不能解除这一限制。像小腿与本腿大腿这样的相邻组件，必须另外根据几何干涉边界设置安全工作限位；不能只配置过滤位就宣称相邻碰撞已经开启。MuJoCo 可恢复这类碰撞，但仍需和训练侧使用一致的工作限位。关节限位是模型的物理约束，不是依赖 reward 学出来的避碰行为。
+PhysX 会始终过滤 articulation 的直接父子 link，命名接口不能解除这一限制。需要这类部件发生接触时，可将碰撞几何挂在同坐标、固定连接的碰撞载体子 link，使实际接触对不再是直接父子。必须保留固定 link，并正确分配原部件的质量与惯量，使复合动力学不变；不能把碰撞几何移到足端上，否则会污染足端接触力。对于 Primuus，载体命名为 `*_calf_collision_link`，非足端接触选择须包含 `calf`，足端仍单独使用 `*_foot_link`。
+
+关节限位应来自机械设计。不能仅为消除穿插而收紧范围，也不能用 reward 替代实际碰撞约束。Primuus URDF/XML 已恢复原始小腿范围 `[-2.7227, -0.8378] rad`，通过分段凸几何、固定碰撞载体及接触求解处理穿插；不是依靠修改关节零位或添加新驱动关节。
+
+Primuus 的碰撞模型及接入条件维护在部署工程 `src/controller/rl/resources/robots/primuus/README.md`。其 21 个 link 包含 4 个仿真碰撞载体，仍只有 12 个驱动关节、4 个独立足端，不改变 `45 * 6` 观测契约。接入时必须完整复制模型目录、加载 20 对命名排除规则，并复核物理子步、接触偏移、策略周期和 PD 更新频率；不要把当前 Go2 参数视为所有机器人的默认物理参数。
 
 实现位于 `quadruped_rl/envs/base/self_collision.py`，在资产导入后、创建 actor 前应用。Primuus 模型提供 `collision/self_collision_exclusions.json` 作为列表来源，但本次没有新增 Primuus 训练任务，也没有更改 Go2 的奖励、PD、观测或训练开关。
 
