@@ -89,8 +89,8 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
 ## 目录说明
 
 - `quadruped_rl/envs/base/`：四足机器人通用环境基类、观测、reward、随机化、命令和终止条件。
-- `quadruped_rl/envs/go2/`：当前 Go2 机器人实例配置、资产适配和兼容封装。
-- `quadruped_rl/envs/primuus/`：Primuus独立配置与环境入口，只依赖通用base，不使用Go2兼容封装。
+- `quadruped_rl/envs/go2/`：仅保留 `go2_config.py` 和 `go2_env.py`，负责Go2独立参数与环境入口；通用实现直接使用base。
+- `quadruped_rl/envs/primuus/`：仅保留 `primuus_config.py` 和 `primuus_env.py`，负责Primuus独立参数与环境入口；不依赖Go2。
 - `quadruped_rl/scripts/train.py`：通用训练入口，通过 `--task <robot>` 选择机器人任务。
 - `quadruped_rl/scripts/play.py`：通用 play / 策略导出入口，通过 `--task <robot>` 选择机器人任务。
 - `quadruped_rl/scripts/train_go2.py`：Go2 快捷训练入口，会自动设置 `--task go2`。
