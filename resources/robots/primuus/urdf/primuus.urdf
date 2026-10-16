@@ -152,133 +152,59 @@
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry><mesh filename="../collision/convex/FL_thigh_outer.obj" /></geometry>
     </collision>
-    <collision name="FL_thigh_wall_00_collision">
+    <collision name="FL_thigh_shell_00_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_00.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FL_thigh_shell_00.obj" />
+      </geometry>
     </collision>
-    <collision name="FL_thigh_wall_01_collision">
+    <collision name="FL_thigh_shell_01_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_01.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FL_thigh_shell_01.obj" />
+      </geometry>
     </collision>
-    <collision name="FL_thigh_wall_02_collision">
+    <collision name="FL_thigh_shell_02_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_02.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FL_thigh_shell_02.obj" />
+      </geometry>
     </collision>
-    <collision name="FL_thigh_wall_03_collision">
+    <collision name="FL_thigh_shell_03_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_03.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FL_thigh_shell_03.obj" />
+      </geometry>
     </collision>
-    <collision name="FL_thigh_wall_04_collision">
+    <collision name="FL_thigh_shell_04_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_04.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FL_thigh_shell_04.obj" />
+      </geometry>
     </collision>
-    <collision name="FL_thigh_wall_05_collision">
+    <collision name="FL_thigh_shell_05_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_05.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FL_thigh_shell_05.obj" />
+      </geometry>
     </collision>
-    <collision name="FL_thigh_wall_06_collision">
+    <collision name="FL_thigh_shell_06_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_06.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FL_thigh_shell_06.obj" />
+      </geometry>
     </collision>
-    <collision name="FL_thigh_wall_07_collision">
+    <collision name="FL_thigh_shell_07_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_07.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FL_thigh_shell_07.obj" />
+      </geometry>
     </collision>
-    <collision name="FL_thigh_wall_08_collision">
+    <collision name="FL_thigh_shell_08_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_08.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_09_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_09.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_10_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_10.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_11_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_11.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_12_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_12.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_13_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_13.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_14_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_14.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_15_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_15.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_16_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_16.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_17_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_17.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_18_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_18.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_19_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_19.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_20_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_20.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_21_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_21.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_22_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_22.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_23_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_23.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_24_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_24.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_25_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_25.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_26_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_26.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_27_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_27.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_28_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_28.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_29_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_29.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_30_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_30.obj" /></geometry>
-    </collision>
-    <collision name="FL_thigh_wall_31_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FL_thigh_wall_31.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FL_thigh_shell_08.obj" />
+      </geometry>
     </collision>
     <collision name="FL_thigh_spacer_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -542,133 +468,59 @@
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry><mesh filename="../collision/convex/FR_thigh_outer.obj" /></geometry>
     </collision>
-    <collision name="FR_thigh_wall_00_collision">
+    <collision name="FR_thigh_shell_00_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_00.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FR_thigh_shell_00.obj" />
+      </geometry>
     </collision>
-    <collision name="FR_thigh_wall_01_collision">
+    <collision name="FR_thigh_shell_01_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_01.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FR_thigh_shell_01.obj" />
+      </geometry>
     </collision>
-    <collision name="FR_thigh_wall_02_collision">
+    <collision name="FR_thigh_shell_02_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_02.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FR_thigh_shell_02.obj" />
+      </geometry>
     </collision>
-    <collision name="FR_thigh_wall_03_collision">
+    <collision name="FR_thigh_shell_03_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_03.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FR_thigh_shell_03.obj" />
+      </geometry>
     </collision>
-    <collision name="FR_thigh_wall_04_collision">
+    <collision name="FR_thigh_shell_04_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_04.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FR_thigh_shell_04.obj" />
+      </geometry>
     </collision>
-    <collision name="FR_thigh_wall_05_collision">
+    <collision name="FR_thigh_shell_05_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_05.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FR_thigh_shell_05.obj" />
+      </geometry>
     </collision>
-    <collision name="FR_thigh_wall_06_collision">
+    <collision name="FR_thigh_shell_06_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_06.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FR_thigh_shell_06.obj" />
+      </geometry>
     </collision>
-    <collision name="FR_thigh_wall_07_collision">
+    <collision name="FR_thigh_shell_07_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_07.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FR_thigh_shell_07.obj" />
+      </geometry>
     </collision>
-    <collision name="FR_thigh_wall_08_collision">
+    <collision name="FR_thigh_shell_08_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_08.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_09_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_09.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_10_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_10.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_11_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_11.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_12_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_12.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_13_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_13.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_14_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_14.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_15_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_15.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_16_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_16.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_17_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_17.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_18_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_18.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_19_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_19.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_20_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_20.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_21_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_21.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_22_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_22.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_23_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_23.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_24_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_24.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_25_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_25.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_26_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_26.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_27_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_27.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_28_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_28.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_29_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_29.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_30_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_30.obj" /></geometry>
-    </collision>
-    <collision name="FR_thigh_wall_31_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/FR_thigh_wall_31.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/FR_thigh_shell_08.obj" />
+      </geometry>
     </collision>
     <collision name="FR_thigh_spacer_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -932,133 +784,59 @@
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry><mesh filename="../collision/convex/RL_thigh_outer.obj" /></geometry>
     </collision>
-    <collision name="RL_thigh_wall_00_collision">
+    <collision name="RL_thigh_shell_00_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_00.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RL_thigh_shell_00.obj" />
+      </geometry>
     </collision>
-    <collision name="RL_thigh_wall_01_collision">
+    <collision name="RL_thigh_shell_01_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_01.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RL_thigh_shell_01.obj" />
+      </geometry>
     </collision>
-    <collision name="RL_thigh_wall_02_collision">
+    <collision name="RL_thigh_shell_02_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_02.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RL_thigh_shell_02.obj" />
+      </geometry>
     </collision>
-    <collision name="RL_thigh_wall_03_collision">
+    <collision name="RL_thigh_shell_03_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_03.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RL_thigh_shell_03.obj" />
+      </geometry>
     </collision>
-    <collision name="RL_thigh_wall_04_collision">
+    <collision name="RL_thigh_shell_04_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_04.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RL_thigh_shell_04.obj" />
+      </geometry>
     </collision>
-    <collision name="RL_thigh_wall_05_collision">
+    <collision name="RL_thigh_shell_05_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_05.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RL_thigh_shell_05.obj" />
+      </geometry>
     </collision>
-    <collision name="RL_thigh_wall_06_collision">
+    <collision name="RL_thigh_shell_06_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_06.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RL_thigh_shell_06.obj" />
+      </geometry>
     </collision>
-    <collision name="RL_thigh_wall_07_collision">
+    <collision name="RL_thigh_shell_07_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_07.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RL_thigh_shell_07.obj" />
+      </geometry>
     </collision>
-    <collision name="RL_thigh_wall_08_collision">
+    <collision name="RL_thigh_shell_08_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_08.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_09_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_09.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_10_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_10.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_11_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_11.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_12_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_12.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_13_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_13.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_14_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_14.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_15_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_15.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_16_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_16.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_17_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_17.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_18_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_18.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_19_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_19.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_20_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_20.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_21_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_21.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_22_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_22.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_23_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_23.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_24_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_24.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_25_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_25.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_26_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_26.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_27_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_27.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_28_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_28.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_29_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_29.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_30_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_30.obj" /></geometry>
-    </collision>
-    <collision name="RL_thigh_wall_31_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RL_thigh_wall_31.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RL_thigh_shell_08.obj" />
+      </geometry>
     </collision>
     <collision name="RL_thigh_spacer_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -1322,133 +1100,59 @@
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry><mesh filename="../collision/convex/RR_thigh_outer.obj" /></geometry>
     </collision>
-    <collision name="RR_thigh_wall_00_collision">
+    <collision name="RR_thigh_shell_00_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_00.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RR_thigh_shell_00.obj" />
+      </geometry>
     </collision>
-    <collision name="RR_thigh_wall_01_collision">
+    <collision name="RR_thigh_shell_01_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_01.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RR_thigh_shell_01.obj" />
+      </geometry>
     </collision>
-    <collision name="RR_thigh_wall_02_collision">
+    <collision name="RR_thigh_shell_02_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_02.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RR_thigh_shell_02.obj" />
+      </geometry>
     </collision>
-    <collision name="RR_thigh_wall_03_collision">
+    <collision name="RR_thigh_shell_03_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_03.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RR_thigh_shell_03.obj" />
+      </geometry>
     </collision>
-    <collision name="RR_thigh_wall_04_collision">
+    <collision name="RR_thigh_shell_04_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_04.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RR_thigh_shell_04.obj" />
+      </geometry>
     </collision>
-    <collision name="RR_thigh_wall_05_collision">
+    <collision name="RR_thigh_shell_05_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_05.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RR_thigh_shell_05.obj" />
+      </geometry>
     </collision>
-    <collision name="RR_thigh_wall_06_collision">
+    <collision name="RR_thigh_shell_06_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_06.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RR_thigh_shell_06.obj" />
+      </geometry>
     </collision>
-    <collision name="RR_thigh_wall_07_collision">
+    <collision name="RR_thigh_shell_07_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_07.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RR_thigh_shell_07.obj" />
+      </geometry>
     </collision>
-    <collision name="RR_thigh_wall_08_collision">
+    <collision name="RR_thigh_shell_08_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_08.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_09_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_09.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_10_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_10.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_11_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_11.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_12_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_12.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_13_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_13.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_14_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_14.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_15_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_15.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_16_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_16.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_17_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_17.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_18_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_18.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_19_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_19.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_20_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_20.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_21_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_21.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_22_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_22.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_23_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_23.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_24_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_24.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_25_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_25.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_26_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_26.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_27_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_27.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_28_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_28.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_29_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_29.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_30_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_30.obj" /></geometry>
-    </collision>
-    <collision name="RR_thigh_wall_31_collision">
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry><mesh filename="../collision/convex/RR_thigh_wall_31.obj" /></geometry>
+      <geometry>
+        <mesh filename="../collision/convex/RR_thigh_shell_08.obj" />
+      </geometry>
     </collision>
     <collision name="RR_thigh_spacer_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
