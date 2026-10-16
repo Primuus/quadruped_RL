@@ -791,7 +791,7 @@
     name="RL_thigh_joint"
     type="revolute">
     <origin
-      xyz="-0.082063 0.0346 0"
+      xyz="-0.082063 0.0343 0"
       rpy="0 0 0" />
     <parent
       link="RL_hip_link" />

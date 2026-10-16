@@ -183,7 +183,7 @@
         <joint name="RL_hip_joint" pos="0 0 0" axis="-1 0 0" range="-0.8378 0.8378" actuatorfrcrange="-23.7 23.7" damping="0.02" frictionloss="0.05" />
         <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_hip_link" class="primuus_visual" name="RL_hip_link_visual" />
         <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_hip_link_collision_hull" class="primuus_collision" name="RL_hip_link_collision" contype="16" conaffinity="765" />
-        <body name="RL_thigh_link" pos="-0.082063 0.0346 0" quat="0.93050762191231429 0 0.36627252908604757 0">
+        <body name="RL_thigh_link" pos="-0.082063 0.0343 0" quat="0.93050762191231429 0 0.36627252908604757 0">
           <inertial pos="-0.00416039398592849 0.0292209782643449 -0.0259811181921453" mass="0.879951412075178" fullinertia="0.00180628272541908 0.00225846552975373 0.00057371241140659 2.20257776554532E-07 -0.000156255163485827 3.89124091148382E-06" />
           <joint name="RL_thigh_joint" pos="0 0 0" axis="0 -1 0" ref="-0.75" range="-3.4907 1.5708" actuatorfrcrange="-23.7 23.7" damping="0.02" frictionloss="0.05" />
           <geom type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_thigh_link" class="primuus_visual" name="RL_thigh_link_visual" />
