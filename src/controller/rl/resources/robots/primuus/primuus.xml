@@ -30,38 +30,15 @@
     <mesh name="FL_thigh_motor" file="collision/FL_thigh_motor.STL" />
     <mesh name="FL_thigh_inner" file="collision/convex/FL_thigh_inner.obj" />
     <mesh name="FL_thigh_outer" file="collision/convex/FL_thigh_outer.obj" />
-    <mesh name="FL_thigh_wall_00" file="collision/convex/FL_thigh_wall_00.obj" />
-    <mesh name="FL_thigh_wall_01" file="collision/convex/FL_thigh_wall_01.obj" />
-    <mesh name="FL_thigh_wall_02" file="collision/convex/FL_thigh_wall_02.obj" />
-    <mesh name="FL_thigh_wall_03" file="collision/convex/FL_thigh_wall_03.obj" />
-    <mesh name="FL_thigh_wall_04" file="collision/convex/FL_thigh_wall_04.obj" />
-    <mesh name="FL_thigh_wall_05" file="collision/convex/FL_thigh_wall_05.obj" />
-    <mesh name="FL_thigh_wall_06" file="collision/convex/FL_thigh_wall_06.obj" />
-    <mesh name="FL_thigh_wall_07" file="collision/convex/FL_thigh_wall_07.obj" />
-    <mesh name="FL_thigh_wall_08" file="collision/convex/FL_thigh_wall_08.obj" />
-    <mesh name="FL_thigh_wall_09" file="collision/convex/FL_thigh_wall_09.obj" />
-    <mesh name="FL_thigh_wall_10" file="collision/convex/FL_thigh_wall_10.obj" />
-    <mesh name="FL_thigh_wall_11" file="collision/convex/FL_thigh_wall_11.obj" />
-    <mesh name="FL_thigh_wall_12" file="collision/convex/FL_thigh_wall_12.obj" />
-    <mesh name="FL_thigh_wall_13" file="collision/convex/FL_thigh_wall_13.obj" />
-    <mesh name="FL_thigh_wall_14" file="collision/convex/FL_thigh_wall_14.obj" />
-    <mesh name="FL_thigh_wall_15" file="collision/convex/FL_thigh_wall_15.obj" />
-    <mesh name="FL_thigh_wall_16" file="collision/convex/FL_thigh_wall_16.obj" />
-    <mesh name="FL_thigh_wall_17" file="collision/convex/FL_thigh_wall_17.obj" />
-    <mesh name="FL_thigh_wall_18" file="collision/convex/FL_thigh_wall_18.obj" />
-    <mesh name="FL_thigh_wall_19" file="collision/convex/FL_thigh_wall_19.obj" />
-    <mesh name="FL_thigh_wall_20" file="collision/convex/FL_thigh_wall_20.obj" />
-    <mesh name="FL_thigh_wall_21" file="collision/convex/FL_thigh_wall_21.obj" />
-    <mesh name="FL_thigh_wall_22" file="collision/convex/FL_thigh_wall_22.obj" />
-    <mesh name="FL_thigh_wall_23" file="collision/convex/FL_thigh_wall_23.obj" />
-    <mesh name="FL_thigh_wall_24" file="collision/convex/FL_thigh_wall_24.obj" />
-    <mesh name="FL_thigh_wall_25" file="collision/convex/FL_thigh_wall_25.obj" />
-    <mesh name="FL_thigh_wall_26" file="collision/convex/FL_thigh_wall_26.obj" />
-    <mesh name="FL_thigh_wall_27" file="collision/convex/FL_thigh_wall_27.obj" />
-    <mesh name="FL_thigh_wall_28" file="collision/convex/FL_thigh_wall_28.obj" />
-    <mesh name="FL_thigh_wall_29" file="collision/convex/FL_thigh_wall_29.obj" />
-    <mesh name="FL_thigh_wall_30" file="collision/convex/FL_thigh_wall_30.obj" />
-    <mesh name="FL_thigh_wall_31" file="collision/convex/FL_thigh_wall_31.obj" />
+    <mesh name="FL_thigh_shell_00" file="collision/convex/FL_thigh_shell_00.obj" />
+    <mesh name="FL_thigh_shell_01" file="collision/convex/FL_thigh_shell_01.obj" />
+    <mesh name="FL_thigh_shell_02" file="collision/convex/FL_thigh_shell_02.obj" />
+    <mesh name="FL_thigh_shell_03" file="collision/convex/FL_thigh_shell_03.obj" />
+    <mesh name="FL_thigh_shell_04" file="collision/convex/FL_thigh_shell_04.obj" />
+    <mesh name="FL_thigh_shell_05" file="collision/convex/FL_thigh_shell_05.obj" />
+    <mesh name="FL_thigh_shell_06" file="collision/convex/FL_thigh_shell_06.obj" />
+    <mesh name="FL_thigh_shell_07" file="collision/convex/FL_thigh_shell_07.obj" />
+    <mesh name="FL_thigh_shell_08" file="collision/convex/FL_thigh_shell_08.obj" />
     <mesh name="FL_thigh_spacer" file="collision/convex/FL_thigh_spacer.obj" />
     <mesh name="FL_thigh_feature_00" file="collision/convex/FL_thigh_feature_00.obj" />
     <mesh name="FL_calf_part_00" file="collision/convex/FL_calf_part_00.obj" />
@@ -74,38 +51,15 @@
     <mesh name="FR_thigh_motor" file="collision/FR_thigh_motor.STL" />
     <mesh name="FR_thigh_inner" file="collision/convex/FR_thigh_inner.obj" />
     <mesh name="FR_thigh_outer" file="collision/convex/FR_thigh_outer.obj" />
-    <mesh name="FR_thigh_wall_00" file="collision/convex/FR_thigh_wall_00.obj" />
-    <mesh name="FR_thigh_wall_01" file="collision/convex/FR_thigh_wall_01.obj" />
-    <mesh name="FR_thigh_wall_02" file="collision/convex/FR_thigh_wall_02.obj" />
-    <mesh name="FR_thigh_wall_03" file="collision/convex/FR_thigh_wall_03.obj" />
-    <mesh name="FR_thigh_wall_04" file="collision/convex/FR_thigh_wall_04.obj" />
-    <mesh name="FR_thigh_wall_05" file="collision/convex/FR_thigh_wall_05.obj" />
-    <mesh name="FR_thigh_wall_06" file="collision/convex/FR_thigh_wall_06.obj" />
-    <mesh name="FR_thigh_wall_07" file="collision/convex/FR_thigh_wall_07.obj" />
-    <mesh name="FR_thigh_wall_08" file="collision/convex/FR_thigh_wall_08.obj" />
-    <mesh name="FR_thigh_wall_09" file="collision/convex/FR_thigh_wall_09.obj" />
-    <mesh name="FR_thigh_wall_10" file="collision/convex/FR_thigh_wall_10.obj" />
-    <mesh name="FR_thigh_wall_11" file="collision/convex/FR_thigh_wall_11.obj" />
-    <mesh name="FR_thigh_wall_12" file="collision/convex/FR_thigh_wall_12.obj" />
-    <mesh name="FR_thigh_wall_13" file="collision/convex/FR_thigh_wall_13.obj" />
-    <mesh name="FR_thigh_wall_14" file="collision/convex/FR_thigh_wall_14.obj" />
-    <mesh name="FR_thigh_wall_15" file="collision/convex/FR_thigh_wall_15.obj" />
-    <mesh name="FR_thigh_wall_16" file="collision/convex/FR_thigh_wall_16.obj" />
-    <mesh name="FR_thigh_wall_17" file="collision/convex/FR_thigh_wall_17.obj" />
-    <mesh name="FR_thigh_wall_18" file="collision/convex/FR_thigh_wall_18.obj" />
-    <mesh name="FR_thigh_wall_19" file="collision/convex/FR_thigh_wall_19.obj" />
-    <mesh name="FR_thigh_wall_20" file="collision/convex/FR_thigh_wall_20.obj" />
-    <mesh name="FR_thigh_wall_21" file="collision/convex/FR_thigh_wall_21.obj" />
-    <mesh name="FR_thigh_wall_22" file="collision/convex/FR_thigh_wall_22.obj" />
-    <mesh name="FR_thigh_wall_23" file="collision/convex/FR_thigh_wall_23.obj" />
-    <mesh name="FR_thigh_wall_24" file="collision/convex/FR_thigh_wall_24.obj" />
-    <mesh name="FR_thigh_wall_25" file="collision/convex/FR_thigh_wall_25.obj" />
-    <mesh name="FR_thigh_wall_26" file="collision/convex/FR_thigh_wall_26.obj" />
-    <mesh name="FR_thigh_wall_27" file="collision/convex/FR_thigh_wall_27.obj" />
-    <mesh name="FR_thigh_wall_28" file="collision/convex/FR_thigh_wall_28.obj" />
-    <mesh name="FR_thigh_wall_29" file="collision/convex/FR_thigh_wall_29.obj" />
-    <mesh name="FR_thigh_wall_30" file="collision/convex/FR_thigh_wall_30.obj" />
-    <mesh name="FR_thigh_wall_31" file="collision/convex/FR_thigh_wall_31.obj" />
+    <mesh name="FR_thigh_shell_00" file="collision/convex/FR_thigh_shell_00.obj" />
+    <mesh name="FR_thigh_shell_01" file="collision/convex/FR_thigh_shell_01.obj" />
+    <mesh name="FR_thigh_shell_02" file="collision/convex/FR_thigh_shell_02.obj" />
+    <mesh name="FR_thigh_shell_03" file="collision/convex/FR_thigh_shell_03.obj" />
+    <mesh name="FR_thigh_shell_04" file="collision/convex/FR_thigh_shell_04.obj" />
+    <mesh name="FR_thigh_shell_05" file="collision/convex/FR_thigh_shell_05.obj" />
+    <mesh name="FR_thigh_shell_06" file="collision/convex/FR_thigh_shell_06.obj" />
+    <mesh name="FR_thigh_shell_07" file="collision/convex/FR_thigh_shell_07.obj" />
+    <mesh name="FR_thigh_shell_08" file="collision/convex/FR_thigh_shell_08.obj" />
     <mesh name="FR_thigh_spacer" file="collision/convex/FR_thigh_spacer.obj" />
     <mesh name="FR_thigh_feature_00" file="collision/convex/FR_thigh_feature_00.obj" />
     <mesh name="FR_calf_part_00" file="collision/convex/FR_calf_part_00.obj" />
@@ -118,38 +72,15 @@
     <mesh name="RL_thigh_motor" file="collision/RL_thigh_motor.STL" />
     <mesh name="RL_thigh_inner" file="collision/convex/RL_thigh_inner.obj" />
     <mesh name="RL_thigh_outer" file="collision/convex/RL_thigh_outer.obj" />
-    <mesh name="RL_thigh_wall_00" file="collision/convex/RL_thigh_wall_00.obj" />
-    <mesh name="RL_thigh_wall_01" file="collision/convex/RL_thigh_wall_01.obj" />
-    <mesh name="RL_thigh_wall_02" file="collision/convex/RL_thigh_wall_02.obj" />
-    <mesh name="RL_thigh_wall_03" file="collision/convex/RL_thigh_wall_03.obj" />
-    <mesh name="RL_thigh_wall_04" file="collision/convex/RL_thigh_wall_04.obj" />
-    <mesh name="RL_thigh_wall_05" file="collision/convex/RL_thigh_wall_05.obj" />
-    <mesh name="RL_thigh_wall_06" file="collision/convex/RL_thigh_wall_06.obj" />
-    <mesh name="RL_thigh_wall_07" file="collision/convex/RL_thigh_wall_07.obj" />
-    <mesh name="RL_thigh_wall_08" file="collision/convex/RL_thigh_wall_08.obj" />
-    <mesh name="RL_thigh_wall_09" file="collision/convex/RL_thigh_wall_09.obj" />
-    <mesh name="RL_thigh_wall_10" file="collision/convex/RL_thigh_wall_10.obj" />
-    <mesh name="RL_thigh_wall_11" file="collision/convex/RL_thigh_wall_11.obj" />
-    <mesh name="RL_thigh_wall_12" file="collision/convex/RL_thigh_wall_12.obj" />
-    <mesh name="RL_thigh_wall_13" file="collision/convex/RL_thigh_wall_13.obj" />
-    <mesh name="RL_thigh_wall_14" file="collision/convex/RL_thigh_wall_14.obj" />
-    <mesh name="RL_thigh_wall_15" file="collision/convex/RL_thigh_wall_15.obj" />
-    <mesh name="RL_thigh_wall_16" file="collision/convex/RL_thigh_wall_16.obj" />
-    <mesh name="RL_thigh_wall_17" file="collision/convex/RL_thigh_wall_17.obj" />
-    <mesh name="RL_thigh_wall_18" file="collision/convex/RL_thigh_wall_18.obj" />
-    <mesh name="RL_thigh_wall_19" file="collision/convex/RL_thigh_wall_19.obj" />
-    <mesh name="RL_thigh_wall_20" file="collision/convex/RL_thigh_wall_20.obj" />
-    <mesh name="RL_thigh_wall_21" file="collision/convex/RL_thigh_wall_21.obj" />
-    <mesh name="RL_thigh_wall_22" file="collision/convex/RL_thigh_wall_22.obj" />
-    <mesh name="RL_thigh_wall_23" file="collision/convex/RL_thigh_wall_23.obj" />
-    <mesh name="RL_thigh_wall_24" file="collision/convex/RL_thigh_wall_24.obj" />
-    <mesh name="RL_thigh_wall_25" file="collision/convex/RL_thigh_wall_25.obj" />
-    <mesh name="RL_thigh_wall_26" file="collision/convex/RL_thigh_wall_26.obj" />
-    <mesh name="RL_thigh_wall_27" file="collision/convex/RL_thigh_wall_27.obj" />
-    <mesh name="RL_thigh_wall_28" file="collision/convex/RL_thigh_wall_28.obj" />
-    <mesh name="RL_thigh_wall_29" file="collision/convex/RL_thigh_wall_29.obj" />
-    <mesh name="RL_thigh_wall_30" file="collision/convex/RL_thigh_wall_30.obj" />
-    <mesh name="RL_thigh_wall_31" file="collision/convex/RL_thigh_wall_31.obj" />
+    <mesh name="RL_thigh_shell_00" file="collision/convex/RL_thigh_shell_00.obj" />
+    <mesh name="RL_thigh_shell_01" file="collision/convex/RL_thigh_shell_01.obj" />
+    <mesh name="RL_thigh_shell_02" file="collision/convex/RL_thigh_shell_02.obj" />
+    <mesh name="RL_thigh_shell_03" file="collision/convex/RL_thigh_shell_03.obj" />
+    <mesh name="RL_thigh_shell_04" file="collision/convex/RL_thigh_shell_04.obj" />
+    <mesh name="RL_thigh_shell_05" file="collision/convex/RL_thigh_shell_05.obj" />
+    <mesh name="RL_thigh_shell_06" file="collision/convex/RL_thigh_shell_06.obj" />
+    <mesh name="RL_thigh_shell_07" file="collision/convex/RL_thigh_shell_07.obj" />
+    <mesh name="RL_thigh_shell_08" file="collision/convex/RL_thigh_shell_08.obj" />
     <mesh name="RL_thigh_spacer" file="collision/convex/RL_thigh_spacer.obj" />
     <mesh name="RL_thigh_feature_00" file="collision/convex/RL_thigh_feature_00.obj" />
     <mesh name="RL_calf_part_00" file="collision/convex/RL_calf_part_00.obj" />
@@ -162,38 +93,15 @@
     <mesh name="RR_thigh_motor" file="collision/RR_thigh_motor.STL" />
     <mesh name="RR_thigh_inner" file="collision/convex/RR_thigh_inner.obj" />
     <mesh name="RR_thigh_outer" file="collision/convex/RR_thigh_outer.obj" />
-    <mesh name="RR_thigh_wall_00" file="collision/convex/RR_thigh_wall_00.obj" />
-    <mesh name="RR_thigh_wall_01" file="collision/convex/RR_thigh_wall_01.obj" />
-    <mesh name="RR_thigh_wall_02" file="collision/convex/RR_thigh_wall_02.obj" />
-    <mesh name="RR_thigh_wall_03" file="collision/convex/RR_thigh_wall_03.obj" />
-    <mesh name="RR_thigh_wall_04" file="collision/convex/RR_thigh_wall_04.obj" />
-    <mesh name="RR_thigh_wall_05" file="collision/convex/RR_thigh_wall_05.obj" />
-    <mesh name="RR_thigh_wall_06" file="collision/convex/RR_thigh_wall_06.obj" />
-    <mesh name="RR_thigh_wall_07" file="collision/convex/RR_thigh_wall_07.obj" />
-    <mesh name="RR_thigh_wall_08" file="collision/convex/RR_thigh_wall_08.obj" />
-    <mesh name="RR_thigh_wall_09" file="collision/convex/RR_thigh_wall_09.obj" />
-    <mesh name="RR_thigh_wall_10" file="collision/convex/RR_thigh_wall_10.obj" />
-    <mesh name="RR_thigh_wall_11" file="collision/convex/RR_thigh_wall_11.obj" />
-    <mesh name="RR_thigh_wall_12" file="collision/convex/RR_thigh_wall_12.obj" />
-    <mesh name="RR_thigh_wall_13" file="collision/convex/RR_thigh_wall_13.obj" />
-    <mesh name="RR_thigh_wall_14" file="collision/convex/RR_thigh_wall_14.obj" />
-    <mesh name="RR_thigh_wall_15" file="collision/convex/RR_thigh_wall_15.obj" />
-    <mesh name="RR_thigh_wall_16" file="collision/convex/RR_thigh_wall_16.obj" />
-    <mesh name="RR_thigh_wall_17" file="collision/convex/RR_thigh_wall_17.obj" />
-    <mesh name="RR_thigh_wall_18" file="collision/convex/RR_thigh_wall_18.obj" />
-    <mesh name="RR_thigh_wall_19" file="collision/convex/RR_thigh_wall_19.obj" />
-    <mesh name="RR_thigh_wall_20" file="collision/convex/RR_thigh_wall_20.obj" />
-    <mesh name="RR_thigh_wall_21" file="collision/convex/RR_thigh_wall_21.obj" />
-    <mesh name="RR_thigh_wall_22" file="collision/convex/RR_thigh_wall_22.obj" />
-    <mesh name="RR_thigh_wall_23" file="collision/convex/RR_thigh_wall_23.obj" />
-    <mesh name="RR_thigh_wall_24" file="collision/convex/RR_thigh_wall_24.obj" />
-    <mesh name="RR_thigh_wall_25" file="collision/convex/RR_thigh_wall_25.obj" />
-    <mesh name="RR_thigh_wall_26" file="collision/convex/RR_thigh_wall_26.obj" />
-    <mesh name="RR_thigh_wall_27" file="collision/convex/RR_thigh_wall_27.obj" />
-    <mesh name="RR_thigh_wall_28" file="collision/convex/RR_thigh_wall_28.obj" />
-    <mesh name="RR_thigh_wall_29" file="collision/convex/RR_thigh_wall_29.obj" />
-    <mesh name="RR_thigh_wall_30" file="collision/convex/RR_thigh_wall_30.obj" />
-    <mesh name="RR_thigh_wall_31" file="collision/convex/RR_thigh_wall_31.obj" />
+    <mesh name="RR_thigh_shell_00" file="collision/convex/RR_thigh_shell_00.obj" />
+    <mesh name="RR_thigh_shell_01" file="collision/convex/RR_thigh_shell_01.obj" />
+    <mesh name="RR_thigh_shell_02" file="collision/convex/RR_thigh_shell_02.obj" />
+    <mesh name="RR_thigh_shell_03" file="collision/convex/RR_thigh_shell_03.obj" />
+    <mesh name="RR_thigh_shell_04" file="collision/convex/RR_thigh_shell_04.obj" />
+    <mesh name="RR_thigh_shell_05" file="collision/convex/RR_thigh_shell_05.obj" />
+    <mesh name="RR_thigh_shell_06" file="collision/convex/RR_thigh_shell_06.obj" />
+    <mesh name="RR_thigh_shell_07" file="collision/convex/RR_thigh_shell_07.obj" />
+    <mesh name="RR_thigh_shell_08" file="collision/convex/RR_thigh_shell_08.obj" />
     <mesh name="RR_thigh_spacer" file="collision/convex/RR_thigh_spacer.obj" />
     <mesh name="RR_thigh_feature_00" file="collision/convex/RR_thigh_feature_00.obj" />
     <mesh name="RR_calf_part_00" file="collision/convex/RR_calf_part_00.obj" />
@@ -221,38 +129,15 @@
           <geom name="FL_thigh_motor_collision" contype="64" conaffinity="1019" type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FL_thigh_motor" class="primuus_collision" />
           <geom name="FL_thigh_inner_collision" type="mesh" mesh="FL_thigh_inner" class="primuus_collision" />
           <geom name="FL_thigh_outer_collision" type="mesh" mesh="FL_thigh_outer" class="primuus_collision" />
-          <geom name="FL_thigh_wall_00_collision" type="mesh" mesh="FL_thigh_wall_00" class="primuus_collision" />
-          <geom name="FL_thigh_wall_01_collision" type="mesh" mesh="FL_thigh_wall_01" class="primuus_collision" />
-          <geom name="FL_thigh_wall_02_collision" type="mesh" mesh="FL_thigh_wall_02" class="primuus_collision" />
-          <geom name="FL_thigh_wall_03_collision" type="mesh" mesh="FL_thigh_wall_03" class="primuus_collision" />
-          <geom name="FL_thigh_wall_04_collision" type="mesh" mesh="FL_thigh_wall_04" class="primuus_collision" />
-          <geom name="FL_thigh_wall_05_collision" type="mesh" mesh="FL_thigh_wall_05" class="primuus_collision" />
-          <geom name="FL_thigh_wall_06_collision" type="mesh" mesh="FL_thigh_wall_06" class="primuus_collision" />
-          <geom name="FL_thigh_wall_07_collision" type="mesh" mesh="FL_thigh_wall_07" class="primuus_collision" />
-          <geom name="FL_thigh_wall_08_collision" type="mesh" mesh="FL_thigh_wall_08" class="primuus_collision" />
-          <geom name="FL_thigh_wall_09_collision" type="mesh" mesh="FL_thigh_wall_09" class="primuus_collision" />
-          <geom name="FL_thigh_wall_10_collision" type="mesh" mesh="FL_thigh_wall_10" class="primuus_collision" />
-          <geom name="FL_thigh_wall_11_collision" type="mesh" mesh="FL_thigh_wall_11" class="primuus_collision" />
-          <geom name="FL_thigh_wall_12_collision" type="mesh" mesh="FL_thigh_wall_12" class="primuus_collision" />
-          <geom name="FL_thigh_wall_13_collision" type="mesh" mesh="FL_thigh_wall_13" class="primuus_collision" />
-          <geom name="FL_thigh_wall_14_collision" type="mesh" mesh="FL_thigh_wall_14" class="primuus_collision" />
-          <geom name="FL_thigh_wall_15_collision" type="mesh" mesh="FL_thigh_wall_15" class="primuus_collision" />
-          <geom name="FL_thigh_wall_16_collision" type="mesh" mesh="FL_thigh_wall_16" class="primuus_collision" />
-          <geom name="FL_thigh_wall_17_collision" type="mesh" mesh="FL_thigh_wall_17" class="primuus_collision" />
-          <geom name="FL_thigh_wall_18_collision" type="mesh" mesh="FL_thigh_wall_18" class="primuus_collision" />
-          <geom name="FL_thigh_wall_19_collision" type="mesh" mesh="FL_thigh_wall_19" class="primuus_collision" />
-          <geom name="FL_thigh_wall_20_collision" type="mesh" mesh="FL_thigh_wall_20" class="primuus_collision" />
-          <geom name="FL_thigh_wall_21_collision" type="mesh" mesh="FL_thigh_wall_21" class="primuus_collision" />
-          <geom name="FL_thigh_wall_22_collision" type="mesh" mesh="FL_thigh_wall_22" class="primuus_collision" />
-          <geom name="FL_thigh_wall_23_collision" type="mesh" mesh="FL_thigh_wall_23" class="primuus_collision" />
-          <geom name="FL_thigh_wall_24_collision" type="mesh" mesh="FL_thigh_wall_24" class="primuus_collision" />
-          <geom name="FL_thigh_wall_25_collision" type="mesh" mesh="FL_thigh_wall_25" class="primuus_collision" />
-          <geom name="FL_thigh_wall_26_collision" type="mesh" mesh="FL_thigh_wall_26" class="primuus_collision" />
-          <geom name="FL_thigh_wall_27_collision" type="mesh" mesh="FL_thigh_wall_27" class="primuus_collision" />
-          <geom name="FL_thigh_wall_28_collision" type="mesh" mesh="FL_thigh_wall_28" class="primuus_collision" />
-          <geom name="FL_thigh_wall_29_collision" type="mesh" mesh="FL_thigh_wall_29" class="primuus_collision" />
-          <geom name="FL_thigh_wall_30_collision" type="mesh" mesh="FL_thigh_wall_30" class="primuus_collision" />
-          <geom name="FL_thigh_wall_31_collision" type="mesh" mesh="FL_thigh_wall_31" class="primuus_collision" />
+          <geom class="primuus_collision" name="FL_thigh_shell_00_collision" type="mesh" mesh="FL_thigh_shell_00" />
+          <geom class="primuus_collision" name="FL_thigh_shell_01_collision" type="mesh" mesh="FL_thigh_shell_01" />
+          <geom class="primuus_collision" name="FL_thigh_shell_02_collision" type="mesh" mesh="FL_thigh_shell_02" />
+          <geom class="primuus_collision" name="FL_thigh_shell_03_collision" type="mesh" mesh="FL_thigh_shell_03" />
+          <geom class="primuus_collision" name="FL_thigh_shell_04_collision" type="mesh" mesh="FL_thigh_shell_04" />
+          <geom class="primuus_collision" name="FL_thigh_shell_05_collision" type="mesh" mesh="FL_thigh_shell_05" />
+          <geom class="primuus_collision" name="FL_thigh_shell_06_collision" type="mesh" mesh="FL_thigh_shell_06" />
+          <geom class="primuus_collision" name="FL_thigh_shell_07_collision" type="mesh" mesh="FL_thigh_shell_07" />
+          <geom class="primuus_collision" name="FL_thigh_shell_08_collision" type="mesh" mesh="FL_thigh_shell_08" />
           <geom name="FL_thigh_spacer_collision" type="mesh" mesh="FL_thigh_spacer" class="primuus_collision" />
           <geom name="FL_thigh_feature_00_collision" type="mesh" mesh="FL_thigh_feature_00" class="primuus_collision" />
           <body name="FL_calf_link" pos="0 0.0512 -0.21" quat="0.62016367295470343 0 -0.78447244613646661 0">
@@ -285,38 +170,15 @@
           <geom name="FR_thigh_motor_collision" contype="128" conaffinity="1015" type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="FR_thigh_motor" class="primuus_collision" />
           <geom name="FR_thigh_inner_collision" type="mesh" mesh="FR_thigh_inner" class="primuus_collision" />
           <geom name="FR_thigh_outer_collision" type="mesh" mesh="FR_thigh_outer" class="primuus_collision" />
-          <geom name="FR_thigh_wall_00_collision" type="mesh" mesh="FR_thigh_wall_00" class="primuus_collision" />
-          <geom name="FR_thigh_wall_01_collision" type="mesh" mesh="FR_thigh_wall_01" class="primuus_collision" />
-          <geom name="FR_thigh_wall_02_collision" type="mesh" mesh="FR_thigh_wall_02" class="primuus_collision" />
-          <geom name="FR_thigh_wall_03_collision" type="mesh" mesh="FR_thigh_wall_03" class="primuus_collision" />
-          <geom name="FR_thigh_wall_04_collision" type="mesh" mesh="FR_thigh_wall_04" class="primuus_collision" />
-          <geom name="FR_thigh_wall_05_collision" type="mesh" mesh="FR_thigh_wall_05" class="primuus_collision" />
-          <geom name="FR_thigh_wall_06_collision" type="mesh" mesh="FR_thigh_wall_06" class="primuus_collision" />
-          <geom name="FR_thigh_wall_07_collision" type="mesh" mesh="FR_thigh_wall_07" class="primuus_collision" />
-          <geom name="FR_thigh_wall_08_collision" type="mesh" mesh="FR_thigh_wall_08" class="primuus_collision" />
-          <geom name="FR_thigh_wall_09_collision" type="mesh" mesh="FR_thigh_wall_09" class="primuus_collision" />
-          <geom name="FR_thigh_wall_10_collision" type="mesh" mesh="FR_thigh_wall_10" class="primuus_collision" />
-          <geom name="FR_thigh_wall_11_collision" type="mesh" mesh="FR_thigh_wall_11" class="primuus_collision" />
-          <geom name="FR_thigh_wall_12_collision" type="mesh" mesh="FR_thigh_wall_12" class="primuus_collision" />
-          <geom name="FR_thigh_wall_13_collision" type="mesh" mesh="FR_thigh_wall_13" class="primuus_collision" />
-          <geom name="FR_thigh_wall_14_collision" type="mesh" mesh="FR_thigh_wall_14" class="primuus_collision" />
-          <geom name="FR_thigh_wall_15_collision" type="mesh" mesh="FR_thigh_wall_15" class="primuus_collision" />
-          <geom name="FR_thigh_wall_16_collision" type="mesh" mesh="FR_thigh_wall_16" class="primuus_collision" />
-          <geom name="FR_thigh_wall_17_collision" type="mesh" mesh="FR_thigh_wall_17" class="primuus_collision" />
-          <geom name="FR_thigh_wall_18_collision" type="mesh" mesh="FR_thigh_wall_18" class="primuus_collision" />
-          <geom name="FR_thigh_wall_19_collision" type="mesh" mesh="FR_thigh_wall_19" class="primuus_collision" />
-          <geom name="FR_thigh_wall_20_collision" type="mesh" mesh="FR_thigh_wall_20" class="primuus_collision" />
-          <geom name="FR_thigh_wall_21_collision" type="mesh" mesh="FR_thigh_wall_21" class="primuus_collision" />
-          <geom name="FR_thigh_wall_22_collision" type="mesh" mesh="FR_thigh_wall_22" class="primuus_collision" />
-          <geom name="FR_thigh_wall_23_collision" type="mesh" mesh="FR_thigh_wall_23" class="primuus_collision" />
-          <geom name="FR_thigh_wall_24_collision" type="mesh" mesh="FR_thigh_wall_24" class="primuus_collision" />
-          <geom name="FR_thigh_wall_25_collision" type="mesh" mesh="FR_thigh_wall_25" class="primuus_collision" />
-          <geom name="FR_thigh_wall_26_collision" type="mesh" mesh="FR_thigh_wall_26" class="primuus_collision" />
-          <geom name="FR_thigh_wall_27_collision" type="mesh" mesh="FR_thigh_wall_27" class="primuus_collision" />
-          <geom name="FR_thigh_wall_28_collision" type="mesh" mesh="FR_thigh_wall_28" class="primuus_collision" />
-          <geom name="FR_thigh_wall_29_collision" type="mesh" mesh="FR_thigh_wall_29" class="primuus_collision" />
-          <geom name="FR_thigh_wall_30_collision" type="mesh" mesh="FR_thigh_wall_30" class="primuus_collision" />
-          <geom name="FR_thigh_wall_31_collision" type="mesh" mesh="FR_thigh_wall_31" class="primuus_collision" />
+          <geom class="primuus_collision" name="FR_thigh_shell_00_collision" type="mesh" mesh="FR_thigh_shell_00" />
+          <geom class="primuus_collision" name="FR_thigh_shell_01_collision" type="mesh" mesh="FR_thigh_shell_01" />
+          <geom class="primuus_collision" name="FR_thigh_shell_02_collision" type="mesh" mesh="FR_thigh_shell_02" />
+          <geom class="primuus_collision" name="FR_thigh_shell_03_collision" type="mesh" mesh="FR_thigh_shell_03" />
+          <geom class="primuus_collision" name="FR_thigh_shell_04_collision" type="mesh" mesh="FR_thigh_shell_04" />
+          <geom class="primuus_collision" name="FR_thigh_shell_05_collision" type="mesh" mesh="FR_thigh_shell_05" />
+          <geom class="primuus_collision" name="FR_thigh_shell_06_collision" type="mesh" mesh="FR_thigh_shell_06" />
+          <geom class="primuus_collision" name="FR_thigh_shell_07_collision" type="mesh" mesh="FR_thigh_shell_07" />
+          <geom class="primuus_collision" name="FR_thigh_shell_08_collision" type="mesh" mesh="FR_thigh_shell_08" />
           <geom name="FR_thigh_spacer_collision" type="mesh" mesh="FR_thigh_spacer" class="primuus_collision" />
           <geom name="FR_thigh_feature_00_collision" type="mesh" mesh="FR_thigh_feature_00" class="primuus_collision" />
           <body name="FR_calf_link" pos="0 -0.0512 -0.21" quat="0.62016367295470343 0 -0.78447244613646661 0">
@@ -349,38 +211,15 @@
           <geom name="RL_thigh_motor_collision" contype="256" conaffinity="1007" type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RL_thigh_motor" class="primuus_collision" />
           <geom name="RL_thigh_inner_collision" type="mesh" mesh="RL_thigh_inner" class="primuus_collision" />
           <geom name="RL_thigh_outer_collision" type="mesh" mesh="RL_thigh_outer" class="primuus_collision" />
-          <geom name="RL_thigh_wall_00_collision" type="mesh" mesh="RL_thigh_wall_00" class="primuus_collision" />
-          <geom name="RL_thigh_wall_01_collision" type="mesh" mesh="RL_thigh_wall_01" class="primuus_collision" />
-          <geom name="RL_thigh_wall_02_collision" type="mesh" mesh="RL_thigh_wall_02" class="primuus_collision" />
-          <geom name="RL_thigh_wall_03_collision" type="mesh" mesh="RL_thigh_wall_03" class="primuus_collision" />
-          <geom name="RL_thigh_wall_04_collision" type="mesh" mesh="RL_thigh_wall_04" class="primuus_collision" />
-          <geom name="RL_thigh_wall_05_collision" type="mesh" mesh="RL_thigh_wall_05" class="primuus_collision" />
-          <geom name="RL_thigh_wall_06_collision" type="mesh" mesh="RL_thigh_wall_06" class="primuus_collision" />
-          <geom name="RL_thigh_wall_07_collision" type="mesh" mesh="RL_thigh_wall_07" class="primuus_collision" />
-          <geom name="RL_thigh_wall_08_collision" type="mesh" mesh="RL_thigh_wall_08" class="primuus_collision" />
-          <geom name="RL_thigh_wall_09_collision" type="mesh" mesh="RL_thigh_wall_09" class="primuus_collision" />
-          <geom name="RL_thigh_wall_10_collision" type="mesh" mesh="RL_thigh_wall_10" class="primuus_collision" />
-          <geom name="RL_thigh_wall_11_collision" type="mesh" mesh="RL_thigh_wall_11" class="primuus_collision" />
-          <geom name="RL_thigh_wall_12_collision" type="mesh" mesh="RL_thigh_wall_12" class="primuus_collision" />
-          <geom name="RL_thigh_wall_13_collision" type="mesh" mesh="RL_thigh_wall_13" class="primuus_collision" />
-          <geom name="RL_thigh_wall_14_collision" type="mesh" mesh="RL_thigh_wall_14" class="primuus_collision" />
-          <geom name="RL_thigh_wall_15_collision" type="mesh" mesh="RL_thigh_wall_15" class="primuus_collision" />
-          <geom name="RL_thigh_wall_16_collision" type="mesh" mesh="RL_thigh_wall_16" class="primuus_collision" />
-          <geom name="RL_thigh_wall_17_collision" type="mesh" mesh="RL_thigh_wall_17" class="primuus_collision" />
-          <geom name="RL_thigh_wall_18_collision" type="mesh" mesh="RL_thigh_wall_18" class="primuus_collision" />
-          <geom name="RL_thigh_wall_19_collision" type="mesh" mesh="RL_thigh_wall_19" class="primuus_collision" />
-          <geom name="RL_thigh_wall_20_collision" type="mesh" mesh="RL_thigh_wall_20" class="primuus_collision" />
-          <geom name="RL_thigh_wall_21_collision" type="mesh" mesh="RL_thigh_wall_21" class="primuus_collision" />
-          <geom name="RL_thigh_wall_22_collision" type="mesh" mesh="RL_thigh_wall_22" class="primuus_collision" />
-          <geom name="RL_thigh_wall_23_collision" type="mesh" mesh="RL_thigh_wall_23" class="primuus_collision" />
-          <geom name="RL_thigh_wall_24_collision" type="mesh" mesh="RL_thigh_wall_24" class="primuus_collision" />
-          <geom name="RL_thigh_wall_25_collision" type="mesh" mesh="RL_thigh_wall_25" class="primuus_collision" />
-          <geom name="RL_thigh_wall_26_collision" type="mesh" mesh="RL_thigh_wall_26" class="primuus_collision" />
-          <geom name="RL_thigh_wall_27_collision" type="mesh" mesh="RL_thigh_wall_27" class="primuus_collision" />
-          <geom name="RL_thigh_wall_28_collision" type="mesh" mesh="RL_thigh_wall_28" class="primuus_collision" />
-          <geom name="RL_thigh_wall_29_collision" type="mesh" mesh="RL_thigh_wall_29" class="primuus_collision" />
-          <geom name="RL_thigh_wall_30_collision" type="mesh" mesh="RL_thigh_wall_30" class="primuus_collision" />
-          <geom name="RL_thigh_wall_31_collision" type="mesh" mesh="RL_thigh_wall_31" class="primuus_collision" />
+          <geom class="primuus_collision" name="RL_thigh_shell_00_collision" type="mesh" mesh="RL_thigh_shell_00" />
+          <geom class="primuus_collision" name="RL_thigh_shell_01_collision" type="mesh" mesh="RL_thigh_shell_01" />
+          <geom class="primuus_collision" name="RL_thigh_shell_02_collision" type="mesh" mesh="RL_thigh_shell_02" />
+          <geom class="primuus_collision" name="RL_thigh_shell_03_collision" type="mesh" mesh="RL_thigh_shell_03" />
+          <geom class="primuus_collision" name="RL_thigh_shell_04_collision" type="mesh" mesh="RL_thigh_shell_04" />
+          <geom class="primuus_collision" name="RL_thigh_shell_05_collision" type="mesh" mesh="RL_thigh_shell_05" />
+          <geom class="primuus_collision" name="RL_thigh_shell_06_collision" type="mesh" mesh="RL_thigh_shell_06" />
+          <geom class="primuus_collision" name="RL_thigh_shell_07_collision" type="mesh" mesh="RL_thigh_shell_07" />
+          <geom class="primuus_collision" name="RL_thigh_shell_08_collision" type="mesh" mesh="RL_thigh_shell_08" />
           <geom name="RL_thigh_spacer_collision" type="mesh" mesh="RL_thigh_spacer" class="primuus_collision" />
           <geom name="RL_thigh_feature_00_collision" type="mesh" mesh="RL_thigh_feature_00" class="primuus_collision" />
           <body name="RL_calf_link" pos="0 0.0512 -0.21" quat="0.62016367295470343 0 -0.78447244613646661 0">
@@ -413,38 +252,15 @@
           <geom name="RR_thigh_motor_collision" contype="512" conaffinity="991" type="mesh" rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" mesh="RR_thigh_motor" class="primuus_collision" />
           <geom name="RR_thigh_inner_collision" type="mesh" mesh="RR_thigh_inner" class="primuus_collision" />
           <geom name="RR_thigh_outer_collision" type="mesh" mesh="RR_thigh_outer" class="primuus_collision" />
-          <geom name="RR_thigh_wall_00_collision" type="mesh" mesh="RR_thigh_wall_00" class="primuus_collision" />
-          <geom name="RR_thigh_wall_01_collision" type="mesh" mesh="RR_thigh_wall_01" class="primuus_collision" />
-          <geom name="RR_thigh_wall_02_collision" type="mesh" mesh="RR_thigh_wall_02" class="primuus_collision" />
-          <geom name="RR_thigh_wall_03_collision" type="mesh" mesh="RR_thigh_wall_03" class="primuus_collision" />
-          <geom name="RR_thigh_wall_04_collision" type="mesh" mesh="RR_thigh_wall_04" class="primuus_collision" />
-          <geom name="RR_thigh_wall_05_collision" type="mesh" mesh="RR_thigh_wall_05" class="primuus_collision" />
-          <geom name="RR_thigh_wall_06_collision" type="mesh" mesh="RR_thigh_wall_06" class="primuus_collision" />
-          <geom name="RR_thigh_wall_07_collision" type="mesh" mesh="RR_thigh_wall_07" class="primuus_collision" />
-          <geom name="RR_thigh_wall_08_collision" type="mesh" mesh="RR_thigh_wall_08" class="primuus_collision" />
-          <geom name="RR_thigh_wall_09_collision" type="mesh" mesh="RR_thigh_wall_09" class="primuus_collision" />
-          <geom name="RR_thigh_wall_10_collision" type="mesh" mesh="RR_thigh_wall_10" class="primuus_collision" />
-          <geom name="RR_thigh_wall_11_collision" type="mesh" mesh="RR_thigh_wall_11" class="primuus_collision" />
-          <geom name="RR_thigh_wall_12_collision" type="mesh" mesh="RR_thigh_wall_12" class="primuus_collision" />
-          <geom name="RR_thigh_wall_13_collision" type="mesh" mesh="RR_thigh_wall_13" class="primuus_collision" />
-          <geom name="RR_thigh_wall_14_collision" type="mesh" mesh="RR_thigh_wall_14" class="primuus_collision" />
-          <geom name="RR_thigh_wall_15_collision" type="mesh" mesh="RR_thigh_wall_15" class="primuus_collision" />
-          <geom name="RR_thigh_wall_16_collision" type="mesh" mesh="RR_thigh_wall_16" class="primuus_collision" />
-          <geom name="RR_thigh_wall_17_collision" type="mesh" mesh="RR_thigh_wall_17" class="primuus_collision" />
-          <geom name="RR_thigh_wall_18_collision" type="mesh" mesh="RR_thigh_wall_18" class="primuus_collision" />
-          <geom name="RR_thigh_wall_19_collision" type="mesh" mesh="RR_thigh_wall_19" class="primuus_collision" />
-          <geom name="RR_thigh_wall_20_collision" type="mesh" mesh="RR_thigh_wall_20" class="primuus_collision" />
-          <geom name="RR_thigh_wall_21_collision" type="mesh" mesh="RR_thigh_wall_21" class="primuus_collision" />
-          <geom name="RR_thigh_wall_22_collision" type="mesh" mesh="RR_thigh_wall_22" class="primuus_collision" />
-          <geom name="RR_thigh_wall_23_collision" type="mesh" mesh="RR_thigh_wall_23" class="primuus_collision" />
-          <geom name="RR_thigh_wall_24_collision" type="mesh" mesh="RR_thigh_wall_24" class="primuus_collision" />
-          <geom name="RR_thigh_wall_25_collision" type="mesh" mesh="RR_thigh_wall_25" class="primuus_collision" />
-          <geom name="RR_thigh_wall_26_collision" type="mesh" mesh="RR_thigh_wall_26" class="primuus_collision" />
-          <geom name="RR_thigh_wall_27_collision" type="mesh" mesh="RR_thigh_wall_27" class="primuus_collision" />
-          <geom name="RR_thigh_wall_28_collision" type="mesh" mesh="RR_thigh_wall_28" class="primuus_collision" />
-          <geom name="RR_thigh_wall_29_collision" type="mesh" mesh="RR_thigh_wall_29" class="primuus_collision" />
-          <geom name="RR_thigh_wall_30_collision" type="mesh" mesh="RR_thigh_wall_30" class="primuus_collision" />
-          <geom name="RR_thigh_wall_31_collision" type="mesh" mesh="RR_thigh_wall_31" class="primuus_collision" />
+          <geom class="primuus_collision" name="RR_thigh_shell_00_collision" type="mesh" mesh="RR_thigh_shell_00" />
+          <geom class="primuus_collision" name="RR_thigh_shell_01_collision" type="mesh" mesh="RR_thigh_shell_01" />
+          <geom class="primuus_collision" name="RR_thigh_shell_02_collision" type="mesh" mesh="RR_thigh_shell_02" />
+          <geom class="primuus_collision" name="RR_thigh_shell_03_collision" type="mesh" mesh="RR_thigh_shell_03" />
+          <geom class="primuus_collision" name="RR_thigh_shell_04_collision" type="mesh" mesh="RR_thigh_shell_04" />
+          <geom class="primuus_collision" name="RR_thigh_shell_05_collision" type="mesh" mesh="RR_thigh_shell_05" />
+          <geom class="primuus_collision" name="RR_thigh_shell_06_collision" type="mesh" mesh="RR_thigh_shell_06" />
+          <geom class="primuus_collision" name="RR_thigh_shell_07_collision" type="mesh" mesh="RR_thigh_shell_07" />
+          <geom class="primuus_collision" name="RR_thigh_shell_08_collision" type="mesh" mesh="RR_thigh_shell_08" />
           <geom name="RR_thigh_spacer_collision" type="mesh" mesh="RR_thigh_spacer" class="primuus_collision" />
           <geom name="RR_thigh_feature_00_collision" type="mesh" mesh="RR_thigh_feature_00" class="primuus_collision" />
           <body name="RR_calf_link" pos="0 -0.0512 -0.21" quat="0.62016367295470343 0 -0.78447244613646661 0">

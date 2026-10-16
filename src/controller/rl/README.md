@@ -111,7 +111,7 @@ policy_1.onnx
 
 存放MuJoCo XML、URDF和网格资源。`go2/go2.xml` 定义Go2本体，`scene_flat.xml` 提供平地对照，`scene_obstacles.xml` 是可选障碍场景，`ROBOCON2027.xml` 是当前Go2 YAML选择的场地。
 
-Primuus的 `urdf/`、`stl/`、`collision/`、本体XML和场景XML职责见其README。当前保留17个原始物理部件，另加4个固定碰撞载体，共21个link、12个驱动关节、169个碰撞形状。载体用于恢复PhysX接触，不新增动作维度；原始小腿限位已恢复，不以缩小关节范围替代碰撞。
+Primuus的 `urdf/`、`stl/`、`collision/`、本体XML和场景XML职责见其README。当前保留17个原始物理部件，另加4个固定碰撞载体，共21个link、12个驱动关节、77个碰撞形状。每腿通道壁由32块保守合并为9块，显示模型、质量惯量、机械限位及自碰撞规则不变。载体用于恢复PhysX接触，不新增动作维度；不能以缩小关节范围替代碰撞。当前本地MuJoCo回归已完成，GPU PhysX和策略训练仍须单独验收。
 
 URDF/XML机械与碰撞参数需同步，YAML负责运行契约。直接修改YAML默认XML路径不能修复XML内部缺失的网格或高度图资源。
 
