@@ -69,6 +69,7 @@ class PrimuusCfg(LeggedRobotCfg):
         penalize_contacts_on = ['thigh', 'calf']  # calf 同时选中固定碰撞载体
         terminate_after_contacts_on = ['base_link']
         collapse_fixed_joints = False  # 保留足端和小腿碰撞载体的八个固定关节
+        replace_cylinder_with_capsule = False  # 与 MuJoCo 保持相同圆柱半径和端面，不自动扩包
         flip_visual_attachments = False  # STL 不使用 Go2 DAE 的视觉翻转
         self_collisions = -1  # 保留命名过滤位，不关闭整机自碰撞
         with (Path(QUADRUPED_RL_ROOT_DIR) / 'resources/robots/primuus/collision/self_collision_exclusions.json').open(encoding='utf-8') as _handle:
