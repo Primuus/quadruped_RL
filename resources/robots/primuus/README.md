@@ -39,7 +39,7 @@
 | --- | --- |
 | 顺序 | FL/FR/RL/RR，每腿hip/thigh/calf |
 | 默认角 | 每腿 `[0, -0.75, -1.5] rad`，与部署YAML/XML一致 |
-| PD增益 | `kp=20 / kd=0.5`，关节端单位 |
+| PD增益 | `kp=40 / kd=1.0`，关节端单位 |
 | 动作映射 | `target = default_angles + 0.25 * action` |
 | 物理及控制 | `dt=0.0005 / substeps=1 / decimation=40`，PD2 kHz、策略50 Hz |
 | 高度目标 | 0.28 m，容差±0.03 m，即0.25-0.31 m内不惩罚 |

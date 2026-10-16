@@ -57,8 +57,8 @@ class PrimuusCfg(LeggedRobotCfg):
 
     class control(LeggedRobotCfg.control):
         control_type = 'P'
-        stiffness = {'joint': 20.0}  # 关节端 PD 比例增益，与 primuus.yaml 同步
-        damping = {'joint': 0.5}
+        stiffness = {'joint': 40.0}  # 关节端 PD 比例增益，与 primuus.yaml 同步
+        damping = {'joint': 1.0}
         action_scale = 0.25
         decimation = 40  # 40 * 0.5 ms = 20 ms，策略 50 Hz，PD 每个物理步更新，即 2 kHz
 
