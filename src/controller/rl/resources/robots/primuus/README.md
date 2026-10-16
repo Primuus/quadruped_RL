@@ -61,7 +61,7 @@ XML网格路径相对于本目录。URDF/XML不会自动同步；修改碰撞、
 | 物理步长 | 0.5 ms，训练 `sim.dt`、MuJoCo timestep与YAML `simulation_dt`对应 |
 | PD周期 | 每物理步更新，2 kHz |
 | 策略周期 | `decimation=40`，20 ms，即50 Hz |
-| PD增益 | `kp=20 / kd=0.5`，关节端单位 |
+| PD增益 | `kp=40 / kd=1.0`，关节端单位 |
 | 动作映射 | `target = default_angles + 0.25 * action` |
 | 机身高度目标 | 0.28 m，容差±0.03 m，即0.25-0.31 m内不受高度惩罚 |
 | MuJoCo接触 | margin 1 mm，solref时间常数0.5 ms；refsafe下有效时间常数至少为1 ms |
