@@ -1,21 +1,21 @@
 # Primuus 的 sim2sim 配置；新增或修改参数时请保留中文说明。
-# 与独立 Primuus 训练任务对齐；短程训练检查不等于策略运动效果验收。
+# 与独立 Primuus 训练任务对齐；不同机器人的配置与策略分别维护。
 
 # 机器人实例名称，不影响 Go2 的默认配置
 robot_name: primuus
 
-# 未来放置 Primuus 专用 TorchScript / ONNX 策略；当前文件尚不存在，禁止复用 Go2 策略
-# 得到策略后填写实际路径；现有 RL 入口会拒绝不存在的策略，不会静默回退到 Go2
+# Primuus 专用 TorchScript / ONNX 策略路径，禁止复用 Go2 策略
+# 正式 RL 入口会拒绝不存在的策略文件，不会静默回退到 Go2
 policy_path: models/primuus/policy.pt
 # 平地场景，内部引用 Primuus 本体 XML
 xml_path: resources/robots/primuus/scene_flat.xml
 
 # 仿真总时长 [s]
 simulation_duration: 60.0
-# 物理步长 [s]，与 XML 的 0.25 ms 一致，用于解析快速折膝时的薄壁碰撞
-simulation_dt: 0.00025
-# 每 80 个物理步更新一次策略目标，策略频率仍为 50 Hz；PD 在每个物理步更新
-control_decimation: 80
+# 物理步长 [s]，与 XML / Primuus 训练配置的 0.5 ms 一致，面向正常 PD 运动
+simulation_dt: 0.0005
+# 每 40 个物理步更新一次策略目标，策略频率仍为 50 Hz；PD 每步更新，即 2 kHz
+control_decimation: 40
 
 # 12 个关节动作，按 FL / FR / RL / RR 的 hip / thigh / calf 排列
 num_actions: 12
@@ -62,7 +62,7 @@ actuator_names:
   - RR_thigh
   - RR_calf
 
-# 关节端 PD 比例增益 [N m/rad]，先沿用 Go2 基线，与 primuus_config.py 同步
+# 关节端 PD 比例增益 [N m/rad]，与 primuus_config.py 同步
 kps:
   - 20.0
   - 20.0

@@ -2,14 +2,14 @@
   <!--由 urdf/primuus.urdf 转换；机械数据修改后须同步本文件并复核，不使用 Go2 的几何或关节零位。-->
   <compiler angle="radian" autolimits="true" fusestatic="false" inertiafromgeom="false" />
   <!--关节范围沿用机械交付的 URDF；自碰撞必须由接触处理，不能通过收紧限位代替。-->
-  <option timestep="0.00025" integrator="implicitfast" gravity="0 0 -9.81">
+  <option timestep="0.0005" integrator="implicitfast" gravity="0 0 -9.81">
     <!--相邻运动刚体也检测碰撞；仅用下方几何掩码排除正常的电机安装接触。-->
     <flag filterparent="disable" />
   </option>
   <default>
     <default class="primuus">
       <!--摩擦为当前平地仿真假设；不表示实物辨识结果。-->
-      <!--0.25 ms 步长配合 0.5 ms 接触响应，避免快速折膝时跨过薄壁；不改变几何限位。-->
+      <!--0.5 ms 步长用于正常 PD 运动；接触参数保留，refsafe 使有效时间常数至少为 1 ms。-->
       <geom rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" friction="0.8 0.005 0.0001" condim="3" conaffinity="1023" margin="0.001" solref="0.0005 1" solimp="0.99 0.999 0.001" />
       <!--12 个理想关节力矩执行器：ctrl 与 force 均为关节端 N m，统一限矩 23.7。-->
       <motor ctrllimited="true" ctrlrange="-23.7 23.7" forcelimited="true" forcerange="-23.7 23.7" gear="1" />
