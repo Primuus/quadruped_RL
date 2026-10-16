@@ -41,4 +41,20 @@
 
 当前PD保持默认角4 s后机身Z仍约0.234 m，与旧模型一致，低于高度奖励0.25 m容差下限，增益需后续评估。本次只改碰撞资产与Primuus圆柱导入开关，不改奖励、PD、观测、关节限位或接触求解参数。
 
-物理步长0.25 ms，PD每步更新，策略50 Hz，4096环境。**原GPU PhysX初始化内存越界尚未作为底层问题修复；65形状资产尚未重做CPU/GPU PhysX导入和10轮训练，不能视为GPU训练已通过。** 本次未连接服务器，不改驱动、CUDA、PhysX库、聚合容量或自碰撞开关；一次性检查只放在 `/tmp`。
+物理步长0.25 ms，PD每步更新，策略50 Hz，4096环境；接触求解参数不变。
+
+## 服务器10轮检查
+
+2026-10-16，在RTX 3090 Ti、Python 3.8、PyTorch 2.4.1+cu121的现有服务器环境，以训练提交 `b51c6c9` 的65形状资产和配置执行：
+
+```bash
+python quadruped_rl/scripts/train_primuus.py --headless --num_envs 4096 --max_iterations 10
+```
+
+- GPU PhysX与GPU pipeline正常启用，完成10轮、983040个环境步，退出码0；含初始化总耗时约238 s，每轮约22 s，速度约4300-4400 steps/s。整卡显存观察值约6 GB，不是长期峰值基准。
+- `model_10.pt` 成功保存且迭代数为10，30个模型状态tensor与800个TensorBoard标量样本均为有限值；退出后GPU资源正常释放。
+- 未复现旧初始化崩溃，未见CUDA/PhysX错误或显存不足，仅有 `torch.meshgrid` 的未来indexing参数警告。首次非交互SSH因PATH不含Conda bin而找不到已安装的Ninja，仅为本次进程补齐PATH后重跑通过，未安装软件或修改系统配置。
+- 仅备份、同步Primuus资产和配置；未改Go2、算法、驱动、CUDA、PhysX库、聚合容量或自碰撞开关。没有单独重做CPU PhysX验收。
+- 测试产物归档在服务器 `/tmp/primuus-smoke10-65shape-20261016_163317/`：`training.log`、`status.json`、`validation.json`、`run/model_10.pt` 及TensorBoard事件。测试run移出正式训练日志，避免影响默认最新run选择；旧资产备份保留在 `/tmp/primuus_before_65shape_smoke10_20261016_163152.tar.gz`。
+
+**通过的是当前65形状版本的短程训练链路，不是收敛、站立/行走、长期稳定性或sim2sim验收；没有修复底层SDK对旧169形状模型的内存越界。** 10轮checkpoint不作为可部署策略。一次性检查脚本和测试产物不加入正式链路。
