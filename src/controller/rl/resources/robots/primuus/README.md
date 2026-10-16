@@ -2,7 +2,7 @@
 
 [RL子工程说明](../../../README.md) | [运行配置](../../../config/primuus.yaml)
 
-更新日期：2026-10-16。当前为 **65个碰撞形状** 的混合简化模型，相比原169个减少约61.5%。原始CAD显示、质量惯量、关节坐标、机械限位和默认姿态不变，不模拟齿轮或连杆传动。完成了有限的本地MuJoCo模型检查，但没有Primuus策略，尚未验收当前资产的PhysX导入或GPU训练。
+更新日期：2026-10-16。当前为 **65个碰撞形状** 的混合简化模型，相比原169个减少约61.5%。原始CAD显示、质量惯量、关节坐标、机械限位和默认姿态不变，不模拟齿轮或连杆传动。已完成有限本地MuJoCo检查，以及服务器4096环境的GPU PhysX训练10轮检查；尚无经过站立/行走验收的Primuus策略。
 
 ## 文件职责
 
@@ -70,7 +70,20 @@ PD暂用 `20 / 0.5`，动作缩放0.25。物理步长0.25 ms，PD每步更新，
 
 有限检查不证明CAD同姿态运动学已全部核对，也不保证任意冲击下数学意义的零穿入。直接改qpos或拖滑块会绕过物理过程，可强行放入相交姿态。
 
-**原169形状模型的GPU PhysX初始化内存越界尚未作为底层问题修复；65形状资产尚未重做CPU/GPU PhysX导入和10轮训练，不能视为GPU训练已通过。** 本次未连接服务器，不改驱动、CUDA、PhysX库、聚合容量或自碰撞开关。减少数量不等于已测得训练加速；一次性脚本和截图只放在 `/tmp`。
+### 服务器10轮检查
+
+2026-10-16，以训练提交 `b51c6c9` 的65形状资产和Primuus配置，在RTX 3090 Ti、Python 3.8、PyTorch 2.4.1+cu121的现有环境执行：
+
+```bash
+python quadruped_rl/scripts/train_primuus.py --headless --num_envs 4096 --max_iterations 10
+```
+
+- 使用GPU PhysX与GPU pipeline，完成10次采样/优化迭代，共983040个环境步；进程退出码0，包含初始化的总耗时约238 s，每轮约22 s，约4300-4400 steps/s。
+- 成功保存 `model_10.pt`，checkpoint迭代数10；30个模型状态tensor和800个TensorBoard标量样本均无NaN/Inf。退出后显存恢复到启动前水平。
+- 未复现旧初始化崩溃，也未发现CUDA/PhysX错误或显存不足；仅有 `torch.meshgrid` 未来需要显式indexing的兼容性警告。首次非交互SSH启动缺少Conda bin路径、找不到已安装的Ninja，为本次进程补齐PATH后重跑通过，未安装软件或改系统配置。
+- 日志、状态、校验结果和checkpoint归档到服务器 `/tmp/primuus-smoke10-65shape-20261016_163317/`；本次测试run已从正式 `logs/primuus/` 移出，避免被默认最新run选择。测试策略不作为可用运动策略。
+
+**这只确认65形状模型的短程GPU训练链路可运行，不代表收敛、步态、长期稳定性或sim2sim已经验收，也没有修复底层SDK对旧169形状模型的内存越界。** 没有修改驱动、CUDA、PhysX库、聚合容量或自碰撞开关，没有做CPU PhysX单独验收，也不宣称相对旧模型的加速倍数。一次性检查脚本、截图和测试产物不加入正式链路。
 
 ## 查看与部署
 
@@ -82,7 +95,7 @@ python3 -m mujoco.viewer --mjcf=src/controller/rl/resources/robots/primuus/scene
 
 默认足端距地约2 mm。仅看静态姿态时空格暂停；裸查看器不读YAML、不运行PD，直接播放倒地不能判断站立控制效果。查看碰撞时关闭Geom group 2、开启3，并开启 **Convex Hull**，否则STL可能仍按显示网格渲染。外观统一浅银灰。
 
-当前无Primuus策略，YAML预留 `models/primuus/policy.pt`。策略到位并核对观测、PD与动作契约后：
+当前没有经过运动效果验收的Primuus策略，10轮测试checkpoint不作为部署策略，YAML仍预留 `models/primuus/policy.pt`。正式策略到位并核对观测、PD与动作契约后：
 
 ```bash
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
