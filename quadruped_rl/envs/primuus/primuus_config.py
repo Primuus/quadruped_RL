@@ -57,10 +57,10 @@ class PrimuusCfg(LeggedRobotCfg):
 
     class control(LeggedRobotCfg.control):
         control_type = 'P'
-        stiffness = {'joint': 20.0}  # 先沿用 Go2 PD 基线，与 primuus.yaml 同步
+        stiffness = {'joint': 20.0}  # 关节端 PD 比例增益，与 primuus.yaml 同步
         damping = {'joint': 0.5}
         action_scale = 0.25
-        decimation = 80  # 80 * 0.25 ms = 20 ms，策略 50 Hz，PD 每个物理步更新
+        decimation = 40  # 40 * 0.5 ms = 20 ms，策略 50 Hz，PD 每个物理步更新，即 2 kHz
 
     class asset(LeggedRobotCfg.asset):
         file = '{QUADRUPED_RL_ROOT_DIR}/resources/robots/primuus/urdf/primuus.urdf'
@@ -89,7 +89,7 @@ class PrimuusCfg(LeggedRobotCfg):
 
     class rewards(LeggedRobotCfg.rewards):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.28  # [m]；先沿用 Go2，模型承重参考高度约 0.294 m
+        base_height_target = 0.28  # [m]；奖励目标，不代表默认角纯 PD 承重后的实际高度
         base_height_tolerance = 0.03  # 0.25-0.31 m 内不惩罚正常高度浮动
         base_height_sigma = 0.05
         clearance_height_target = -0.20  # 足端相对机身的摆动目标高度 [m]
@@ -118,7 +118,7 @@ class PrimuusCfg(LeggedRobotCfg):
             dof_pos_limits = -10.0
 
     class sim(LeggedRobotCfg.sim):
-        dt = 0.00025  # [s]；与 Primuus MuJoCo / YAML 的物理及 PD 更新周期一致
+        dt = 0.0005  # [s]；与 Primuus MuJoCo / YAML 的物理及 PD 更新周期一致
         substeps = 1
 
         class physx(LeggedRobotCfg.sim.physx):
