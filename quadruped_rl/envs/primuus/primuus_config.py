@@ -60,7 +60,7 @@ class PrimuusCfg(LeggedRobotCfg):
         stiffness = {'joint': 60.0}  # 关节端 PD 比例增益，与 primuus.yaml 同步
         damping = {'joint': 1.5}
         action_scale = 0.25
-        decimation = 40  # 40 * 0.5 ms = 20 ms，策略 50 Hz，PD 每个物理步更新，即 2 kHz
+        decimation = 10  # 10 * 2 ms = 20 ms，策略 50 Hz，PD 每个物理步更新，即 500 Hz
 
     class asset(LeggedRobotCfg.asset):
         file = '{QUADRUPED_RL_ROOT_DIR}/resources/robots/primuus/urdf/primuus.urdf'
@@ -118,7 +118,7 @@ class PrimuusCfg(LeggedRobotCfg):
             dof_pos_limits = -10.0
 
     class sim(LeggedRobotCfg.sim):
-        dt = 0.0005  # [s]；与 Primuus MuJoCo / YAML 的物理及 PD 更新周期一致
+        dt = 0.002  # [s]；部署仍为 0.5 ms，两侧策略周期均为 20 ms
         substeps = 1
 
         class physx(LeggedRobotCfg.sim.physx):
