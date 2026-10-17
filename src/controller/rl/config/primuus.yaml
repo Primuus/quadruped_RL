@@ -12,7 +12,7 @@ xml_path: resources/robots/primuus/scene_flat.xml
 
 # 仿真总时长 [s]
 simulation_duration: 60.0
-# 物理步长 [s]，与 XML / Primuus 训练配置的 0.5 ms 一致，面向正常 PD 运动
+# 部署物理步长 [s]，与 XML 一致；训练为 2 ms，两侧策略周期均为 20 ms
 simulation_dt: 0.0005
 # 每 40 个物理步更新一次策略目标，策略频率仍为 50 Hz；PD 每步更新，即 2 kHz
 control_decimation: 40

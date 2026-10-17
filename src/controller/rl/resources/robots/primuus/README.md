@@ -58,9 +58,9 @@ XML网格路径相对于本目录。URDF/XML不会自动同步；修改碰撞、
 
 | 参数 | 设置与含义 |
 | --- | --- |
-| 物理步长 | 0.5 ms，训练 `sim.dt`、MuJoCo timestep与YAML `simulation_dt`对应 |
-| PD周期 | 每物理步更新，2 kHz |
-| 策略周期 | `decimation=40`，20 ms，即50 Hz |
+| 物理步长 | 训练 `sim.dt=0.002`、`substeps=1`；部署MuJoCo timestep与YAML `simulation_dt`均为0.0005 s |
+| PD周期 | 每物理步更新，训练500 Hz、部署2 kHz |
+| 策略周期 | 训练 `decimation=10`、部署 `control_decimation=40`，均为20 ms，即50 Hz |
 | PD增益 | `kp=60 / kd=1.5`，关节端单位 |
 | 动作映射 | `target = default_angles + 0.25 * action` |
 | 机身高度目标 | 0.28 m，容差±0.03 m，即0.25-0.31 m内不受高度惩罚 |
@@ -69,7 +69,7 @@ XML网格路径相对于本目录。URDF/XML不会自动同步；修改碰撞、
 
 高度目标是奖励约束，不是独立的机身高度控制器；默认关节角也不等于承重后能无误差保持的姿态。纯PD需要关节位置误差产生承重力矩，站姿高度、机身姿态、足端支撑和非足端接触应分别理解。
 
-0.5 ms面向正常PD运动。离散软接触不保证任意高速冲击下数学意义的零穿入；不能用增大碰撞包络、扩大静止间距或关闭自碰撞来隐藏问题。MuJoCo与PhysX的参数不一一等价，具体语义见[MuJoCo接触参数](https://mujoco.readthedocs.io/en/stable/modeling.html#solver-parameters)。
+训练与部署保持相同策略周期，不要求物理步长和PD更新频率相同。离散软接触不保证任意高速冲击下数学意义的零穿入；不能用增大碰撞包络、扩大静止间距或关闭自碰撞来隐藏问题。MuJoCo与PhysX的参数不一一等价，具体语义见[MuJoCo接触参数](https://mujoco.readthedocs.io/en/stable/modeling.html#solver-parameters)。
 
 训练导入约定：
 
