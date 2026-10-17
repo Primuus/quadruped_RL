@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from dataclasses import replace
 from pathlib import Path
 
 if __package__ in (None, ''):
@@ -357,17 +356,13 @@ def main(argv: list[str] | None = None) -> None:
         parser.error('--command is a fixed command and requires --no-keyboard')
 
     config_path = args.config or default_config_path()
-    cfg = RobotRLConfig.from_yaml(config_path)
-    if args.policy_path is not None:
-        cfg = replace(cfg, policy_path=Path(args.policy_path).expanduser().resolve())
-    if args.xml_path is not None:
-        cfg = replace(cfg, xml_path=Path(args.xml_path).expanduser().resolve())
-    if args.duration is not None:
-        cfg = replace(cfg, simulation_duration=float(args.duration))
-    if args.command is not None:
-        command = np.asarray(args.command, dtype=np.float32)
-        cfg = replace(cfg, command_init=np.clip(command, -cfg.command_limits, cfg.command_limits))
-    cfg.validate()
+    cfg = RobotRLConfig.from_yaml(
+        config_path,
+        policy_path=args.policy_path,
+        xml_path=args.xml_path,
+        simulation_duration=args.duration,
+        command_init=args.command,
+    )
 
     keyboard_input = None
     keyboard_controller = None

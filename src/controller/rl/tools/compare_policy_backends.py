@@ -57,9 +57,12 @@ def load_observations(args: argparse.Namespace, num_obs: int) -> np.ndarray:
 
 def main(argv: list[str] | None = None) -> None:
     args = build_arg_parser().parse_args(argv)
-    cfg = RobotRLConfig.from_yaml(args.config or default_config_path())
+    cfg = RobotRLConfig.from_yaml(
+        args.config or default_config_path(),
+        policy_path=args.torchscript_path,
+    )
 
-    torchscript_path = args.torchscript_path or cfg.policy_path
+    torchscript_path = cfg.policy_path
     onnx_path = args.onnx_path or Path(torchscript_path).with_suffix('.onnx')
     observations = load_observations(args, cfg.num_obs)
 

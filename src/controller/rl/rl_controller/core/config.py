@@ -159,7 +159,16 @@ class RobotRLConfig:
     initial_base_quat: np.ndarray  # 初始机身姿态
 
     @classmethod
-    def from_yaml(cls, yaml_path: str | Path) -> 'RobotRLConfig':
+    def from_yaml(
+        cls,
+        yaml_path: str | Path,
+        *,
+        policy_path: str | Path | None = None,
+        xml_path: str | Path | None = None,
+        simulation_duration: float | None = None,
+        command_init: np.ndarray | list[float] | None = None,
+    ) -> 'RobotRLConfig':
+        """Apply CLI overrides before validating; relative CLI paths use the working directory."""
         config_path = Path(yaml_path).expanduser().resolve()
         if not config_path.exists():
             raise FileNotFoundError(f'Config file not found: {config_path}')
@@ -173,8 +182,16 @@ class RobotRLConfig:
         package_root = config_path.parent.parent
 
         robot_name = str(raw.get('robot_name', DEFAULT_ROBOT_NAME))
-        policy_path = _resolve_path(package_root, raw.get('policy_path', DEFAULT_POLICY_PATH))
-        xml_path = _resolve_path(package_root, raw.get('xml_path', 'resources/robots/go2/scene_flat.xml'))
+        policy_path = (
+            Path(policy_path).expanduser().resolve()
+            if policy_path is not None
+            else _resolve_path(package_root, raw.get('policy_path', DEFAULT_POLICY_PATH))
+        )
+        xml_path = (
+            Path(xml_path).expanduser().resolve()
+            if xml_path is not None
+            else _resolve_path(package_root, raw.get('xml_path', 'resources/robots/go2/scene_flat.xml'))
+        )
 
         num_actions = int(raw.get('num_actions', len(DEFAULT_JOINT_NAMES)))
         num_one_step_obs = int(raw.get('num_one_step_obs', DEFAULT_NUM_ONE_STEP_OBS))
@@ -197,13 +214,24 @@ class RobotRLConfig:
         keyboard_bindings.update(
             {str(action): str(key) for action, key in keyboard_bindings_raw.items()}
         )
+        command_limits = _as_float_array(raw.get('command_limits'), 3, DEFAULT_COMMAND_LIMITS)
+        command = _as_float_array(
+            raw.get('command_init') if command_init is None else command_init,
+            3,
+            DEFAULT_COMMAND_INIT,
+        )
+        if command_init is not None:
+            command = np.clip(command, -command_limits, command_limits)
 
         cfg = cls(
             robot_name=robot_name,
             package_root=package_root,
             policy_path=policy_path,
             xml_path=xml_path,
-            simulation_duration=float(raw.get('simulation_duration', 60.0)),
+            simulation_duration=float(
+                raw.get('simulation_duration', 60.0)
+                if simulation_duration is None else simulation_duration
+            ),
             simulation_dt=float(raw.get('simulation_dt', 0.002)),
             control_decimation=int(raw.get('control_decimation', 10)),
             num_actions=num_actions,
@@ -221,8 +249,8 @@ class RobotRLConfig:
             action_scale=float(raw.get('action_scale', 0.25)),
             clip_observations=float(raw.get('clip_observations', DEFAULT_CLIP_OBSERVATIONS)),
             clip_actions=float(raw.get('clip_actions', DEFAULT_CLIP_ACTIONS)),
-            command_init=_as_float_array(raw.get('command_init'), 3, DEFAULT_COMMAND_INIT),
-            command_limits=_as_float_array(raw.get('command_limits'), 3, DEFAULT_COMMAND_LIMITS),
+            command_init=command,
+            command_limits=command_limits,
             command_scale=_as_float_array(raw.get('command_scale'), 3, DEFAULT_COMMAND_SCALE),
             keyboard_bindings=keyboard_bindings,
             keyboard_speed_levels=_as_float_array(
