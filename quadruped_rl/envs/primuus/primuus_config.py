@@ -65,6 +65,7 @@ class PrimuusCfg(LeggedRobotCfg):
     class asset(LeggedRobotCfg.asset):
         file = '{QUADRUPED_RL_ROOT_DIR}/resources/robots/primuus/urdf/primuus.urdf'
         name = 'primuus'
+        joint_dynamics_file = '{QUADRUPED_RL_ROOT_DIR}/resources/robots/primuus/joint_dynamics.json'
         foot_name = '_foot_link'  # 仅四个独立足端，不把小腿碰撞计入足端
         penalize_contacts_on = ['thigh', 'calf']  # calf 同时选中固定碰撞载体
         terminate_after_contacts_on = ['base_link']

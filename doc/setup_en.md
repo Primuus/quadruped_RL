@@ -21,7 +21,7 @@ conda activate isaacgym
 
 Run scripts from the repository root, not from the home directory.
 
-Read-only package metadata collected on 2026-10-15:
+Reference versions for reproducing the environment; inspect the active conda environment before use:
 
 | Component | Version or location |
 | --- | --- |
@@ -32,7 +32,7 @@ Read-only package metadata collected on 2026-10-15:
 | ONNX | 1.17.0 |
 | TensorBoard | 2.12.0 |
 
-These are observations from a working server, not a compatibility guarantee for every machine. Do not change drivers or packages while training is running.
+These versions are not a compatibility guarantee for every machine. Source synchronization does not authorize driver, CUDA, SDK, or system-setting changes. Report device or SDK limitations before changing the underlying environment; do not upgrade packages while training is running.
 
 ## Attach The Local Packages
 
@@ -69,7 +69,7 @@ python -m pip install --no-deps -e ./rsl_rl
 python -m pip install --no-deps -e .
 ```
 
-Isaac Gym is not distributed with this repository. Follow the archive's local documentation for system dependencies. This documentation update did not reinstall the environment or validate a fresh machine.
+Isaac Gym is not distributed with this repository. Follow the archive's local documentation for system dependencies. On a new machine, check package imports, physical responses, and training separately rather than assuming matching versions guarantee compatibility.
 
 ## Checks And Troubleshooting
 
@@ -90,10 +90,10 @@ python -c "import isaacgym; import torch; import quadruped_rl; from rsl_rl.env i
 Successful imports do not validate physics or training. The user can run a short training session after checking GPU availability:
 
 ```bash
-python quadruped_rl/scripts/train_go2.py --headless --max_iterations 100
+python quadruped_rl/scripts/train_primuus.py --headless --max_iterations 100
 ```
 
-This still uses the default 4096 environments.
+This uses the default 4096 environments. Primuus and Go2 have independent train/play entry points; generic scripts default to Primuus. Use `train_go2.py` and `play_go2.py` for Go2.
 
 | Symptom | Check |
 | --- | --- |
@@ -130,12 +130,16 @@ rsync -anv -e "ssh -p 2222" README.md \
 
 Remove `-n` only after reviewing the preview. Ordinary source synchronization must not overwrite logs or checkpoints.
 
-From the local deployment repository root, retrieve the exported Go2 files:
+From the local deployment repository root, retrieve Primuus files under the names used by its YAML:
 
 ```bash
-scp -P 2222 'hurricane@10.109.69.166:~/quadruped_train/logs/go2/exported/policies/policy_1.*' \
-  src/controller/rl/models/
+scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/policies/policy_1.pt \
+  src/controller/rl/models/primuus/policy.pt
+scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/policies/policy_1.onnx \
+  src/controller/rl/models/primuus/policy.onnx
 ```
 
-This overwrites matching local filenames. Preserve any required versions and ensure both files came from the same successful export. See the [training overview](../README.md) for resume and export behavior.
+This overwrites the local pair. Preserve required versions and ensure both files came from the same successful export. Go2 keeps `policy_1.*` under `src/controller/rl/models/go2/`. Repeated play overwrites fixed export names, never automatically creates `policy_2`, and does not update local deployment files until they are copied. See the [training overview](../README.md) for resume and export behavior.
+
+Primuus also mirrors `joint_dynamics.json` and the joint-loss algorithm between training and deployment. They are simulation definitions, not part of the neural-network export or hardware-identified motor parameters.
 

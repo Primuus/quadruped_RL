@@ -1,6 +1,6 @@
 # 四足机器人 HIM-PPO 训练工程
 
-文档核对日期：2026-10-15。以下“当前配置”均指本分支源码，不代表已有 checkpoint 使用了这些参数。
+本文说明训练、导出与部署接口。配置以对应机器人源码为准，不代表历史checkpoint使用相同参数；实验来源与运行配置须分别记录。
 
 ## 阅读入口
 
@@ -11,6 +11,7 @@
 | 参数生效、奖励、随机化和新增功能 | [训练调参教程](https://github.com/Primuus/quadruped_RL/blob/main/doc/训练调参教程.md) |
 | 日志、曲线和按命令模式评估 | [TensorBoard 使用指南](https://github.com/Primuus/quadruped_RL/blob/main/doc/TensorBoard使用指南.md) |
 | MuJoCo、模型资源和实机软件链路 | [部署工程](https://github.com/Primuus/quadruped_RL/tree/main) |
+| Primuus统一关节摩擦与阻尼 | [关节动力学](https://github.com/Primuus/quadruped_RL/blob/main/doc/关节动力学.md) |
 
 两份训练教程维护在部署分支的 `doc/`，不在本仓库复制参数表。`README_zh.md` 仅保留导航，避免同一说明出现两个不同版本。
 
@@ -30,7 +31,7 @@ quadruped_train
 
 本仓库只负责训练和策略导出，不包含 ROS2 部署链路。部署侧在本地 `quadruped` 工作区。
 
-## 当前训练框架
+## 训练框架
 
 通用四足训练链路：
 
@@ -71,18 +72,19 @@ critic privileged obs：45 + base_lin_vel3 + external_force3 + height_scan187 = 
 
 critic privileged obs 只用于训练 value function 和 estimator，不进入部署模型的外部输入。
 
-## 当前状态与边界
+## 功能与边界
 
-| 项目 | 当前状态 |
+| 项目 | 实现与约束 |
 | --- | --- |
-| 已注册训练任务 | `go2`、`primuus`；通用入口默认 `primuus`，专用入口固定选择各自任务 |
+| 训练任务 | `go2`、`primuus`；通用入口默认 `primuus`，专用入口固定选择各自任务 |
 | 训练环境 | Isaac Gym Preview / PhysX；自定义 `quadruped_rl`，不是 Isaac Lab |
 | 默认并行规模 | 4096 环境，20 s 回合，50 Hz 策略周期 |
 | 训练地形 | 当前 `create_sim()` 只创建平地；配置保留地形字段不等于已接入粗糙地形 |
 | critic 外力与高度 | 3 + 187 维目前为零占位；没有实际外力/高度数据回填 |
 | 正式算法 | Go2 和 Primuus 均选择 HIM-PPO；普通 PPO 源码仍保留，但不是这两个任务所选链路 |
-| Primuus | 独立资产、任务和 train/play 入口已接入；65形状模型通过4096环境GPU训练10轮检查，尚无经过运动效果验收的策略 |
-| 实机验收 | 不在本仓库进行，部署软件存在不等于硬件已经验证 |
+| Primuus关节动力学 | 独立适配器使用Jenkins预滑移干摩擦与粘性阻尼，与MuJoCo共用定义，不影响Go2 |
+| 产物管理 | train新增run/checkpoint，play覆盖固定双模型，本地部署须另行复制 |
+| 实机 | 由部署工程接入真实后端，不将仿真损耗重复施加到电机 |
 
 当前结构借鉴 HIMLoco 的历史观测、estimator 和非对称 actor-critic；不能把它理解为上游 HIMLoco 的所有地形、随机化和机器人能力均已复现。
 
@@ -90,14 +92,14 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
 
 - `quadruped_rl/envs/base/`：四足机器人通用环境基类、观测、reward、随机化、命令和终止条件。
 - `quadruped_rl/envs/go2/`：仅保留 `go2_config.py` 和 `go2_env.py`，负责Go2独立参数与环境入口；通用实现直接使用base。
-- `quadruped_rl/envs/primuus/`：仅保留 `primuus_config.py` 和 `primuus_env.py`，负责Primuus独立参数与环境入口；不依赖Go2。
+- `quadruped_rl/envs/primuus/`：`primuus_config.py`定义独立参数，`primuus_env.py`适配被动关节损耗与复位；不依赖Go2。
 - `quadruped_rl/scripts/train.py`：通用训练入口，通过 `--task <robot>` 选择机器人任务。
 - `quadruped_rl/scripts/play.py`：通用 play / 策略导出入口，通过 `--task <robot>` 选择机器人任务。
 - `quadruped_rl/scripts/train_go2.py`：Go2 快捷训练入口，会自动设置 `--task go2`。
 - `quadruped_rl/scripts/play_go2.py`：Go2 快捷 play / 策略导出入口。
 - `quadruped_rl/scripts/train_primuus.py` / `play_primuus.py`：Primuus专用训练和play/双格式导出入口。
-- `resources/robots/go2/` / `resources/robots/primuus/`：独立模型资产；Primuus包含URDF及全部引用的STL、凸分块和自碰撞排除规则。
-- `quadruped_rl/utils/`：任务注册、导出、日志和工具；`terrain.py` 尚未接入当前平地创建链路。
+- `resources/robots/go2/` / `resources/robots/primuus/`：独立模型资产；Primuus包含URDF、引用网格、自碰撞排除规则及 `joint_dynamics.json`。
+- `quadruped_rl/utils/`：任务注册、导出、日志及 `joint_dynamics.py` 等工具；`terrain.py`不属于平地创建链路。
 - `rsl_rl/`：随工程同步的 RL 算法库，当前包含 HIM-PPO 相关实现。
 - `docker/`：Docker 训练环境构建脚本。
 - `logs/`：训练日志和 checkpoint 输出目录，通常不提交。
@@ -170,7 +172,7 @@ python quadruped_rl/scripts/train_primuus.py --headless --max_iterations 100
 python quadruped_rl/scripts/train.py --task primuus --headless
 ```
 
-Primuus快捷训练入口（本次只接入代码，以下命令留给用户执行）：
+Primuus快捷训练入口：
 
 ```bash
 python quadruped_rl/scripts/train_primuus.py --headless
@@ -235,7 +237,7 @@ python quadruped_rl/scripts/train_primuus.py \
 
 | 项目 | Primuus配置 |
 | --- | --- |
-| 通用训练设置 | 沿用Go2的HIM-PPO、4096环境、45×6 actor、238维critic、12维动作、20 s回合、奖励权重、命令分布、噪声及摩擦随机化 |
+| 通用训练设置 | 与Go2使用相同HIM-PPO框架、4096环境、270维历史输入、238维critic、12维动作及20 s回合；实例参数独立维护，不读取Go2配置 |
 | PD / 动作缩放 | `60 / 1.5`、`0.25`，与部署 `config/primuus.yaml` 同步 |
 | 默认关节角 | 按FL/FR/RL/RR排列，每腿 `[0, -0.75, -1.5]`，不使用Go2默认姿态 |
 | 复位条件 | 机身从0.42 m落地，关节角倍率 `[0.9, 1.1]`；不改机械关节限位 |
@@ -243,11 +245,20 @@ python quadruped_rl/scripts/train_primuus.py \
 | 物理及控制周期 | 训练与play为 `dt=0.002 / substeps=1 / decimation=10`，PD 500 Hz；MuJoCo为 `0.0005 * 40`、PD 2 kHz，两侧策略均为50 Hz |
 | 碰撞 | 21 link / 12 DOF / 65形状，比169个减少约61.5%；基础几何与少量凸块组合，保留主槽净宽和折膝挡壁；圆柱不自动替换胶囊，保留固定足端、小腿载体及20对命名排除 |
 | 力矩 | 从Primuus URDF读取每关节 `23.7 N m` 上限；不假定与Go2相同 |
+| 关节损耗 | `joint_dynamics.json`与部署侧定义同步，运行时替换原生关节摩擦和阻尼，保留非零被动损耗 |
 | 输出 | checkpoint在 `logs/primuus/<run>/`，导出在 `logs/primuus/exported/policies/` |
 
 Primuus每个策略动作的物理推进次数为10，Go2为4；每轮每环境采样24个策略步时分别推进240和96个物理步。同样的策略周期下，物理步长和碰撞形状数量仍会影响计算成本。不能把相同环境数或相同电机理解为相同仿真成本和控制效果。
 
 Primuus使用自身模型、默认关节角和策略，独立维护配置，不复用Go2策略或实验目录。恢复训练时应选择同一机器人的checkpoint，并核对观测、动作及控制契约。碰撞代理保留主槽运动空间和折膝挡壁，不逐点复现全部显示细节；修改机械定义须同步训练URDF与MuJoCo XML，详见资产说明。
+
+### 统一关节损耗
+
+Primuus的 `asset.joint_dynamics_file`指向自身资源中的JSON，算法位于 `quadruped_rl/utils/joint_dynamics.py`，与MuJoCo部署侧逐字节同步。模型包含预滑移状态、0.05 N m干摩擦屈服力矩、0.02 N m s/rad粘性阻尼及5 N m/rad预滑移刚度；这些是仿真假设，不是实物辨识结果。
+
+`PrimuusEnv`将原生DOF friction/damping替换为上述非零损耗，每个物理步提交限幅电机力矩与被动损耗之和。`torques`仍用于电机力矩奖励，`passive_joint_torques`与 `net_joint_torques`另行保留；不扩大限矩、不修改速度来制造静止，复位清除摩擦历史。
+
+`domain_rand.randomize_friction`随机化形状接触摩擦，不随机化关节损耗。统一关节公式不等于统一足地接触求解，也不保证旧策略在新动力学下仍有相同行为。Go2和真实电机输出不启用此模型；原理见[关节动力学](https://github.com/Primuus/quadruped_RL/blob/main/doc/关节动力学.md)。
 
 ## 自碰撞配置
 
@@ -270,7 +281,7 @@ Primuus使用自身模型、默认关节角和策略，独立维护配置，不�
 
 PhysX 会始终过滤 articulation 的直接父子 link，命名接口不能解除这一限制。需要这类部件发生接触时，可将碰撞几何挂在同坐标、固定连接的碰撞载体子 link，使实际接触对不再是直接父子。必须保留固定 link，并正确分配原部件的质量与惯量，使复合动力学不变；不能把碰撞几何移到足端上，否则会污染足端接触力。对于 Primuus，载体命名为 `*_calf_collision_link`，非足端接触选择须包含 `calf`，足端仍单独使用 `*_foot_link`。
 
-关节限位应来自机械设计。不能仅为消除穿插而收紧范围，也不能用 reward 替代实际碰撞约束。Primuus URDF/XML 已恢复原始小腿范围 `[-2.7227, -0.8378] rad`，通过分段凸几何、固定碰撞载体及接触求解处理穿插；不是依靠修改关节零位或添加新驱动关节。
+关节限位应来自机械设计，不能仅为消除穿插而收紧范围，也不能用reward替代实际碰撞约束。Primuus小腿范围为 `[-2.7227, -0.8378] rad`，通过分段凸几何、固定碰撞载体及接触求解处理接触，不依靠修改关节零位或添加新驱动关节。
 
 Primuus的碰撞模型说明维护在部署工程 `src/controller/rl/resources/robots/primuus/README.md`。训练资产已复制到本仓库，21个link包含4个仿真碰撞载体，仍只有12个驱动关节、4个独立足端，不改变 `45 * 6` 观测契约。模型更新时同步完整URDF引用资产和20对命名排除规则；不要把当前Go2参数视为所有机器人的默认物理参数。
 
@@ -292,6 +303,8 @@ Primuus的碰撞模型说明维护在部署工程 `src/controller/rl/resources/r
 - 大改 reward 目标。
 - 同时打开多个强随机化项。
 - 需要公平比较两个参数版本的收敛速度。
+
+改变关节损耗模型、默认角、PD、动作缩放或机械定义属于动力学变化；即使网络维度不变，也应先建立新训练基线。后续若选择旧权重微调，应单独记录来源与改动，不能把维度兼容当成动力学兼容。
 
 例如从 `model_1000.pt` 恢复并设置 `--max_iterations 500`，正常完成后保存 `model_1500.pt`。新进程创建新的日志目录，不把新曲线直接写回旧 run。`Ctrl+C` 不会额外强制保存当前更新；恢复点以磁盘上已经完整写出的 checkpoint 为准。
 
@@ -333,11 +346,22 @@ python quadruped_rl/scripts/play_primuus.py \
 ONNX opset：17
 ```
 
-部署模型外部输入维度必须和机器人任务配置一致。Go2仍使用 `play_go2.py`，默认导出到 `logs/go2/exported/policies/`。两者输入形状相同不代表权重可互换。Primuus部署YAML预留路径为 `models/primuus/policy.pt`，得到导出的 `policy_1.pt` 后需要按YAML路径放置，或显式修改YAML，不能直接覆盖Go2模型。
+部署模型外部输入维度必须和机器人任务配置一致。Go2仍使用 `play_go2.py`，默认导出到 `logs/go2/exported/policies/`。两者输入形状相同不代表权重可互换。Primuus部署YAML引用 `models/primuus/policy.pt`，得到导出的 `policy_1.pt` 后需要按YAML路径放置，或显式修改YAML，不能直接覆盖Go2模型。
 
 上例 run 名必须替换为实际目录。未指定 `--load_run` 时，从含 checkpoint 的 run 中选择 checkpoint 文件修改时间最新的目录；未指定 `--checkpoint` 时，在该 run 中选编号最大的 `model_*.pt`。这不是按最高 reward 选“最好策略”。
 
-每次导出会覆盖同一实验目录下的 `policy_1.pt` 和 `policy_1.onnx`，不会覆盖训练 checkpoint。两个文件不是原子打包发布：如果 ONNX 导出失败，应重新完成双导出，不能混用新 PT 和旧 ONNX。导出后 `play` 仍继续运行仿真；`--headless` 只是不显示窗口，不是仅导出然后退出。
+每次导出覆盖同一实验目录下的 `policy_1.pt`和 `policy_1.onnx`，不会生成 `policy_2`，也不覆盖训练checkpoint。两个文件不是原子打包发布：ONNX导出失败时应重新完成双导出，不能混用新PT与旧ONNX。导出后play继续运行仿真；`--headless`只关闭窗口，不是仅导出命令。
+
+从本地部署仓库根目录覆盖Primuus默认策略：
+
+```bash
+scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/policies/policy_1.pt \
+  src/controller/rl/models/primuus/policy.pt
+scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/policies/policy_1.onnx \
+  src/controller/rl/models/primuus/policy.onnx
+```
+
+服务器训练、导出与本地复制相互独立；本地文件只在复制时被覆盖，YAML不需要因每次导出而改名。Go2使用自己的 `models/go2/policy_1.*`。复制后核对文件哈希与模型输出，完整规则见[部署模型目录](https://github.com/Primuus/quadruped_RL/blob/main/src/controller/rl/models/README.md)。
 
 ## 新增四足机器人
 
@@ -396,12 +420,12 @@ Go2 启用以下两项站立专用约束，高度由全局 `base_height` 负责�
 
 观察 `Episode/rew_base_height`、`Episode/rew_stand_still`、`Episode/rew_stand_contacts`，以及各 `Command/<mode>/base_height`、`joint_pose_error`、`supporting_feet`。后者分别是平均机身高度、关节角绝对偏差之和、按上述力阈值与漏检过滤统计的支撑足数；不要把原有未经滤波的 `feet_in_contact` 与 `supporting_feet` 混为同一指标。
 
-本轮不改变 HIM-PPO、4096 环境、270 维策略输入、238 维 critic、12 维动作、PD 和动作缩放。奖励定义及命令分布已改变，建议新建实验从头训练；旧 checkpoint 虽然维度兼容，但其奖励值和收敛曲线不能与新目标直接比较。已经导出的模型不会随源码修改而变化。
+HIM-PPO、观测/动作维度、机械与控制参数决定策略的运行契约。大幅修改奖励目标、命令分布或关节损耗时，应使用独立run建立对照，不能仅凭维度兼容复用旧策略，也不能用不同目标下的总reward比较优劣。已经导出的权重不会随源码修改而变化。
 
 ```bash
 cd ~/quadruped_train
 conda activate isaacgym
-python quadruped_rl/scripts/train_go2.py --headless --max_iterations 1500 --run_name locomotion_fix
+python quadruped_rl/scripts/train_primuus.py --headless --max_iterations 1500 --run_name rough
 ```
 
 

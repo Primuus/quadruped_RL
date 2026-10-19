@@ -4,7 +4,7 @@
 
 本指南只对应本仓库的 Isaac Gym + HIM-PPO 训练链路。部署工程使用独立环境；不需要安装 ROS2、Unitree SDK2、`unitree_rl_gym`，也不要从上游克隆另一个 `rsl_rl` 覆盖本仓库的修改。
 
-## 当前服务器
+## 训练服务器
 
 优先连接：
 
@@ -19,9 +19,9 @@ cd ~/quadruped_train
 conda activate isaacgym
 ```
 
-不要在服务器 home 目录直接运行 `python quadruped_rl/scripts/train_go2.py`，脚本路径相对于仓库根目录。
+不要在服务器home目录直接运行训练脚本，路径相对于仓库根目录。Primuus使用 `train_primuus.py / play_primuus.py`，Go2使用自己的专用入口；通用入口默认Primuus。
 
-2026-10-15 只读查询到的环境如下。这是现有服务器的版本记录，不是所有主机的兼容保证：
+以下为复现环境的参考版本，不是所有主机的兼容保证；使用前以目标conda环境中的实际包版本为准：
 
 | 组件 | 版本或路径 |
 | --- | --- |
@@ -32,7 +32,7 @@ conda activate isaacgym
 | ONNX | 1.17.0 |
 | TensorBoard | 2.12.0 |
 
-修改已工作的环境前先记录依赖，停训后再操作；不要在训练过程中升级 PyTorch、驱动、NumPy 或算法包。
+修改已工作的环境前先记录依赖，停训后再操作。源码和文档同步不等于修改服务器底层：不要自动升级驱动、CUDA、Isaac Gym或系统设置；遇到设备或SDK限制先报告原因，由使用者决定处理方式。
 
 ## 已有环境接入源码
 
@@ -69,7 +69,7 @@ python -m pip install --no-deps -e ./rsl_rl
 python -m pip install --no-deps -e .
 ```
 
-Isaac Gym 不随本仓库分发。额外系统依赖按安装包内的说明和 `docs/` 配置；本次文档整理未重新安装环境，也未在新主机上执行完整兼容验证。
+Isaac Gym不随本仓库分发。额外系统依赖按安装包内的说明和 `docs/`配置；新主机需分别确认导入、物理响应与训练链路，不能把包版本相同视为兼容保证。
 
 ## 检查安装
 
@@ -90,7 +90,7 @@ python -c "import isaacgym; import torch; import quadruped_rl; from rsl_rl.env i
 导入正常不等于物理仿真和训练已验证。训练验收由用户在确认 GPU 空闲后执行，例如：
 
 ```bash
-python quadruped_rl/scripts/train_go2.py --headless --max_iterations 100
+python quadruped_rl/scripts/train_primuus.py --headless --max_iterations 100
 ```
 
 默认仍为 4096 环境。检查命令不是后台自动任务，不会因阅读文档而运行。
@@ -134,12 +134,16 @@ rsync -anv -e "ssh -p 2222" README.md \
 
 确认后移除 `-n`。检查点和事件日志不是源码，不应在普通代码同步时覆盖。
 
-在本地部署仓库根目录取回 Go2 双模型：
+在本地部署仓库根目录取回Primuus双模型，并改为YAML引用的名称：
 
 ```bash
-scp -P 2222 'hurricane@10.109.69.166:~/quadruped_train/logs/go2/exported/policies/policy_1.*' \
-  src/controller/rl/models/
+scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/policies/policy_1.pt \
+  src/controller/rl/models/primuus/policy.pt
+scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/policies/policy_1.onnx \
+  src/controller/rl/models/primuus/policy.onnx
 ```
 
-这会覆盖同名本地文件。先保存需要保留的版本，并确认 PT/ONNX 来自同一次成功导出。完整训练与导出命令见 [训练首页](../README.md)。
+这会覆盖同名本地文件。先保存需要保留的版本，并确认PT/ONNX来自同一次成功导出。Go2双模型保留 `policy_1.*`并放在 `src/controller/rl/models/go2/`，不能混用机器人策略。重复play覆盖固定导出文件，不生成 `policy_2`；服务器导出不会自动更新本地部署。完整训练、导出与复制规则见[训练首页](../README.md)。
+
+Primuus还需同步 `resources/robots/primuus/joint_dynamics.json`与两端关节损耗算法；它们属于仿真动力学配置，不包含在策略权重里，也不是实机电机标定参数。
 

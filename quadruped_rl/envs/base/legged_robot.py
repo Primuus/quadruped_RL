@@ -78,7 +78,7 @@ class LeggedRobot(BaseTask):
         self.render()
         for _ in range(self.cfg.control.decimation):
             self.torques = self._compute_torques(self.actions).view(self.torques.shape)
-            self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
+            self._apply_torques()
             self.gym.simulate(self.sim)
             if self.cfg.env.test:
                 elapsed_time = self.gym.get_elapsed_time(self.sim)
@@ -97,6 +97,9 @@ class LeggedRobot(BaseTask):
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
+
+    def _apply_torques(self):
+        self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
 
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
