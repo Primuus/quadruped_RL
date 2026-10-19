@@ -2,15 +2,15 @@
 
 [文档导航](README.md) | [训练调参教程](训练调参教程.md)
 
-核对日期：2026-10-15。指标名称和统计口径来自当前 `HIMOnPolicyRunner` 与 `LeggedRobot`，不套用其他框架的同名曲线解释。TensorBoard 用于定位训练现象，不能代替 Isaac Gym play、MuJoCo 和实机验收。
+指标名称和统计口径来自 `HIMOnPolicyRunner` 与 `LeggedRobot`，不套用其他框架的同名曲线解释。TensorBoard用于定位训练现象，不能代替Isaac Gym play、MuJoCo闭环运行和实物检查。
 
 ## 1. 日志和启动
 
 训练侧默认日志位置：
 
 ```text
-~/quadruped_train/logs/go2/
-  Oct15_20-00-00_rough/
+~/quadruped_train/logs/primuus/
+  <时间戳>_<run_name>/
     events.out.tfevents...
     model_50.pt
     model_100.pt
@@ -19,7 +19,7 @@
     policy_1.onnx
 ```
 
-run 名是示例。事件文件记录标量，`model_*.pt` 是训练 checkpoint；导出的 `policy_1.*` 不能用于恢复训练优化器。
+Go2对应 `logs/go2/`。事件文件记录标量，`model_*.pt` 是训练checkpoint；导出的 `policy_1.*` 不能用于恢复训练优化器。
 
 在服务器启动 TensorBoard：
 
@@ -27,7 +27,7 @@ run 名是示例。事件文件记录标量，`model_*.pt` 是训练 checkpoint�
 ssh -p 2222 hurricane@10.109.69.166
 cd ~/quadruped_train
 conda activate isaacgym
-tensorboard --logdir logs/go2 --host 127.0.0.1 --port 6006
+tensorboard --logdir logs/primuus --host 127.0.0.1 --port 6006
 ```
 
 另开本地终端建立隧道：
@@ -40,6 +40,15 @@ ssh -p 2222 -N -L 6006:127.0.0.1:6006 hurricane@10.109.69.166
 
 只在持有事件文件的一侧安装 TensorBoard即可，浏览器所在电脑不需要安装训练依赖。若想离线查看，可把某个run的事件文件复制到本地，再在本地启动TensorBoard。绑定 `0.0.0.0` 会开放网络访问，默认不需要这样做。
 
+切换任务时同时核对服务的 `--logdir` 与页面run名称。相同6006端口不代表服务已自动改读最新机器人目录；SSH隧道只转发端口，不选择日志。可在本地确认服务读取目录：
+
+```bash
+curl -fsS http://127.0.0.1:6006/data/logdir
+curl -fsS http://127.0.0.1:6006/data/runs
+```
+
+只看Primuus使用 `--logdir logs/primuus`，只看Go2使用 `--logdir logs/go2`；同时查看两者可用 `--logdir logs`，此时按机器人/run完整名称区分。更换已有服务的目录需要停止原服务后重启，不要在占用端口上反复启动第二个进程。
+
 ## 2. 页面与横轴
 
 1. 进入 Scalars，先只选一个完整run。
@@ -48,7 +57,9 @@ ssh -p 2222 -N -L 6006:127.0.0.1:6006 hurricane@10.109.69.166
 4. 比较多个run时固定横轴、平滑系数与评估条件，同时记录代码和奖励版本。
 5. 新的resume进程有新run目录，checkpoint编号会继续累计。
 
-当前4096环境、每环境24个控制步，每迭代采样98304个transition。100轮能跑通只代表短时稳定，不等于步态已经收敛。
+默认4096环境、每环境24个控制步，每迭代采样98304个transition。短时运行正常只说明链路能执行，不等于步态收敛。
+
+分析“最新训练”时先确认机器人、完整run名、最后Step和写入时间。量化比较可固定最后200轮等相同窗口，使用原始值均值，不混用页面平滑值与原始值。事件接口可能下采样，精确统计应读取完整事件文件。
 
 日志需要有episode结束后才出现 `Train/*` 与 `Episode/*` 的部分指标。TensorBoard刷新延迟或训练正在采样，不等于程序卡死。
 
@@ -69,14 +80,14 @@ Episode/rew_name = 已结束回合该项累计贡献 / 配置的episode_length_s
 
 runner再对收集到的episode统计取均值。分母使用配置的最大回合时长，不是该回合实际存活时间，所以短回合会拉低日志值。
 
-当前Go2控制周期 `0.005*4=0.02 s`，配置回合长20 s。完整回合中，理论上限为1的线速度跟踪函数，对应日志接近权重1.0；角速度跟踪对应权重0.5。但如果回合很短，不能仅用“日志值/权重”解释跟踪准确率。
+Go2控制周期为 `0.005*4=0.02 s`，Primuus为 `0.002*10=0.02 s`，回合配置均为20 s。完整回合中，理论上限为1的线速度跟踪函数，对应日志接近权重1.0；角速度跟踪对应权重0.5。但如果回合很短，不能仅用“日志值/权重”解释跟踪准确率。
 
 因此：
 
 - `Train/mean_reward` 与所有 `Episode/rew_*` 不能直接逐点相加对账。
 - 负奖励项的数值表示已加权代价，不是原始米、牛米或接触次数。
 - 改奖励公式、权重、回合长度或采样分布后，总reward不能直接横向比较。
-- 本轮源码默认 `only_positive_rewards=False`；旧日志不一定使用相同定义。
+- Go2与Primuus实例配置使用 `only_positive_rewards=False`；历史日志须核对自己的定义。
 
 ## 4. 先看这六组指标
 
@@ -132,7 +143,7 @@ Command/translate/*     平移
 Command/stand/*         零命令站立
 ```
 
-Go2配置比例为25%、25%、30%、20%，但曲线是本迭代实际采样占比，不保证每次都恰好等于配置概率。
+Go2与Primuus配置比例均为25%、25%、30%、20%，但曲线是本迭代实际采样占比，不保证每次都恰好等于配置概率。
 
 | 后缀 | 统计含义 |
 | --- | --- |
@@ -157,7 +168,9 @@ turn/foot_slip_speed 高
 turn/valid_steps_per_second 低
 ```
 
-这支持“通过滑动扭身而非正常换步”的判断，但仍需play画面确认。不能只提高 `tracking_ang_vel` 权重。
+这提示“通过滑动扭身而非正常换步”的风险，但不能直接认定没有迈步。有效落足要求腾空0.08-0.45 s、抬升至少0.035 m，低于门槛的小步不会计入；它不是单腿步频，也不规定应有多少只足同时摆动。还需结合play画面确认，不能只提高 `tracking_ang_vel` 权重。
+
+训练日志包含探索动作、传感器噪声和命令切换过渡，`stand/linear_error`不能直接当成确定性静态站立的漂移速度。各模式聚合值也不区分低、中、高速度，无法单靠均值认定所有速度档都正常。
 
 ## 7. 高度、足端与非足端支撑
 
@@ -173,7 +186,7 @@ max(abs(base_z - target) - tolerance, 0)² / sigma²
 
 ### Episode/contact_<body>
 
-某个非足端body超过5 N力阈值的回合时间占比，近似范围0到1。这不是加权reward，也不是足端接触率。
+某个非足端body超过5 N净接触力阈值的回合时间占比，近似范围0到1。这不是加权reward，也不是足端接触率。净接触力可能来自地面、障碍或自碰撞，单靠此标量不能区分碰撞对象。
 
 逐条比较四腿大腿/小腿；长期同侧偏高值得检查关节映射、碰撞形状和奖励取巧。配置Primuus固定碰撞载体时，需要看其 `calf_collision_link`，不能只看不承载形状的原 `calf_link`。
 
@@ -206,7 +219,7 @@ max(abs(base_z - target) - tolerance, 0)² / sigma²
 
 | 曲线 | 原始含义 | 不能直接推出 |
 | --- | --- | --- |
-| `Episode/rew_torques` | 关节力矩平方和 | 真实电功率、能耗或峰值力矩 |
+| `Episode/rew_torques` | 限幅后电机力矩平方和；Primuus不把被动关节损耗计入 | 真实电功率、能耗或峰值力矩 |
 | `Episode/rew_action_rate` | 相邻动作差平方和 | 机器人一定在抖；正常摆腿也会变化 |
 | `Episode/rew_smoothness` | 二阶动作差平方和 | 越接近零步态越好；不动作也可以很小 |
 | `Episode/rew_dof_acc` | 关节速度差除以控制周期后的平方和 | 某个电机的单独加速度 |
@@ -221,11 +234,13 @@ max(abs(base_z - target) - tolerance, 0)² / sigma²
 | `Loss/value_function` | critic返回值预测损失；受reward量级和数据分布影响，不要求单调归零 |
 | `Loss/surrogate` | clipped PPO目标的损失；符号和大小不能直接解释为步态好坏 |
 | `Loss/estimation` | 预测速度与下一时刻critic缩放线速度的MSE；不是未经缩放的m/s误差 |
-| `Loss/swap` | estimator的原型对比损失；归约含原型维度，不能套用普通分类交叉熵的量级 |
+| `Loss/swap` | estimator的Sinkhorn原型分配交换预测损失；归约含原型维度，不能套用普通分类交叉熵的量级 |
 | `Loss/learning_rate` | KL自适应后的学习率，当前代码范围1e-5到1e-2 |
 | `Policy/mean_noise_std` | 训练动作正态分布的平均探索标准差，不是传感器噪声或PD增益 |
 
 速度估计loss降低通常是有用信号，但是否接近零取决于状态噪声、目标缩放和运动复杂度。探索标准差也不要求一直下降；例如稳定在0.5不能单独判为异常。play和导出的部署模型使用确定性动作，不把训练探索噪声原样带入部署。
+
+Isaac Gym中的估计loss低，不保证MuJoCo中的速度估计无偏。跨引擎速度异常还需检查关节损耗、接触和观测分布；同一权重在两种引擎中出现不同效果，不能仅凭训练loss排除域差异。Primuus的统一关节损耗见[关节动力学](关节动力学.md)。
 
 遇到NaN、突然巨大变化或reward崩溃时，检查观测/动作有限性、更新幅度、命令分布和设备状态，不凭某一条loss直接断定根因。
 
@@ -262,10 +277,11 @@ Perf/learning_time
 
 ```bash
 cd ~/quadruped_train
-python quadruped_rl/scripts/play_go2.py \
+RUN='<run目录名>'
+python quadruped_rl/scripts/play_primuus.py \
   --headless \
-  --load_run Oct15_20-00-00_rough \
-  --checkpoint 1000
+  --load_run "$RUN" \
+  --checkpoint 1500
 ```
 
 run名为示例，需要替换为真实目录。默认选择最新有效run和最大编号checkpoint，不会选择reward最高的模型。
@@ -273,17 +289,19 @@ run名为示例，需要替换为真实目录。默认选择最新有效run和�
 每次成功双导出得到：
 
 ```text
-logs/go2/exported/policies/policy_1.pt
-logs/go2/exported/policies/policy_1.onnx
+logs/primuus/exported/policies/policy_1.pt
+logs/primuus/exported/policies/policy_1.onnx
 ```
 
-重复play会覆盖固定导出文件，不覆盖checkpoint；ONNX失败时不应混用新PT和旧ONNX。导出成功后play继续执行约10个配置回合长度的仿真，`--headless` 只关闭窗口，终端暂时无输出不一定是卡住。
+重复play覆盖固定导出文件，不新增 `policy_2`、不覆盖checkpoint；ONNX失败时不应混用新PT和旧ONNX。导出成功后play继续执行约10个配置回合长度的仿真，`--headless`只关闭窗口，终端暂时无输出不一定是卡住。Go2使用 `play_go2.py` 和自己的实验目录。
 
 从本地部署仓库根目录复制：
 
 ```bash
-scp -P 2222 'hurricane@10.109.69.166:~/quadruped_train/logs/go2/exported/policies/policy_1.*' \
-  src/controller/rl/models/
+scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/policies/policy_1.pt \
+  src/controller/rl/models/primuus/policy.pt
+scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/policies/policy_1.onnx \
+  src/controller/rl/models/primuus/policy.onnx
 ```
 
 这会覆盖同名文件。需要留存时使用独立版本目录，并相应修改机器人YAML；模型不会因源码更新自动变成新训练结果。
@@ -292,19 +310,21 @@ scp -P 2222 'hurricane@10.109.69.166:~/quadruped_train/logs/go2/exported/policie
 
 ```bash
 python3 src/controller/rl/tools/compare_policy_backends.py \
-  --torchscript-path src/controller/rl/models/policy_1.pt \
-  --onnx-path src/controller/rl/models/policy_1.onnx
+  --config src/controller/rl/config/primuus.yaml \
+  --torchscript-path src/controller/rl/models/primuus/policy.pt \
+  --onnx-path src/controller/rl/models/primuus/policy.onnx
 
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
-  --xml-path src/controller/rl/resources/robots/go2/scene_flat.xml
+  --config src/controller/rl/config/primuus.yaml
 ```
 
-Go2默认配置实际选择ROBOCON场地，不是平地；比较训练与部署时应显式选择上述平地场景。Primuus不能使用Go2权重。
+Primuus配置使用自身平地场景。Go2默认配置选择ROBOCON场地，比较平地训练与部署时应指定 `--xml-path src/controller/rl/resources/robots/go2/scene_flat.xml` 并使用Go2配置/策略。完整复制命令和命名规则见[模型目录](../src/controller/rl/models/README.md)。
 
 ## 13. 记录模板
 
 ```text
 源码commit / 机器人 / URDF或XML版本：
+关节损耗模型 / 参数文件版本：
 完整run目录 / checkpoint / 是否resume：
 追加迭代数 / 控制周期：
 修改的单个参数组：

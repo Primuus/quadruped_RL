@@ -43,7 +43,7 @@ DEFAULT_DEFAULT_ANGLES = np.array(
     ],
     dtype=np.float32,
 )  # action=0 时的默认关节角，当前对应 Go2
-DEFAULT_POLICY_PATH = 'models/policy_1.pt'  # 默认策略文件名
+DEFAULT_POLICY_PATH = 'models/go2/policy_1.pt'  # 默认 Go2 策略路径
 DEFAULT_KPS = np.full(12, 20.0, dtype=np.float32)  # 默认比例增益，当前对应 Go2
 DEFAULT_KDS = np.full(12, 0.5, dtype=np.float32)  # 默认微分增益，当前对应 Go2
 DEFAULT_COMMAND_INIT = np.array([0.5, 0.0, 0.0], dtype=np.float32)  # 默认初始速度命令 [vx, vy, yaw_rate]
@@ -157,6 +157,7 @@ class RobotRLConfig:
     obs_scale_dof_vel: float  # 关节速度观测缩放
     initial_base_pos: np.ndarray  # 初始机身位置
     initial_base_quat: np.ndarray  # 初始机身姿态
+    simulation_joint_dynamics_path: Path | None = None  # 仅仿真被动关节损耗；实机不施加虚拟摩擦
 
     @classmethod
     def from_yaml(
@@ -271,6 +272,10 @@ class RobotRLConfig:
             obs_scale_dof_vel=float(raw.get('obs_scale_dof_vel', 0.05)),
             initial_base_pos=_as_float_array(raw.get('initial_base_pos'), 3, DEFAULT_INITIAL_BASE_POS),
             initial_base_quat=_as_float_array(raw.get('initial_base_quat'), 4, DEFAULT_INITIAL_BASE_QUAT),
+            simulation_joint_dynamics_path=(
+                _resolve_path(package_root, raw['simulation_joint_dynamics_path'])
+                if raw.get('simulation_joint_dynamics_path') is not None else None
+            ),
         )
         cfg.validate()
         return cfg
@@ -282,6 +287,8 @@ class RobotRLConfig:
             raise ValueError(f'policy_path does not exist: {self.policy_path}')
         if not self.xml_path.is_file():
             raise ValueError(f'xml_path does not exist: {self.xml_path}')
+        if self.simulation_joint_dynamics_path is not None and not self.simulation_joint_dynamics_path.is_file():
+            raise ValueError(f'simulation_joint_dynamics_path does not exist: {self.simulation_joint_dynamics_path}')
         _require_positive_finite(self.simulation_duration, 'simulation_duration')
         _require_positive_finite(self.simulation_dt, 'simulation_dt')
         if self.control_decimation <= 0:

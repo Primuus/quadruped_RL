@@ -2,16 +2,16 @@
 
 [仓库首页](../../../README.md) | [文档导航](../../../doc/README.md) | [模型文件](models/README.md) | [Primuus 模型](resources/robots/primuus/README.md)
 
-核对日期：2026-10-15。本说明以文件职责为主，运行方式见仓库首页；训练参数以训练工程对应机器人配置为准。
+本说明以文件职责为主，运行方式见仓库首页；训练参数以训练工程对应机器人配置为准。
 
 `src/controller/rl` 是纯 Python 四足机器人 RL 部署包，不依赖 ROS2、ament 或 `colcon`。它包含两条正式运行链路：
 
 - MuJoCo：读取机器人模型和 TorchScript/ONNX 策略，在本地完成闭环仿真；
 - 实机：读取真实机器人配置，通过电机和 IMU 构造 45×6 actor 观测，执行 ONNX 策略并发送目标关节角。
 
-当前 MuJoCo 示例使用 Go2。实机配置模板面向后续自研四足机器人，当前电机和 IMU 实现分别为 Unitree GO-M8010-6 与 Yesense YIS130。公共运行器不包含 Go2 专有分支。
+MuJoCo默认配置使用Go2，从仓库根目录通过 `--config src/controller/rl/config/primuus.yaml`选择Primuus。实机配置模板面向独立机器人实例，电机和IMU后端分别为Unitree GO-M8010-6与Yesense YIS130。公共运行器不包含Go2专有分支。
 
-Primuus已提供机械模型、独立YAML及训练任务，65形状模型已通过服务器4096环境的GPU训练10轮检查，但尚无经过运动效果验收的匹配策略；目前仍先用原生MuJoCo Viewer检查模型。通用接口面向12驱动关节四足，不表示任意关节数、任意硬件都已经适配。
+Go2与Primuus各自维护机械资源、YAML和策略文件。Primuus通过Python适配器在训练与MuJoCo中使用同一关节损耗定义；原生Viewer使用XML原生动力学，不运行策略、PD或该适配器。通用接口面向12驱动关节四足，不表示任意关节数、任意硬件都可直接接入。
 
 ## 总体数据契约
 
@@ -32,7 +32,7 @@ Primuus已提供机械模型、独立YAML及训练任务，65形状模型已通�
 [obs_t, obs_t-1, obs_t-2, obs_t-3, obs_t-4, obs_t-5]
 ```
 
-因此 actor 输入为 `45 * 6 = 270` 维，输出为 12 维 action：
+部署模型外部输入为 `45 * 6 = 270` 维；内部历史编码器输出速度3维与latent16维，actor实际读取当前45维加估计结果，共64维，最终输出12维action：
 
 ```text
 target_joint_position = default_angles + action_scale * action
@@ -92,6 +92,8 @@ Primuus独立运行配置，引用自身 `scene_flat.xml`、关节名称和默�
 
 与独立训练任务共用 PD `60 / 1.5`、动作缩放 `0.25` 和每腿默认角 `[0, -0.75, -1.5]`。高度奖励目标为0.28±0.03 m，不是独立的机身高度控制器；默认角也不保证承重后的高度。部署初始机身Z为0.31212 m，训练复位为0.42 m并带关节角扰动，两者不是高度奖励目标。
 
+`simulation_joint_dynamics_path`指向Primuus资源中的 `joint_dynamics.json`。运行器替换原生关节frictionloss/damping，加入非零被动损耗，不改变PD、惯量、地面摩擦或限矩。Go2不启用此适配器，实机不施加虚拟损耗，原理见[关节动力学](../../../doc/关节动力学.md)。
+
 ### `config/real/custom_quadruped.example.yaml`
 
 真实四足机器人配置格式模板。模板中的 `null` 表示必须通过机械设计、训练配置、硬件手册或实机标定确定；解析器会拒绝未填写模板，从而避免带着占位参数启动硬件。
@@ -101,8 +103,10 @@ Primuus独立运行配置，引用自身 `scene_flat.xml`、关节名称和默�
 存放本地策略文件。通常包括：
 
 ```text
-policy_1.pt
-policy_1.onnx
+go2/policy_1.pt
+go2/policy_1.onnx
+primuus/policy.pt
+primuus/policy.onnx
 ```
 
 模型默认不提交到 Git。实机入口只接受 ONNX；MuJoCo 可接受 TorchScript 或 ONNX。
@@ -111,7 +115,7 @@ policy_1.onnx
 
 存放MuJoCo XML、URDF和网格资源。`go2/go2.xml` 定义Go2本体，`scene_flat.xml` 提供平地对照，`scene_obstacles.xml` 是可选障碍场景，`ROBOCON2027.xml` 是当前Go2 YAML选择的场地。
 
-Primuus的资源职责见[模型说明](resources/robots/primuus/README.md)。当前21个link、12个驱动关节、65个碰撞形状，比169个减少约61.5%；用圆柱、盒体和少量凸块近似大腿外壳，保留31 mm代表截面主槽净宽及原折膝接触面。显示STL、质量惯量、机械限位、默认姿态及命名排除不变，足端与小腿载体仍独立。训练侧显式关闭圆柱自动替换胶囊，使两侧尺寸一致。有限本地MuJoCo回归及服务器4096环境GPU训练10轮检查已通过，保存模型并正常退出；这不是步态验收，也不表示旧169形状模型的底层SDK问题已经修复。
+Primuus的资源职责见[模型说明](resources/robots/primuus/README.md)。模型包含21个link、12个驱动关节、65个碰撞形状；用圆柱、盒体和凸块近似大腿外壳，保留31 mm代表截面主槽净宽及折膝接触面。显示STL与碰撞代理各司其职，足端与小腿载体独立，质量惯量和机械限位不按代理体积重算。训练侧显式关闭圆柱自动替换胶囊，使两侧尺寸一致。
 
 URDF/XML机械与碰撞参数需同步，YAML负责运行契约。直接修改YAML默认XML路径不能修复XML内部缺失的网格或高度图资源。
 
@@ -121,13 +125,13 @@ URDF/XML机械与碰撞参数需同步，YAML负责运行契约。直接修改YA
 
 ```bash
 python3 src/controller/rl/tools/compare_policy_backends.py \
-  --torchscript-path src/controller/rl/models/policy_1.pt \
-  --onnx-path src/controller/rl/models/policy_1.onnx
+  --torchscript-path src/controller/rl/models/go2/policy_1.pt \
+  --onnx-path src/controller/rl/models/go2/policy_1.onnx
 ```
 
 该工具不参与 MuJoCo 或实机运行时导入。
 
-默认使用128组随机输入，也可通过 `--observations <file.npy>` 提供一维观测或二维样本矩阵。成功退出代表该输入集合内的数值一致性，不代表闭环行为或硬件安全已经验证。配置文件中的模型路径本身仍须有效，显式模型参数不会绕过配置的首次校验。
+默认使用128组随机输入，也可通过 `--observations <file.npy>` 提供一维观测或二维样本矩阵。成功退出代表该输入集合内的数值一致性，不代表闭环行为或硬件安全。`--torchscript-path`在配置校验前覆盖策略路径，最终使用的配置仍须满足观测维度及资源路径要求。Primuus应显式传入自身 `--config` 和双模型路径。
 
 ## MuJoCo 模块
 
@@ -141,8 +145,9 @@ MuJoCo 正式入口和主循环，负责：
 - 按训练契约裁剪完整的 270 维观测；
 - 执行 TorchScript/ONNX 推理；
 - 策略周期更新目标关节角，并在每个 MuJoCo 物理步按最新状态重算 PD 力矩；
+- 按配置计算Primuus被动关节损耗，与电机力矩分通道送入物理引擎；
 - 读取电脑键盘速度命令；
-- 根据机身高度和重力投影检测跌倒，跌倒后停止力矩但保留仿真；
+- 根据机身高度和重力投影检测跌倒，跌倒后停止电机力矩但保留仿真及被动损耗；
 - 使用 `--debug-steps N` 输出前 N 次策略周期的状态、原始动作、裁剪动作、目标角和力矩。
 
 默认 `--debug-steps=0`，不打印快照。每条快照包含 `base_z`、`projected_gravity`、`command`、`joint_pos`、`raw_action`、`clipped_action`、`torques`、`target_joint_pos`；`raw_action` 是模型输出，`clipped_action` 是饱和后的策略动作，两者都不是目标关节角或力矩。
@@ -155,6 +160,9 @@ MuJoCo策略不使用critic特权观测，但使用已导出的estimator+actor�
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py
 
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
+  --config src/controller/rl/config/primuus.yaml
+
+python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
   --headless --no-keyboard --command 0.5 0.0 0.0 --duration 30
 
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
@@ -165,7 +173,7 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 
 定义 `RobotRLConfig` 和 MuJoCo 默认配置。加载 YAML 后检查观测维度、历史长度、关节/执行器数量、时步、PD 数组、命令范围、有限值和模型/资源路径。
 
-默认配置路径为本包的 `config/go2.yaml`。YAML中的资源路径相对于RL包目录；CLI显式覆盖路径按当前工作目录解析。先校验YAML再应用CLI覆盖，因此原YAML引用的模型文件也必须存在。
+默认配置路径为本包的 `config/go2.yaml`。YAML中的资源路径相对于RL包目录；CLI显式覆盖路径按当前工作目录解析。先合并CLI覆盖项，再校验最终配置；被覆盖的原始策略或XML路径不要求存在，最终实际使用的文件必须存在。Primuus关节损耗路径也在配置边界检查。
 
 ### `rl_controller/core/observer.py`
 
@@ -187,6 +195,12 @@ torque = kp * (target - joint_pos) - kd * joint_vel
 可按 MuJoCo actuator 能力进一步裁剪力矩。
 
 `raw_action -> clipped_action -> target_joint_pos -> torques` 是四个不同阶段。调试时先核对动作/关节顺序和默认角，再检查裁剪、缩放和力矩，不把动作数值直接当成牛米。
+
+### `rl_controller/core/joint_dynamics.py`
+
+提供 `JointDynamicsParameters` 与 `JenkinsJointFriction`。定义文件在入口处校验版本、正有限参数和关节顺序，内部按实际关节位移更新预滑移状态；重置时清除历史，不直接修改速度。两端算法文件与参数文件需逐字节同步，不要求彼此导入。
+
+MuJoCo中电机力矩进入 `ctrl`，被动损耗进入受控关节的 `qfrc_applied`，不覆盖机身外力通道。参数是仿真假设，不代表已辨识真实电机；相同公式不消除地面接触求解与步长差异，详见[关节动力学](../../../doc/关节动力学.md)。
 
 ## 键盘模块
 

@@ -4,7 +4,7 @@
 robot_name: go2
 
 # 训练导出的策略文件，部署时默认加载这个权重
-policy_path: models/policy_1.pt
+policy_path: models/go2/policy_1.pt
 # MuJoCo 使用包含 Go2 的 ROBOCON 场景；平地对照可通过 --xml-path 指定 scene_flat.xml
 xml_path: resources/robots/go2/ROBOCON2027.xml
 

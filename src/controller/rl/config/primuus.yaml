@@ -9,6 +9,8 @@ robot_name: primuus
 policy_path: models/primuus/policy.pt
 # 平地场景，内部引用 Primuus 本体 XML
 xml_path: resources/robots/primuus/scene_flat.xml
+# 仅 MuJoCo 使用的统一关节损耗定义；运行时替换原生关节摩擦和阻尼，不改电机 PD
+simulation_joint_dynamics_path: resources/robots/primuus/joint_dynamics.json
 
 # 仿真总时长 [s]
 simulation_duration: 60.0

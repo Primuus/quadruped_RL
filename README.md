@@ -2,7 +2,7 @@
 
 `quadruped` 负责四足机器人强化学习策略的本地仿真和实机部署，不在本仓库训练策略。
 
-文档核对日期：2026-10-15。运行命令均从本仓库根目录执行；配置中存在字段、工程中存在驱动，不等于相应机器人已经完成训练或硬件验收。
+运行命令均从本仓库根目录执行。机器人资产、策略文件和运行配置必须配套，仿真部署与实机部署使用不同的状态输入和执行后端。
 
 ## 文档导航
 
@@ -11,7 +11,8 @@
 | 理解部署包每个文件负责什么 | [RL 子工程说明](src/controller/rl/README.md) |
 | 训练、日志和调参文档的阅读顺序 | [doc 导航](doc/README.md) |
 | 策略文件、版本和输入输出契约 | [模型目录](src/controller/rl/models/README.md) |
-| Primuus 机械模型、碰撞与当前验证边界 | [Primuus 模型说明](src/controller/rl/resources/robots/primuus/README.md) |
+| Primuus 机械模型与碰撞定义 | [Primuus 模型说明](src/controller/rl/resources/robots/primuus/README.md) |
+| Primuus 跨引擎关节摩擦与阻尼 | [关节动力学](doc/关节动力学.md) |
 | 官方电机 SDK 的固定版本与构建 | [第三方依赖说明](src/controller/rl/third_party/README.md) |
 
 相关工程：
@@ -22,7 +23,7 @@
 
 三个工程独立安装、独立运行，不互相导入源码。训练侧和部署侧只通过机器人参数、观测/动作契约及导出的模型文件衔接。
 
-## 当前能力
+## 功能与边界
 
 - 加载 TorchScript 或 ONNX 策略并在 MuJoCo 中运行；
 - 构造与训练侧一致的 45 维单帧观测和 6 帧历史输入；
@@ -34,16 +35,16 @@
 - 接入 Unitree GO-M8010-6 电机和 Yesense YIS130 IMU；
 - 提供状态同步、ONNX 推理、输出安全门、watchdog、FAULT 锁存和显式停机/故障报告。
 
-当前已有 Go2 的 MuJoCo 示例。公共观测、策略、状态机和安全接口不绑定 Go2；新增四足机器人时，应增加独立配置、物理模型和匹配策略，而不是复制控制主循环。
+Go2 与 Primuus 共用 MuJoCo 运行器，分别使用独立 YAML、物理模型和策略。公共观测、策略、状态机和安全接口不绑定 Go2；新增四足机器人时，应增加实例配置，不复制控制主循环。
 
-| 机器人 | 训练与策略 | 本仓库状态 |
+| 机器人 | 训练入口 / 实验目录 | 本地配置 / 默认策略 |
 | --- | --- | --- |
-| Go2 | 训练侧已注册任务；部署需自行提供匹配的导出模型 | 默认 YAML 与 MuJoCo 场景示例 |
-| Primuus | 训练侧已独立注册 `primuus`；尚未训练，没有匹配策略 | URDF、原始 STL、凸碰撞分段、XML、YAML 及模型接触验证 |
+| Go2 | `train_go2.py` / `logs/go2` | `config/go2.yaml` / `models/go2/policy_1.pt` |
+| Primuus | `train_primuus.py` / `logs/primuus` | `config/primuus.yaml` / `models/primuus/policy.pt` |
 
 通用接口当前针对12驱动关节四足：单帧45维、6帧历史、12维动作。通用化不代表任意关节数、任意驱动协议均能不改代码直接接入。
 
-实机链路尚未经过真实机器人验证。真实电机参数、机械零位、关节方向、限位、增益、温度阈值和急停系统必须在有实物后逐项确认。
+真实电机参数、机械零位、关节方向、限位、增益、温度阈值和急停系统必须根据实物逐项确认，不能直接把仿真配置当成实机标定值。
 
 Python watchdog不能强制中断底层SDK或ONNX Runtime中的阻塞调用。线程永久阻塞时进程也可能无法自行退出；物理急停和驱动器自身超时不可省略。
 
@@ -58,14 +59,17 @@ quadruped_train
 quadruped
   -> MuJoCo 或真实硬件状态
   -> 45维单帧观测
-  -> 6帧历史，形成270维actor输入
-  -> TorchScript / ONNX policy
+  -> 6帧历史，形成270维部署模型输入
+  -> estimator估计速度3维与latent16维
+  -> actor读取当前45维与估计结果，共64维
   -> 12维action
   -> default_angles + action_scale * action
   -> MuJoCo PD力矩或实机目标关节角
 ```
 
 训练侧 critic 的 privileged observations 只用于训练，不进入部署 actor。
+
+Primuus 的仿真力矩另分为限幅后的电机输出与被动关节损耗。后者由两端相同的 `joint_dynamics.json` 和算法定义，不是额外电机命令；实机不重复施加虚拟摩擦。
 
 ## 目录
 
@@ -109,41 +113,55 @@ RL 链路不要求 ROS2、ament 或 `colcon build`。
 
 ## 策略文件
 
-训练侧执行 `play` 后，将同一 checkpoint 导出的模型复制到：
+训练侧 `train` 新建时间戳目录保存 checkpoint；`play` 加载 checkpoint 后导出部署模型。按机器人分别放置：
 
 ```text
-src/controller/rl/models/policy_1.pt
-src/controller/rl/models/policy_1.onnx
+src/controller/rl/models/go2/policy_1.pt
+src/controller/rl/models/go2/policy_1.onnx
+src/controller/rl/models/primuus/policy.pt
+src/controller/rl/models/primuus/policy.onnx
 ```
 
-从训练服务器复制示例：
+从训练服务器覆盖 Primuus 双模型，复制时将固定导出名改为部署名：
 
 ```bash
-scp -P 2222 'hurricane@10.109.69.166:~/quadruped_train/logs/go2/exported/policies/policy_1.*' \
-  src/controller/rl/models/
+scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/policies/policy_1.pt \
+  src/controller/rl/models/primuus/policy.pt
+scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/policies/policy_1.onnx \
+  src/controller/rl/models/primuus/policy.onnx
 ```
 
 模型文件默认不提交到 Git。策略必须与部署配置中的关节顺序、默认角、动作缩放、观测缩放、裁剪范围和历史顺序完全一致。
 
-当前实机软件链路是 Python + ONNX Runtime，不是已实现的 C++ 部署。critic不导出，estimator与actor一起导出。重复play覆盖固定导出文件，不覆盖checkpoint；详情见模型目录说明。
+实机软件链路是 Python + ONNX Runtime。critic不导出，estimator与actor一起导出。重复play覆盖 `policy_1.pt / policy_1.onnx`，不会递增为 `policy_2`，也不覆盖checkpoint；服务器导出不会自动替换本地模型，只有复制到上述目标路径才会覆盖。双文件必须来自同一次成功导出，详情见[模型目录说明](src/controller/rl/models/README.md)。
 
 比较 TorchScript 与 ONNX 输出：
 
 ```bash
 python3 src/controller/rl/tools/compare_policy_backends.py \
-  --torchscript-path src/controller/rl/models/policy_1.pt \
-  --onnx-path src/controller/rl/models/policy_1.onnx
+  --config src/controller/rl/config/primuus.yaml \
+  --torchscript-path src/controller/rl/models/primuus/policy.pt \
+  --onnx-path src/controller/rl/models/primuus/policy.onnx
 ```
 
 ## MuJoCo 运行
 
-打开 Viewer：
+使用 Primuus 策略进行闭环仿真：
+
+```bash
+python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
+  --config src/controller/rl/config/primuus.yaml
+```
+
+Primuus 使用自身平地场景、默认角和 `60 / 1.5` PD。训练物理步长2 ms、部署0.5 ms，两侧策略周期均为20 ms；统一关节损耗只在Python运行器中生效，不改变电机限矩或地面接触模型。
+
+不指定配置时默认使用 Go2：
 
 ```bash
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py
 ```
 
-当前 `config/go2.yaml` 选择包含 Go2 模型的 `ROBOCON2027.xml`。临时切换到平地对照场景：
+`config/go2.yaml` 选择包含 Go2 模型的 `ROBOCON2027.xml`。临时切换到平地对照场景：
 
 ```bash
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
@@ -164,7 +182,7 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py --headless
 
 ```bash
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
-  --policy-path src/controller/rl/models/policy_1.onnx \
+  --policy-path src/controller/rl/models/go2/policy_1.onnx \
   --policy-backend onnx \
   --device cpu
 ```
@@ -199,9 +217,9 @@ debug是正式运行器的可选输出，不是另一套部署链路。它区分
 python3 -m mujoco.viewer --mjcf=src/controller/rl/resources/robots/primuus/scene_flat.xml
 ```
 
-这个原生Viewer不读取机器人YAML或evdev控制器，播放后无控制机器人会倒地。原生Viewer快捷键与本工程RL入口的WASD控制不同。当前Primuus没有匹配策略，不能拿Go2权重运行Primuus YAML。
+这个原生Viewer不读取机器人YAML、策略、统一关节损耗或evdev控制器，播放后无控制机器人会倒地。它使用XML原生关节损耗，快捷键与本工程RL入口的WASD控制不同。检查策略运动请使用上面的Primuus RL入口，不能拿Go2权重运行Primuus YAML。
 
-Primuus已恢复原始小腿范围 `[-2.7227, -0.8378] rad`，通过固定碰撞载体和凸分段处理接触，不再使用 `-2.4 rad` 限位规避。验证结果及残余数值接触误差见[模型说明](src/controller/rl/resources/robots/primuus/README.md)。
+Primuus小腿机械范围为 `[-2.7227, -0.8378] rad`，通过固定碰撞载体和凸分段处理接触，不以收紧关节范围代替碰撞约束。几何职责及数值接触边界见[模型说明](src/controller/rl/resources/robots/primuus/README.md)。
 
 ## 键盘控制
 

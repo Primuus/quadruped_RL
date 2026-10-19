@@ -16,6 +16,7 @@ Primuus资产由URDF、显示网格、碰撞几何、MuJoCo本体和场景组成
 | `collision/self_collision_exclusions.json` | 20对正常装配接触的命名排除规则 |
 | `primuus.xml` | MuJoCo本体：浮动机身、执行器、虚拟IMU和机械/碰撞数据 |
 | `scene_flat.xml` | 引用本体并加入地面、灯光和相机 |
+| `joint_dynamics.json` | 仿真关节损耗的物理单位参数与关节顺序；由Python适配器加载 |
 | `../../../config/primuus.yaml` | 策略路径、关节顺序、PD、默认姿态与观测契约 |
 
 XML网格路径相对于本目录。URDF/XML不会自动同步；修改碰撞、关节坐标或惯量后须同步维护。YAML不定义碰撞几何。
@@ -69,6 +70,8 @@ XML网格路径相对于本目录。URDF/XML不会自动同步；修改碰撞、
 
 高度目标是奖励约束，不是独立的机身高度控制器；默认关节角也不等于承重后能无误差保持的姿态。纯PD需要关节位置误差产生承重力矩，站姿高度、机身姿态、足端支撑和非足端接触应分别理解。
 
+Primuus的训练与策略部署使用[统一关节损耗](../../../../../../doc/关节动力学.md)：Jenkins预滑移干摩擦加粘性阻尼，运行时替换原生关节损耗，不改PD、限矩和接触。参数是待实物标定的仿真假设。裸Viewer不运行Python适配器，仍使用XML原生损耗。
+
 训练与部署保持相同策略周期，不要求物理步长和PD更新频率相同。离散软接触不保证任意高速冲击下数学意义的零穿入；不能用增大碰撞包络、扩大静止间距或关闭自碰撞来隐藏问题。MuJoCo与PhysX的参数不一一等价，具体语义见[MuJoCo接触参数](https://mujoco.readthedocs.io/en/stable/modeling.html#solver-parameters)。
 
 训练导入约定：
@@ -99,4 +102,4 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
   --config src/controller/rl/config/primuus.yaml
 ```
 
-策略路径由YAML的 `policy_path` 指定。正式入口会拒绝不存在的文件或不符合契约的模型，不得用Go2策略替代Primuus策略，也不要通过占位文件绕过校验。
+策略路径由YAML的 `policy_path` 指定，默认是 `models/primuus/policy.pt`，对应训练导出的 `policy_1.pt`；ONNX对应 `models/primuus/policy.onnx`。复制与覆盖规则见[模型目录](../../../models/README.md)。正式入口会拒绝不存在的文件或不符合契约的模型，不得用Go2策略替代Primuus策略，也不要通过占位文件绕过校验。

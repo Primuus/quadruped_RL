@@ -13,6 +13,7 @@ import mujoco.viewer
 import numpy as np
 
 from rl_controller.core.config import RobotRLConfig, default_config_path
+from rl_controller.core.joint_dynamics import JointDynamicsParameters, JenkinsJointFriction
 from rl_controller.core.observer import ObservationHistory, RobotState, quat_rotate_inverse
 from rl_controller.core.pd import compute_pd_torques, compute_torques
 from rl_controller.core.policy import load_policy
@@ -45,6 +46,17 @@ class MujocoRLRunner:
         self.joint_qvel_adr = self._resolve_joint_qvel_adr()
         self.actuator_ids = self._resolve_actuator_ids()
         self.actuator_torque_limits = self._resolve_actuator_torque_limits()
+        self.joint_friction = None
+        self.passive_joint_torque = np.zeros(cfg.num_actions, dtype=np.float64)
+        if cfg.simulation_joint_dynamics_path is not None:
+            parameters = JointDynamicsParameters.from_json(cfg.simulation_joint_dynamics_path)
+            parameters.validate_joint_names(cfg.joint_names)
+            self.joint_friction = JenkinsJointFriction(
+                parameters, self.data.qpos[self.joint_qpos_adr], np.clip,
+            )
+            self.model.dof_frictionloss[self.joint_qvel_adr] = 0.0
+            self.model.dof_damping[self.joint_qvel_adr] = 0.0
+            print(f'Simulation joint dynamics: {cfg.simulation_joint_dynamics_path}')
 
         if self.keyboard_controller is not None:
             self.command = self.keyboard_controller.current_command.copy()
@@ -107,6 +119,10 @@ class MujocoRLRunner:
         self.observation_history.reset()
         self.current_torque.fill(0.0)
         self.target_joint_pos = self.cfg.default_angles.copy()
+        if self.joint_friction is not None:
+            self.joint_friction.reset(self.data.qpos[self.joint_qpos_adr])
+            self.passive_joint_torque.fill(0.0)
+            self.data.qfrc_applied[self.joint_qvel_adr] = 0.0
         self.is_fallen = False
         self._fall_reason = None
         self._debug_policy_steps = 0
@@ -269,6 +285,12 @@ class MujocoRLRunner:
         self.data.ctrl[:] = 0.0
         for torque, actuator_id in zip(self.current_torque, self.actuator_ids):
             self.data.ctrl[actuator_id] = float(torque)
+        if self.joint_friction is not None:
+            self.passive_joint_torque[:] = self.joint_friction.compute(
+                self.data.qpos[self.joint_qpos_adr], self.data.qvel[self.joint_qvel_adr],
+            )
+            # Joint entries belong to this loss model; base external forces remain untouched.
+            self.data.qfrc_applied[self.joint_qvel_adr] = self.passive_joint_torque
 
     def run(self, headless: bool = False) -> None:
         total_steps = max(1, int(np.ceil(self.cfg.simulation_duration / self.cfg.simulation_dt)))
