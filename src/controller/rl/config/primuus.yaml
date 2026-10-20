@@ -137,6 +137,17 @@ motion_limits:
   diagonal: 1.0
   moving_turn: 1.0
 
+# 与训练 commands.transition 一致；每20ms策略更新一次。
+# 高速直行先减速进入1m/s包络，再引入侧移/转向；停车采用独立制动参数。
+command_transition:
+  enabled: true
+  acceleration: 3.0
+  deceleration: 4.0
+  braking_deceleration: 6.0
+  yaw_acceleration: 3.0
+  yaw_braking: 4.0
+  transition_speed: 1.0
+
 # 命令进入观测后的缩放，沿用当前框架契约；不是速度上限
 command_scale:
   - 2.0

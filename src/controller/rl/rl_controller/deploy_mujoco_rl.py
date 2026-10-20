@@ -14,6 +14,7 @@ import numpy as np
 
 from rl_controller.commands import limit_velocity_command
 from rl_controller.core.config import RobotRLConfig, default_config_path
+from rl_controller.core.command_reference import CommandReference
 from rl_controller.core.joint_dynamics import JointDynamicsParameters, JenkinsJointFriction
 from rl_controller.core.observer import ObservationHistory, RobotState, quat_rotate_inverse
 from rl_controller.core.pd import compute_pd_torques, compute_torques
@@ -40,6 +41,8 @@ class MujocoRLRunner:
         self.policy = load_policy(cfg.policy_path, backend=policy_backend, device=device)
         self.keyboard_input = keyboard_input
         self.keyboard_controller = keyboard_controller
+        self.command_reference = CommandReference(cfg.command_transition)
+        self.policy_command = np.zeros(3, dtype=np.float32)
         print(f'Policy backend: {self.policy.backend_name}')
         print(f'Policy model: {cfg.policy_path}')
 
@@ -112,6 +115,8 @@ class MujocoRLRunner:
         return limits
 
     def _reset_state(self) -> None:
+        self.command_reference.reset()
+        self.policy_command.fill(0.0)
         self.data.qpos[:] = 0.0
         self.data.qvel[:] = 0.0
         self.data.qpos[0:3] = self.cfg.initial_base_pos
@@ -161,7 +166,10 @@ class MujocoRLRunner:
             self._mark_fallen(reason)
             return
 
-        observation = self.observation_history.update(state, self.command, self.last_action)
+        self.policy_command = self.command_reference.advance(
+            self.command, self.cfg.simulation_dt * self.cfg.control_decimation,
+        )
+        observation = self.observation_history.update(state, self.policy_command, self.last_action)
         observation = np.clip(
             observation,
             -self.cfg.clip_observations,
@@ -210,6 +218,7 @@ class MujocoRLRunner:
         print(f'  base_z: {float(state.base_pos[2]):.6f}')
         print(f'  projected_gravity: {np.array2string(projected_gravity, precision=5, suppress_small=True)}')
         print(f'  command: {np.array2string(self.command, precision=5, suppress_small=True)}')
+        print(f'  policy_command: {np.array2string(self.policy_command, precision=5, suppress_small=True)}')
         print(f'  joint_pos: {np.array2string(state.joint_pos, precision=5, suppress_small=True)}')
         print(f'  raw_action: {np.array2string(raw_action, precision=5, suppress_small=True)}')
         print(f'  clipped_action: {np.array2string(clipped_action, precision=5, suppress_small=True)}')
@@ -275,6 +284,7 @@ class MujocoRLRunner:
             if effect.reset_policy_state:
                 self.last_action.fill(0.0)
                 self.observation_history.reset()
+                self.command_reference.reset()
             if effect.reset_sim:
                 self._reset_state()
             print_status = print_status or effect.print_status
@@ -307,9 +317,8 @@ class MujocoRLRunner:
             self._run_loop(total_steps, viewer, decimation)
 
     def _run_loop(self, total_steps: int, viewer: mujoco.viewer.Handle | None, decimation: int) -> None:
+        wall_start = time.perf_counter()
         for step in range(total_steps):
-            step_start = time.time()
-
             self._process_keyboard_input()
             if step % decimation == 0:
                 self._compute_policy_output()
@@ -324,8 +333,8 @@ class MujocoRLRunner:
                 if not viewer.is_running():
                     break
 
-            elapsed = time.time() - step_start
-            sleep_time = self.model.opt.timestep - elapsed
+            # Absolute deadlines avoid accumulating one sleep overshoot at every 0.5ms step.
+            sleep_time = wall_start + (step + 1) * self.model.opt.timestep - time.perf_counter()
             if sleep_time > 0.0:
                 time.sleep(sleep_time)
 

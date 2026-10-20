@@ -10,6 +10,7 @@ import numpy as np
 import yaml
 
 from ..commands import MotionCommandLimits
+from ..core.command_reference import CommandTransitionConfig
 from ..input.keyboard_controller import KeyboardCommandController, REQUIRED_BINDING_ACTIONS, required_binding_actions
 
 
@@ -149,6 +150,7 @@ class RealKeyboardConfig:
     default_speed_level: int
     motion_limits: MotionCommandLimits | None = None
     backward_speed_levels: np.ndarray | None = None
+    command_transition: CommandTransitionConfig = CommandTransitionConfig()
 
 
 @dataclass(frozen=True, slots=True)
@@ -425,6 +427,12 @@ class RealDeploymentConfig:
     def _validate_keyboard(self) -> None:
         keyboard = self.keyboard
         try:
+            if keyboard.command_transition.enabled:
+                caps = [keyboard.max_translation_speed, float(min(keyboard.command_limits[:2]))]
+                if keyboard.motion_limits is not None:
+                    caps += [keyboard.motion_limits.backward, keyboard.motion_limits.diagonal, keyboard.motion_limits.moving_turn]
+                if keyboard.command_transition.transition_speed > min(caps):
+                    raise ValueError('command_transition.transition_speed exceeds motion limits')
             KeyboardCommandController(
                 command_limits=keyboard.command_limits,
                 max_translation_speed=keyboard.max_translation_speed,
@@ -829,7 +837,7 @@ def _parse_keyboard(value: Any) -> RealKeyboardConfig:
             'default_speed_level',
         },
         'keyboard',
-        optional={'motion_limits', 'backward_speed_levels'},
+        optional={'motion_limits', 'backward_speed_levels', 'command_transition'},
     )
     levels_raw = _as_list(raw['speed_levels'], 'keyboard.speed_levels')
     actions = required_binding_actions(len(levels_raw))
@@ -847,6 +855,10 @@ def _parse_keyboard(value: Any) -> RealKeyboardConfig:
         for action in actions
     }
     motion_limits = None
+    try:
+        command_transition = CommandTransitionConfig.from_mapping(raw.get('command_transition'))
+    except (ValueError, TypeError) as exc:
+        raise RealConfigError(str(exc)) from exc
     if raw.get('motion_limits') is not None:
         motion = _as_mapping(raw['motion_limits'], 'keyboard.motion_limits')
         _require_fields(motion, {'backward', 'diagonal', 'moving_turn'}, 'keyboard.motion_limits')
@@ -878,6 +890,7 @@ def _parse_keyboard(value: Any) -> RealKeyboardConfig:
             'keyboard.default_speed_level',
         ),
         motion_limits=motion_limits,
+        command_transition=command_transition,
         backward_speed_levels=(
             _as_float_vector(raw['backward_speed_levels'], len(levels_raw), 'keyboard.backward_speed_levels')
             if 'backward_speed_levels' in raw else None

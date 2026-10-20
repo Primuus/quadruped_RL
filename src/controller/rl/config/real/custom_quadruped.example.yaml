@@ -137,6 +137,9 @@ keyboard:
   # command_limits为[4.0, 1.0, 1.0]，max_translation_speed为4.0。
   # 使用四档时增加bindings.speed_max: KEY_4，speed_levels改为[0.25, 0.5, 0.75, 1.0]，
   # 并填写backward_speed_levels: [0.5, 0.5, 1.0, 1.0]；其余硬件字段仍须实物标定。
+  # 与新Primuus训练配合时，还可填写command_transition映射（默认关闭）：
+  # enabled: true, acceleration: 3.0, deceleration: 4.0, braking_deceleration: 6.0,
+  # yaw_acceleration: 3.0, yaw_braking: 4.0, transition_speed: 1.0。
   max_translation_speed: null
   speed_levels:
     - 0.25

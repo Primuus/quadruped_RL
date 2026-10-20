@@ -213,6 +213,22 @@ Primuus的全局包络为4 m/s，但`motion_limits.backward/diagonal/moving_turn
 斜移和边走边转限制为1 m/s，侧移和yaw各由轴上限1 m/s和1 rad/s限制。
 该规则用于键盘、YAML/CLI初始命令和实机速度接口；只开放直线前进到4 m/s，不修改PD或观测缩放。
 
+Primuus另外启用 `command_transition`：目标指令先限幅，运行器再于20ms策略周期生成参考。
+`command`保留目标，`policy_command`是进入历史观测的实际参考；普通状态打印显示目标，debug同时显示参考。
+高速直行先以4 m/s²减至1 m/s范围再引入侧移/转向，退出混合动作后再以3 m/s²恢复直行；
+停车目标立即锁零，参考以6 m/s²制动，yaw变化率分别为3/4 rad/s²（常规/停车）。
+NumPy参考与训练Torch参考按相同规则验证，不能在每个物理子步重复推进。
+原MuJoCo逐物理步累积sleep误差已改为绝对墙钟期限调度，物理步数与策略周期保持原值。
+
+真实运行器在 `keyboard.command_transition` 中接受相同配置，默认关闭，必须显式按训练配置填写。
+正常零速目标由参考模块制动；运行时停机/故障处理仍通过原安全状态机执行。
+当前导出策略尚未完成2 rad/s转向课程，部署yaw上限继续为1 rad/s；课程与验收见
+[训练侧运动说明](https://github.com/Primuus/quadruped_RL/blob/train/doc/primuus_motion_training.md)。
+
+2026-10-20验证：当前旧策略加参考过渡，在名义模型下完成四档104个基础组合、42项换挡、
+48项换向和28项额外停车相位，共222例未翻倒；基础用例停车末段速度均低于0.1 m/s。
+生产循环3秒仿真约需3.00秒墙钟时间。未改变策略权重；步态对称性及更快转向需正式续训后另行验收。
+
 ### `rl_controller/input/keyboard_input.py`
 
 使用 Linux evdev 枚举和读取实体键盘，维护按键快照与按下事件，并支持独占/释放设备。指定设备时应使用 `/dev/input/by-path/` 稳定路径。

@@ -8,6 +8,7 @@ import numpy as np
 import yaml
 
 from ..commands import MotionCommandLimits, limit_velocity_command
+from .command_reference import CommandTransitionConfig
 from ..input.keyboard_controller import KeyboardCommandController
 
 
@@ -165,6 +166,7 @@ class RobotRLConfig:
     simulation_joint_dynamics_path: Path | None = None  # 仅仿真被动关节损耗；实机不施加虚拟摩擦
     motion_limits: MotionCommandLimits | None = None  # 后退、斜移、边走边转的独立训练上限
     keyboard_backward_speed_levels: np.ndarray | None = None  # 各档后退速度绝对值 [m/s]
+    command_transition: CommandTransitionConfig = CommandTransitionConfig()  # 策略周期内的参考指令过渡
 
     @classmethod
     def from_yaml(
@@ -287,6 +289,7 @@ class RobotRLConfig:
                 if raw.get('simulation_joint_dynamics_path') is not None else None
             ),
             motion_limits=motion_limits,
+            command_transition=CommandTransitionConfig.from_mapping(raw.get('command_transition')),
             keyboard_backward_speed_levels=(
                 np.asarray(keyboard_raw['backward_speed_levels'], dtype=np.float32)
                 if 'backward_speed_levels' in keyboard_raw else None
@@ -369,6 +372,12 @@ class RobotRLConfig:
         if np.any(self.command_limits <= 0.0):
             raise ValueError('command_limits must be positive')
         _require_positive_finite(self.max_translation_speed, 'max_translation_speed')
+        if self.command_transition.enabled:
+            caps = [self.max_translation_speed, float(min(self.command_limits[:2]))]
+            if self.motion_limits is not None:
+                caps += [self.motion_limits.backward, self.motion_limits.diagonal, self.motion_limits.moving_turn]
+            if self.command_transition.transition_speed > min(caps):
+                raise ValueError('command_transition.transition_speed exceeds motion limits')
         if np.any(self.command_scale <= 0.0):
             raise ValueError('command_scale must be positive')
         if np.any(np.abs(self.command_init) > self.command_limits):

@@ -8,6 +8,7 @@ import time
 import numpy as np
 
 from ..commands import limit_velocity_command
+from ..core.command_reference import CommandReference
 from .config import RealDeploymentConfig
 from .hardware import (
     BackendError,
@@ -106,6 +107,8 @@ class RealRLRunner:
         )
         self._zeros = np.zeros(num_actions, dtype=np.float32)
         self._velocity_command = np.zeros(3, dtype=np.float32)
+        self.command_reference = CommandReference(config.keyboard.command_transition)
+        self.policy_command = np.zeros(3, dtype=np.float32)
         self._last_action = np.zeros(num_actions, dtype=np.float32)
         self._move_start_position: np.ndarray | None = None
         self._move_start_time: float | None = None
@@ -274,6 +277,7 @@ class RealRLRunner:
         with self._control_lock:
             self._velocity_command.fill(0.0)
             self._last_action.fill(0.0)
+            self.command_reference.reset()
             self._move_start_position = np.array(
                 state.joints.position,
                 dtype=np.float32,
@@ -665,9 +669,10 @@ class RealRLRunner:
         with self._control_lock:
             velocity_command = self._velocity_command.copy()
             last_action = self._last_action.copy()
+            self.policy_command = self.command_reference.advance(velocity_command, 1.0 / self.config.policy.frequency_hz)
         observation = self.observation_history.update(
             state,
-            velocity_command,
+            self.policy_command,
             last_action,
         )
         if observation is None:
