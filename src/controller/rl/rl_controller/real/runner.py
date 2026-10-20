@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 
+from ..commands import limit_velocity_command
 from .config import RealDeploymentConfig
 from .hardware import (
     BackendError,
@@ -287,18 +288,11 @@ class RealRLRunner:
             )
 
     def set_velocity_command(self, command: object) -> np.ndarray:
-        value = np.asarray(command, dtype=np.float32)
-        if value.shape != (3,):
-            raise ValueError(
-                f'velocity command must have shape (3,), got {value.shape}'
-            )
-        if not np.all(np.isfinite(value)):
-            raise ValueError('velocity command must contain only finite values')
-        clipped = np.clip(
-            value,
-            -self.config.keyboard.command_limits,
+        clipped = limit_velocity_command(
+            command,
             self.config.keyboard.command_limits,
-        ).astype(np.float32)
+            self.config.keyboard.max_translation_speed,
+        )
         with self._control_lock:
             self._velocity_command = clipped
             return self._velocity_command.copy()

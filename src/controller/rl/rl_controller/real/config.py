@@ -143,6 +143,7 @@ class RealRuntimeConfig:
 class RealKeyboardConfig:
     bindings: Mapping[str, str]
     command_limits: np.ndarray
+    max_translation_speed: float
     speed_levels: np.ndarray
     default_speed_level: int
 
@@ -420,6 +421,7 @@ class RealDeploymentConfig:
 
     def _validate_keyboard(self) -> None:
         keyboard = self.keyboard
+        _require_positive(keyboard.max_translation_speed, 'keyboard.max_translation_speed')
         missing_actions = set(REQUIRED_KEYBOARD_ACTIONS) - set(keyboard.bindings)
         if missing_actions:
             raise RealConfigError(
@@ -848,6 +850,7 @@ def _parse_keyboard(value: Any) -> RealKeyboardConfig:
         {
             'bindings',
             'command_limits',
+            'max_translation_speed',
             'speed_levels',
             'default_speed_level',
         },
@@ -872,6 +875,10 @@ def _parse_keyboard(value: Any) -> RealKeyboardConfig:
             raw['command_limits'],
             3,
             'keyboard.command_limits',
+        ),
+        max_translation_speed=_as_float(
+            raw['max_translation_speed'],
+            'keyboard.max_translation_speed',
         ),
         speed_levels=_as_float_vector(
             raw['speed_levels'],

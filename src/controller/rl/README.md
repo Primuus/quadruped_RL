@@ -204,6 +204,13 @@ MuJoCo中电机力矩进入 `ctrl`，被动损耗进入受控关节的 `qfrc_app
 
 ## 键盘模块
 
+### `rl_controller/commands.py`
+
+`limit_velocity_command()`是键盘、MuJoCo固定命令和实机速度接口共用的限幅函数。
+XY使用同一缩放因子，同时满足各轴上限与 `max_translation_speed` 模长上限，保持平移方向；
+yaw单独限幅，不与m/s单位的平移量一起归一化。命令维度和有限值在该动态输入边界检查。
+合成上限与训练 `commands.max_translation_speed` 同步，不修改策略、PD或观测缩放。
+
 ### `rl_controller/input/keyboard_input.py`
 
 使用 Linux evdev 枚举和读取实体键盘，维护按键快照与按下事件，并支持独占/释放设备。指定设备时应使用 `/dev/input/by-path/` 稳定路径。
@@ -211,6 +218,10 @@ MuJoCo中电机力矩进入 `ctrl`，被动损耗进入受控关节的 `qfrc_app
 ### `rl_controller/input/keyboard_controller.py`
 
 把 Linux `KEY_*` 映射成速度命令和控制事件。它负责三档速度、组合键、清零、使能、停机、重置和状态输出，不直接访问 MuJoCo 或电机。
+
+各档同时缩放轴上限和XY合成上限，因此当前低/中/高速平移模长分别不超过0.25/0.5/1 m/s；
+高速W+A为约 `[0.707, 0.707, 0]`，加入Q不会降低平移速度，yaw仍独立限制。
+实机配置必须显式填写 `keyboard.max_translation_speed`，未填写的旧配置会在启动时被拒绝。
 
 方向键按住时持续输出、释放后清零。F使能并请求独占键盘，I禁用并释放；这不是ThinkBook专用键盘实现，也不读取SSH客户端的终端字符。原生 `python3 -m mujoco.viewer` 不导入本模块。
 
@@ -287,6 +298,7 @@ GO-M8010-6 多总线后端，负责：
 
 - 延迟加载由本源码树构建的固定版本 Unitree Actuator SDK；
 - 检查绑定 API 标记、上游提交号、成员和减速比；
+- 要求绑定API 2，原生 `sendRecv()` 期间释放GIL，允许不同总线及watchdog线程继续运行；
 - 并行执行多条 RS485 总线；
 - 校验返回帧、CRC 和 motor ID；
 - 把电机转子侧位置、速度、力矩转换为关节输出轴单位；

@@ -7,6 +7,8 @@ from typing import Any
 import numpy as np
 import yaml
 
+from ..commands import limit_velocity_command
+
 
 # 新增配置字段时请同步补充中文说明，确保训练/部署配置一致可读。
 
@@ -48,6 +50,7 @@ DEFAULT_KPS = np.full(12, 20.0, dtype=np.float32)  # 默认比例增益，当前
 DEFAULT_KDS = np.full(12, 0.5, dtype=np.float32)  # 默认微分增益，当前对应 Go2
 DEFAULT_COMMAND_INIT = np.array([0.5, 0.0, 0.0], dtype=np.float32)  # 默认初始速度命令 [vx, vy, yaw_rate]
 DEFAULT_COMMAND_LIMITS = np.array([1.0, 1.0, 1.0], dtype=np.float32)  # 命令上限 [vx, vy, yaw_rate]
+DEFAULT_MAX_TRANSLATION_SPEED = 1.0  # XY 合成速度上限 [m/s]，与训练命令分布同步
 DEFAULT_COMMAND_SCALE = np.array([2.0, 2.0, 0.25], dtype=np.float32)  # 命令观测缩放
 DEFAULT_KEYBOARD_BINDINGS = {
     'forward': 'KEY_W',
@@ -145,6 +148,7 @@ class RobotRLConfig:
     clip_actions: float  # 动作裁剪上限，需和训练侧 normalization.clip_actions 一致
     command_init: np.ndarray  # 初始速度命令
     command_limits: np.ndarray  # 速度命令上限
+    max_translation_speed: float  # 平面合成速度上限 [m/s]
     command_scale: np.ndarray  # 命令观测缩放
     keyboard_bindings: dict[str, str]  # Linux evdev 键名到控制语义的映射
     keyboard_speed_levels: np.ndarray  # 键盘低、中、高三档速度比例
@@ -216,13 +220,18 @@ class RobotRLConfig:
             {str(action): str(key) for action, key in keyboard_bindings_raw.items()}
         )
         command_limits = _as_float_array(raw.get('command_limits'), 3, DEFAULT_COMMAND_LIMITS)
+        max_translation_speed = float(raw.get('max_translation_speed', DEFAULT_MAX_TRANSLATION_SPEED))
+        _require_finite_array(command_limits, 'command_limits')
+        if np.any(command_limits <= 0.0):
+            raise ValueError('command_limits must be positive')
+        _require_positive_finite(max_translation_speed, 'max_translation_speed')
         command = _as_float_array(
             raw.get('command_init') if command_init is None else command_init,
             3,
             DEFAULT_COMMAND_INIT,
         )
         if command_init is not None:
-            command = np.clip(command, -command_limits, command_limits)
+            command = limit_velocity_command(command, command_limits, max_translation_speed)
 
         cfg = cls(
             robot_name=robot_name,
@@ -252,6 +261,7 @@ class RobotRLConfig:
             clip_actions=float(raw.get('clip_actions', DEFAULT_CLIP_ACTIONS)),
             command_init=command,
             command_limits=command_limits,
+            max_translation_speed=max_translation_speed,
             command_scale=_as_float_array(raw.get('command_scale'), 3, DEFAULT_COMMAND_SCALE),
             keyboard_bindings=keyboard_bindings,
             keyboard_speed_levels=_as_float_array(
@@ -278,6 +288,9 @@ class RobotRLConfig:
             ),
         )
         cfg.validate()
+        cfg.command_init = limit_velocity_command(
+            cfg.command_init, cfg.command_limits, cfg.max_translation_speed,
+        )
         return cfg
 
     def validate(self) -> None:
@@ -350,6 +363,7 @@ class RobotRLConfig:
         _require_positive_finite(self.clip_actions, 'clip_actions')
         if np.any(self.command_limits <= 0.0):
             raise ValueError('command_limits must be positive')
+        _require_positive_finite(self.max_translation_speed, 'max_translation_speed')
         if np.any(self.command_scale <= 0.0):
             raise ValueError('command_scale must be positive')
         if np.any(np.abs(self.command_init) > self.command_limits):

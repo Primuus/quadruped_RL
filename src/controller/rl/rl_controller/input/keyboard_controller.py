@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..commands import limit_velocity_command
+
 
 REQUIRED_BINDING_ACTIONS = (
     'forward',
@@ -49,13 +51,17 @@ class KeyboardCommandController:
         self,
         *,
         command_limits: np.ndarray,
+        max_translation_speed: float,
         bindings: Mapping[str, str],
         speed_levels: np.ndarray,
         default_speed_level: int = 2,
     ) -> None:
         self.command_limits = np.asarray(command_limits, dtype=np.float32).reshape(3)
-        if np.any(self.command_limits <= 0.0):
-            raise ValueError('command_limits must contain three positive values')
+        if not np.all(np.isfinite(self.command_limits)) or np.any(self.command_limits <= 0.0):
+            raise ValueError('command_limits must contain three finite positive values')
+        self.max_translation_speed = float(max_translation_speed)
+        if not np.isfinite(self.max_translation_speed) or self.max_translation_speed <= 0.0:
+            raise ValueError('max_translation_speed must be finite and positive')
 
         self.bindings = {str(action): str(key) for action, key in bindings.items()}
         missing_actions = [action for action in REQUIRED_BINDING_ACTIONS if action not in self.bindings]
@@ -175,11 +181,11 @@ class KeyboardCommandController:
             dtype=np.float32,
         )
         command = axis * self.command_limits * self.speed_scale
-        self.current_command = np.clip(
+        self.current_command = limit_velocity_command(
             command,
-            -self.command_limits,
-            self.command_limits,
-        ).astype(np.float32)
+            self.command_limits * self.speed_scale,
+            self.max_translation_speed * self.speed_scale,
+        )
         return self.current_command.copy()
 
     def describe(self, pressed_keys: Iterable[str] = ()) -> str:

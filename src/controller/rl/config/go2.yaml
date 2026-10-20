@@ -123,6 +123,8 @@ command_limits:
   - 1.0
   - 1.0
   - 1.0
+# 平面合成速度上限 [m/s]，与训练 commands.max_translation_speed 一致；各档同比缩放
+max_translation_speed: 1.0
 
 # 观测里命令量的缩放系数
 command_scale:

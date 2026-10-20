@@ -110,6 +110,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             keyboard_controller = KeyboardCommandController(
                 command_limits=config.keyboard.command_limits,
+                max_translation_speed=config.keyboard.max_translation_speed,
                 bindings=config.keyboard.bindings,
                 speed_levels=config.keyboard.speed_levels,
                 default_speed_level=config.keyboard.default_speed_level,

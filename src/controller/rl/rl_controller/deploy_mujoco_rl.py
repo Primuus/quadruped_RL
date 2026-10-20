@@ -12,6 +12,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
+from rl_controller.commands import limit_velocity_command
 from rl_controller.core.config import RobotRLConfig, default_config_path
 from rl_controller.core.joint_dynamics import JointDynamicsParameters, JenkinsJointFriction
 from rl_controller.core.observer import ObservationHistory, RobotState, quat_rotate_inverse
@@ -61,7 +62,9 @@ class MujocoRLRunner:
         if self.keyboard_controller is not None:
             self.command = self.keyboard_controller.current_command.copy()
         else:
-            self.command = np.clip(cfg.command_init.copy(), -cfg.command_limits, cfg.command_limits)
+            self.command = limit_velocity_command(
+                cfg.command_init, cfg.command_limits, cfg.max_translation_speed,
+            )
         self.last_action = np.zeros(cfg.num_actions, dtype=np.float32)
         self.observation_history = ObservationHistory(cfg)
         self.current_torque = np.zeros(cfg.num_actions, dtype=np.float32)
@@ -391,6 +394,7 @@ def main(argv: list[str] | None = None) -> None:
     if not args.no_keyboard:
         keyboard_controller = KeyboardCommandController(
             command_limits=cfg.command_limits,
+            max_translation_speed=cfg.max_translation_speed,
             bindings=cfg.keyboard_bindings,
             speed_levels=cfg.keyboard_speed_levels,
             default_speed_level=cfg.keyboard_default_speed_level,

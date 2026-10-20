@@ -131,6 +131,8 @@ keyboard:
     - null
     - null
     - null
+  # 必须填写训练 commands.max_translation_speed；按档位限制 XY 模长，yaw 独立限幅。
+  max_translation_speed: null
   speed_levels:
     - 0.25
     - 0.5

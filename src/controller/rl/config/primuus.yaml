@@ -128,6 +128,9 @@ command_limits:
   - 1.0
   - 1.0
   - 1.0
+# XY 合成速度上限 [m/s]，对应训练 commands.max_translation_speed；各档按同一比例缩放
+# 高速 W+A 输出约 [0.707, 0.707]，不因组合按键超过训练范围；yaw 独立限幅
+max_translation_speed: 1.0
 
 # 命令进入观测后的缩放，沿用当前框架契约；不是速度上限
 command_scale:

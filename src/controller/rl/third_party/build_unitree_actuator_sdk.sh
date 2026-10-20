@@ -52,7 +52,7 @@ PYTHONPATH="${SDK_DIR}/lib${PYTHONPATH:+:${PYTHONPATH}}" \
 "${PYTHON_BIN}" - <<'PY'
 import unitree_actuator_sdk as sdk
 
-expected_api = 1
+expected_api = 2
 expected_commit = '5b79a42d81cd69adac1367db79efdb972a898fd1'
 actual_api = getattr(sdk, '__quadruped_binding_api__', None)
 actual_commit = getattr(sdk, '__quadruped_sdk_commit__', None)
