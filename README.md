@@ -220,7 +220,7 @@ python quadruped_rl/scripts/train_primuus.py \
 | `--task` | `--task primuus` | 通用入口任务名，默认Primuus；两个机器人专用入口分别强制选择自己的task。 |
 | `--headless` | `--headless` | 无窗口运行，适合服务器。 |
 | `--num_envs` | `--num_envs 4096` | 并行环境数量。 |
-| `--seed` | `--seed 1` | 随机种子。 |
+| `--seed` | `--seed 1` | 在创建训练/play环境前设置随机种子；`-1`随机选择种子，并把实际值同步到环境与训练配置。 |
 | `--max_iterations` | `--max_iterations 10000` | 本次 `learn()` 执行的迭代数；resume 时是追加量，不是总迭代上限。 |
 | `--run_name` | `--run_name rough` | 本次实验名。 |
 | `--experiment_name` | `--experiment_name primuus` | 日志目录名；建议保留各机器人默认值，避免混合checkpoint。 |
