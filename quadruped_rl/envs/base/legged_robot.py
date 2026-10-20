@@ -849,6 +849,10 @@ class LeggedRobot(BaseTask):
         normal_support = self._reward_collision() == 0.0
         return self.turn_step_credit.mean(dim=1) * turning * yaw_progress * tracking * normal_support / self.dt
 
+    def _command_metric_masks(self):
+        names = getattr(self.cfg.commands, "mode_names", ("turn", "moving_turn", "translate", "stand"))
+        return {name: self.command_modes == index for index, name in enumerate(names)}
+
     def _collect_command_metrics(self):
         yaw_error = torch.abs(self.commands[:, 2] - self.base_ang_vel[:, 2])
         linear_error = torch.linalg.vector_norm(self.commands[:, :2] - self.base_lin_vel[:, :2], dim=1)
@@ -863,8 +867,8 @@ class LeggedRobot(BaseTask):
         joint_pose_error = torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1)
         supporting_feet = self.stand_contacts.sum(dim=1)
         metrics = {}
-        for index, name in enumerate(("turn", "moving_turn", "translate", "stand")):
-            selected = (self.command_modes == index).to(yaw_error.dtype)
+        for name, mask in self._command_metric_masks().items():
+            selected = mask.to(yaw_error.dtype)
             metrics[name] = torch.stack((
                 selected.sum(),
                 (yaw_error * selected).sum(),

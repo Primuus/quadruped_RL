@@ -52,6 +52,32 @@
 
 Primuus的训练和play分别使用自己的入口及 `logs/primuus/`，不读取Go2配置。play固定导出 `policy_1.pt / policy_1.onnx`，复制到部署工程时分别放为 `models/primuus/policy.pt / policy.onnx`；重复复制覆盖本地文件，不改变YAML。权重、机械定义、观测/动作顺序与关节损耗定义需配套，不能用同维度的Go2策略替换。
 
+## 速度指令与采样
+
+配置位于 `PrimuusCfg.commands`，采样与课程实现位于 `quadruped_rl/envs/primuus/commands.py`。每5秒以及回合复位时重新采样，比例表示命令抽样概率，不保证实际时间占比完全相同。
+
+| 模式 | 配置顺序中的概率 | 连续指令范围 |
+| --- | --- | --- |
+| stand | 20% | vx、vy、yaw均为0 |
+| forward | 35% | vx为0.12至当前前进上限，vy/yaw为0 |
+| backward | 10% | vx为-1至-0.12 m/s，vy/yaw为0 |
+| lateral | 10% | vy为±0.12至±1 m/s，vx/yaw为0 |
+| diagonal | 5% | XY合成速度0.12至1 m/s，四象限均分，夹角15°至75°，yaw为0 |
+| turn | 10% | yaw为±0.12至±1 rad/s，vx/vy为0 |
+| moving_turn | 10% | XY合成速度0.12至1 m/s，方向均匀，yaw为±0.12至±1 rad/s |
+
+所有左右方向均分；斜向和边走边转通过极坐标采样速度，不将XY各自限幅后产生超过合成速度上限的命令。高速范围仅扩展直线前进，后退、侧移和混合运动保持各自的1 m/s上限。
+
+前进内部连续分段采样：0.12–1、1–2、2–4 m/s分别占30%、40%、30%。未开放的区间移除，其他区间按原权重重新归一化；例如上限为1.5时，前两段各占3/7、4/7，第二段截断至1.5。`low_speed_probability/low_speed_scale`是通用基类的旧四模式参数，不控制Primuus七模式采样。
+
+课程初始前进上限为1 m/s，每次增加0.5，最终上限4 m/s。4 m/s是待验证的训练目标，不代表当前策略或实机已经具备该能力。`curriculum=False`时直接开放完整范围，常规训练建议保留课程。
+
+晋级只使用当前阶段、速度不低于当前上限80%的直线前进指令段。每段前1秒不统计跟踪，随后至少观察1秒；过早发生的非超时终止仍计入失败。每20仿真秒检查一次，累计至少200个合格段后，要求段均跟踪分数不低于0.8、非超时终止率不超过5%，才提高上限；跟踪分数为 `exp(-XY速度误差平方 / tracking_sigma)`。每个有效评估窗口结束后清空统计，新阶段不复用旧阶段指令段。站立、低速和其他运动模式不参与晋级。
+
+命令在本步奖励和统计完成后、下一次观测构造前切换，保证统计对应实际执行的指令。TensorBoard的 `Command/<mode>/` 记录七种动作；`Command/forward_low`、`forward_normal`、`forward_fast`分别记录前进三个区间，区间边界归入后一段。区间的fraction以所有环境步为分母。`Curriculum/forward_limit`、`high_speed_tracking`、`high_speed_failure_rate`、`evaluated_segments`记录课程状态与最近一个完整评估窗口。
+
+课程进度随训练checkpoint保存；旧checkpoint从1 m/s上限开始，新checkpoint恢复已学阶段。play读取保存的上限，但不会自动晋级。此次配置不增加网络输入或高度指令，不修改现有高度奖励、机械参数、PD与部署限幅。
+
 ## 关节损耗
 
 `joint_dynamics.json`定义Primuus的非零关节损耗，和部署侧同名文件逐字节同步。参数为干摩擦屈服力矩0.05 N m、粘性阻尼0.02 N m s/rad、预滑移刚度5 N m/rad，均属于待实物辨识的仿真假设，不是PhysX原生摩擦系数的换算结果。

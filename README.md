@@ -178,6 +178,8 @@ Primuus快捷训练入口：
 python quadruped_rl/scripts/train_primuus.py --headless
 ```
 
+Primuus的连续速度范围、动作采样比例和前进速度课程见[训练资产说明](resources/robots/primuus/README.md#速度指令与采样)。观测仍为 `45×6`、输出12关节，可从原训练检查点续训。部署档位由部署工程另行设置。
+
 Go2快捷入口保持不变，始终训练Go2，不受通用入口默认值影响：
 
 ```bash
@@ -307,6 +309,22 @@ Primuus的碰撞模型说明维护在部署工程 `src/controller/rl/resources/r
 改变关节损耗模型、默认角、PD、动作缩放或机械定义属于动力学变化；即使网络维度不变，也应先建立新训练基线。后续若选择旧权重微调，应单独记录来源与改动，不能把维度兼容当成动力学兼容。
 
 例如从 `model_1000.pt` 恢复并设置 `--max_iterations 500`，正常完成后保存 `model_1500.pt`。新进程创建新的日志目录，不把新曲线直接写回旧 run。`Ctrl+C` 不会额外强制保存当前更新；恢复点以磁盘上已经完整写出的 checkpoint 为准。
+
+Primuus的新检查点包含前进课程上限和已完成指令段的评估统计；加载后继续当前课程。旧检查点没有这些字段时，从配置的 `initial_forward_speed=1.0 m/s` 开始，恢复原模型与优化器。配置改动在新进程生效，检查点不覆盖新的采样比例。恢复过程会重新创建仿真状态和命令段，不是逐步复现原轨迹。
+
+从第1500轮追加1000轮的例子（替换 `--load_run` 为实际目录名）：
+
+```bash
+python quadruped_rl/scripts/train_primuus.py --headless --resume \
+  --load_run Oct19_20-36-41_rough --checkpoint 1500 \
+  --max_iterations 1000 --run_name forward_curriculum
+```
+
+无需Isaac Gym的采样、课程和检查点回归检查：
+
+```bash
+python -m unittest discover -s tests -v
+```
 
 ## 策略导出
 

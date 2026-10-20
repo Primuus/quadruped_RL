@@ -38,19 +38,33 @@ class PrimuusCfg(LeggedRobotCfg):
         num_actions = 12
 
     class commands(LeggedRobotCfg.commands):
-        curriculum = False
-        max_curriculum = 2.0
-        resampling_time = 5.0  # [s]；以下命令分布与当前 Go2 一致，但独立维护
+        curriculum = True
+        initial_forward_speed = 1.0  # 新训练及不含课程状态的旧 checkpoint 从此上限开始
+        max_curriculum = 4.0  # 前进最终上限；是否能达到由跟踪和稳定性决定
+        curriculum_step = 0.5
+        curriculum_high_speed_fraction = 0.8  # 只评估当前上限 80% 以上的直线前进段
+        curriculum_tracking_threshold = 0.8  # exp(-XY误差平方 / tracking_sigma) 的段均值
+        curriculum_max_failure_rate = 0.05  # 完成/失败指令段中非超时终止的比例
+        curriculum_min_segments = 200
+        curriculum_min_time = 20.0  # [s]；至少间隔 20 仿真秒检查一次
+        curriculum_settle_time = 1.0  # 每次切换命令后，跟踪统计先留 1 秒过渡
+        curriculum_min_segment_time = 1.0  # 至少 1 秒有效统计；过早失败仍计入失败率
+        resampling_time = 5.0  # [s]
         heading_command = False
-        mode_probabilities = [0.25, 0.25, 0.30, 0.20]  # 原地转向、边走边转、平移、站立
+        mode_names = ("stand", "forward", "backward", "lateral", "diagonal", "turn", "moving_turn")
+        mode_probabilities = [0.20, 0.35, 0.10, 0.10, 0.05, 0.10, 0.10]
         min_translation_speed = 0.12  # [m/s]
         min_turn_yaw = 0.12  # [rad/s]
-        max_translation_speed = 1.0  # XY 合成速度上限 [m/s]
-        low_speed_probability = 0.30
-        low_speed_scale = 0.35
+        max_translation_speed = 4.0  # 全局包络；各方向另设限幅，不应用统一圆形上限
+        max_backward_speed = 1.0
+        max_lateral_speed = 1.0
+        max_diagonal_speed = 1.0  # XY 合成速度
+        max_moving_turn_speed = 1.0  # XY 合成速度
+        forward_speed_bins = [[0.12, 1.0], [1.0, 2.0], [2.0, 4.0]]
+        forward_speed_probabilities = [0.30, 0.40, 0.30]  # 前进类内部比例；未开放区间移除后重新归一化
 
         class ranges(LeggedRobotCfg.commands.ranges):
-            lin_vel_x = [-1.0, 1.0]
+            lin_vel_x = [-1.0, 4.0]  # 最终包络；运行时正向上限由课程决定
             lin_vel_y = [-1.0, 1.0]
             ang_vel_yaw = [-1.0, 1.0]
             heading = [-3.14, 3.14]

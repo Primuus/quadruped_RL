@@ -182,6 +182,11 @@ class HIMOnPolicyRunner:
             self.writer.add_scalar(prefix + '/joint_pose_error', (values[8] / count).item(), completed_iteration)
             self.writer.add_scalar(prefix + '/supporting_feet', (values[9] / count).item(), completed_iteration)
 
+        curriculum_metrics = getattr(self.env, "get_command_curriculum_metrics", None)
+        if curriculum_metrics is not None:
+            for name, value in curriculum_metrics().items():
+                self.writer.add_scalar('Curriculum/' + name, value, completed_iteration)
+
         mean_std = self.alg.actor_critic.std.mean()
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))
 
@@ -226,13 +231,17 @@ class HIMOnPolicyRunner:
         print(log_string)
 
     def save(self, path, infos=None):
-        torch.save({
+        state = {
             'model_state_dict': self.alg.actor_critic.state_dict(),
             'optimizer_state_dict': self.alg.optimizer.state_dict(),
             'estimator_optimizer_state_dict': self.alg.actor_critic.estimator.optimizer.state_dict(),
             'iter': self.current_learning_iteration,
             'infos': infos,
-        }, path)
+        }
+        get_env_state = getattr(self.env, "get_training_state", None)
+        if get_env_state is not None:
+            state['env_state'] = get_env_state()
+        torch.save(state, path)
 
     def load(self, path, load_optimizer=True):
         loaded_dict = torch.load(path)
@@ -242,6 +251,9 @@ class HIMOnPolicyRunner:
             if 'estimator_optimizer_state_dict' in loaded_dict:
                 self.alg.actor_critic.estimator.optimizer.load_state_dict(loaded_dict['estimator_optimizer_state_dict'])
         self.current_learning_iteration = loaded_dict['iter']
+        load_env_state = getattr(self.env, "load_training_state", None)
+        if load_env_state is not None:
+            load_env_state(loaded_dict.get('env_state'))
         return loaded_dict['infos']
 
     def get_inference_policy(self, device=None):
