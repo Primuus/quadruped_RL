@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from .primuus_symmetry import mirror_history, mirror_privileged
 
 
 class HIMEstimator(nn.Module):
@@ -75,8 +76,11 @@ class HIMEstimator(nn.Module):
         vel, latent = self.encode(obs_history)
         return vel.detach(), latent.detach()
 
-    def update(self, obs_history, next_critic_obs, lr=None):
+    def update(self, obs_history, next_critic_obs, lr=None, mirror=False):
         """HIMPPO 使用的 estimator 更新接口。"""
+        if mirror:
+            obs_history = torch.cat((obs_history, mirror_history(obs_history)), dim=0)
+            next_critic_obs = torch.cat((next_critic_obs, mirror_privileged(next_critic_obs)), dim=0)
         if lr is not None:
             self.learning_rate = lr
             for param_group in self.optimizer.param_groups:

@@ -6,9 +6,11 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import math
 
 from rsl_rl.modules import HIMActorCritic
 from rsl_rl.storage import HIMRolloutStorage
+from rsl_rl.modules.primuus_symmetry import mirror_actions, mirror_history
 
 
 class HIMPPO:
@@ -29,6 +31,9 @@ class HIMPPO:
         use_clipped_value_loss=True,
         schedule="fixed",
         desired_kl=0.01,
+        symmetry_loss_coef=0.0,
+        symmetry_warmup_iterations=200,
+        mirror_estimator=False,
         device='cpu',
     ):
         self.device = device
@@ -50,6 +55,15 @@ class HIMPPO:
         self.gamma = gamma
         self.lam = lam
         self.max_grad_norm = max_grad_norm
+        if not math.isfinite(symmetry_loss_coef) or symmetry_loss_coef < 0 or not isinstance(symmetry_warmup_iterations, int) or symmetry_warmup_iterations < 1:
+            raise ValueError("Invalid Primuus symmetry loss settings")
+        if (symmetry_loss_coef or mirror_estimator) and (actor_critic.num_one_step_obs != 45 or actor_critic.num_actions != 12):
+            raise ValueError("Primuus symmetry requires 45-dimensional frames and 12 actions")
+        self.symmetry_loss_coef = symmetry_loss_coef
+        self.symmetry_warmup_iterations = symmetry_warmup_iterations
+        self.mirror_estimator = mirror_estimator
+        self.update_counter = 0
+        self.last_symmetry_loss = 0.0
         self.use_clipped_value_loss = use_clipped_value_loss
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape):
@@ -95,6 +109,7 @@ class HIMPPO:
         mean_surrogate_loss = 0
         mean_estimation_loss = 0
         mean_swap_loss = 0
+        mean_symmetry_loss = 0.0
 
         generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
         for (
@@ -136,7 +151,7 @@ class HIMPPO:
                         param_group['lr'] = self.learning_rate
 
             estimation_loss, swap_loss = self.actor_critic.estimator.update(
-                obs_batch, next_critic_obs_batch, lr=self.learning_rate
+                obs_batch, next_critic_obs_batch, lr=self.learning_rate, mirror=self.mirror_estimator
             )
 
             ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
@@ -157,6 +172,15 @@ class HIMPPO:
                 value_loss = (returns_batch - value_batch).pow(2).mean()
 
             loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
+            if self.symmetry_loss_coef:
+                # Only add an auxiliary deterministic loss; PPO rollout probabilities remain untouched.
+                with torch.no_grad():
+                    mirrored_target = mirror_actions(self.actor_critic.act_inference(obs_batch))
+                mirrored_mean = self.actor_critic.act_inference(mirror_history(obs_batch))
+                symmetry_loss = (mirrored_mean - mirrored_target).square().mean()
+                warmup = min(1.0, (self.update_counter + 1) / self.symmetry_warmup_iterations)
+                loss = loss + self.symmetry_loss_coef * warmup * symmetry_loss
+                mean_symmetry_loss += symmetry_loss.item()
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -174,5 +198,7 @@ class HIMPPO:
         mean_estimation_loss /= num_updates
         mean_swap_loss /= num_updates
         self.storage.clear()
+        self.update_counter += 1
+        self.last_symmetry_loss = mean_symmetry_loss / num_updates
 
         return mean_value_loss, mean_surrogate_loss, mean_estimation_loss, mean_swap_loss

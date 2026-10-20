@@ -88,6 +88,7 @@ class HIMOnPolicyRunner:
         for it in range(self.current_learning_iteration, tot_iter):
             start = time.time()
             command_metrics = {}
+            motion_metrics = {}
             with torch.inference_mode():
                 for _ in range(self.num_steps_per_env):
                     actions = self.alg.act(obs, critic_obs)
@@ -117,6 +118,10 @@ class HIMOnPolicyRunner:
                             if name not in command_metrics:
                                 command_metrics[name] = torch.zeros_like(values)
                             command_metrics[name] += values
+                        for name, values in infos.get('motion_metrics', {}).items():
+                            if name not in motion_metrics:
+                                motion_metrics[name] = torch.zeros_like(values)
+                            motion_metrics[name] += values
                         cur_reward_sum += rewards
                         cur_episode_length += 1
                         new_ids = (dones > 0).nonzero(as_tuple=False)
@@ -188,6 +193,16 @@ class HIMOnPolicyRunner:
                 self.writer.add_scalar('Curriculum/' + name, value, completed_iteration)
 
         mean_std = self.alg.actor_critic.std.mean()
+        for name, values in locs['motion_metrics'].items():
+            if name in ('Transition/interrupted', 'Transition/censored'):
+                self.writer.add_scalar(name, values[1].item(), completed_iteration)
+            elif values.ndim == 2:
+                for direction, pair in enumerate(values):
+                    if pair[0] > 0:
+                        self.writer.add_scalar(name + '/direction_' + str(direction), (pair[1] / pair[0]).item(), completed_iteration)
+            elif values[0] > 0:
+                self.writer.add_scalar(name, (values[1] / values[0]).item(), completed_iteration)
+        self.writer.add_scalar('Loss/symmetry', self.alg.last_symmetry_loss, completed_iteration)
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))
 
         self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], completed_iteration)
@@ -237,6 +252,7 @@ class HIMOnPolicyRunner:
             'estimator_optimizer_state_dict': self.alg.actor_critic.estimator.optimizer.state_dict(),
             'iter': self.current_learning_iteration,
             'infos': infos,
+            'algorithm_state': {'update_counter': self.alg.update_counter},
         }
         get_env_state = getattr(self.env, "get_training_state", None)
         if get_env_state is not None:
@@ -248,8 +264,11 @@ class HIMOnPolicyRunner:
         self.alg.actor_critic.load_state_dict(loaded_dict['model_state_dict'])
         if load_optimizer:
             self.alg.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
+            self.alg.learning_rate = self.alg.optimizer.param_groups[0]['lr']
             if 'estimator_optimizer_state_dict' in loaded_dict:
                 self.alg.actor_critic.estimator.optimizer.load_state_dict(loaded_dict['estimator_optimizer_state_dict'])
+                self.alg.actor_critic.estimator.learning_rate = self.alg.actor_critic.estimator.optimizer.param_groups[0]['lr']
+        self.alg.update_counter = loaded_dict.get('algorithm_state', {}).get('update_counter', 0)
         self.current_learning_iteration = loaded_dict['iter']
         load_env_state = getattr(self.env, "load_training_state", None)
         if load_env_state is not None:

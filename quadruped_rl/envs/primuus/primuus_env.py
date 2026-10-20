@@ -1,11 +1,14 @@
 """Primuus 环境入口；观测、奖励和控制循环使用通用 base。"""
 
 from isaacgym import gymtorch
+from isaacgym.torch_utils import quat_rotate_inverse
 import torch
 
 from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from quadruped_rl.envs.base.legged_robot import LeggedRobot
 from quadruped_rl.envs.primuus.commands import PrimuusCommandSampler
+from quadruped_rl.envs.primuus.reference import advance_reference
+from quadruped_rl.envs.primuus.motion import MotionTracker
 from quadruped_rl.utils.joint_dynamics import JointDynamicsParameters, JenkinsJointFriction
 
 
@@ -35,6 +38,13 @@ class PrimuusEnv(LeggedRobot):
         self.joint_friction = JenkinsJointFriction(self.joint_dynamics, self.dof_pos, torch.clamp)
         self.passive_joint_torques = torch.zeros_like(self.torques)
         self.net_joint_torques = torch.zeros_like(self.torques)
+        self.requested_commands = torch.zeros_like(self.commands)
+        self.next_command_step = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+        self.motion = MotionTracker(self.num_envs, self.device, self.dt, self.cfg.commands)
+        self.standing_weight = torch.zeros(self.num_envs, device=self.device)
+        self.motion_phase = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+        self.symmetry_bias = torch.zeros(self.num_envs, 4, device=self.device)
+        self.straight_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
     def _post_physics_step_callback(self):
         # Commands change after this step's reward/metrics, immediately before the next observation.
@@ -42,21 +52,37 @@ class PrimuusEnv(LeggedRobot):
         pass
 
     def _resample_commands(self, env_ids):
+        if len(env_ids) == 0:
+            return
         commands, modes = self.command_sampler.sample(env_ids)
-        self.commands[env_ids] = commands
+        self.motion.begin(env_ids, self.requested_commands[env_ids, :3], commands[:, :3], self.root_states[env_ids, :3])
+        self.requested_commands[env_ids] = commands
         self.command_modes[env_ids] = modes
+        cfg = self.cfg.commands
+        low, high = int(round(cfg.min_resampling_time / self.dt)), int(round(cfg.resampling_time / self.dt))
+        self.next_command_step[env_ids] = self.common_step_counter + torch.randint(low, high + 1, (len(env_ids),), device=self.device)
 
     def update_command_curriculum(self, env_ids):
         # The Primuus sampler evaluates completed high-speed segments, not whole-episode reward.
         self.command_ranges["lin_vel_x"][1] = self.command_sampler.forward_limit
 
     def _collect_command_metrics(self):
-        self.command_sampler.observe(self.commands, self.base_lin_vel, self.reset_buf, self.time_out_buf)
+        self.extras['motion_metrics'] = self.motion.observe(
+            self.requested_commands[:, :3], self.commands[:, :3], self.base_lin_vel,
+            self.base_ang_vel[:, 2], self.root_states[:, :3], self.projected_gravity[:, 2],
+            self.dof_vel, self.stand_contacts, self.reset_buf, self.time_out_buf, self.motion_phase,
+        )
+        self.extras['motion_metrics']['Symmetry/position_bias'] = torch.stack((self.straight_mask.sum(), torch.where(self.straight_mask[:, None], self.symmetry_bias.abs(), 0.0).sum() / 4)).float()
+        self.command_sampler.observe(self.commands, self.base_lin_vel, self.reset_buf, self.time_out_buf, self.base_ang_vel[:, 2], self.motion.quality_ready)
         self.command_ranges["lin_vel_x"][1] = self.command_sampler.forward_limit
         return super()._collect_command_metrics()
 
     def _command_metric_masks(self):
         masks = super()._command_metric_masks()
+        # Keep settled standing separate from braking and posture recovery.
+        masks['stand'] &= self.motion_phase == 3
+        masks['braking'] = self.motion_phase == 1
+        masks['settling'] = self.motion_phase == 2
         for name, (low, high) in zip(("forward_low", "forward_normal", "forward_fast"), self.cfg.commands.forward_speed_bins):
             # The boundary belongs to the next bin; the final bin includes its upper endpoint.
             upper = self.commands[:, 0] <= high if high == self.cfg.commands.max_curriculum else self.commands[:, 0] < high
@@ -64,9 +90,9 @@ class PrimuusEnv(LeggedRobot):
         return masks
 
     def compute_observations(self):
-        interval = max(1, int(self.cfg.commands.resampling_time / self.dt))
-        env_ids = ((self.episode_length_buf > 0) & (self.episode_length_buf % interval == 0)).nonzero(as_tuple=False).flatten()
+        env_ids = ((self.episode_length_buf > 0) & (self.common_step_counter >= self.next_command_step)).nonzero(as_tuple=False).flatten()
         self._resample_commands(env_ids)
+        self.commands[:, :3] = advance_reference(self.commands[:, :3], self.requested_commands[:, :3], self.dt, self.cfg.commands.transition)
         super().compute_observations()
 
     def get_command_curriculum_metrics(self):
@@ -79,6 +105,9 @@ class PrimuusEnv(LeggedRobot):
         self.command_sampler.load_state_dict(None if state is None else state.get("primuus_commands"))
         self.command_ranges["lin_vel_x"][1] = self.command_sampler.forward_limit
         # The simulator is newly created on resume; no partial old command segment is continued.
+        self.commands.zero_()
+        self.requested_commands.zero_()
+        self.motion.reset(torch.arange(self.num_envs, device=self.device))
         self._resample_commands(torch.arange(self.num_envs, device=self.device))
         super().compute_observations()
 
@@ -89,7 +118,60 @@ class PrimuusEnv(LeggedRobot):
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.net_joint_torques))
 
     def reset_idx(self, env_ids):
+        if len(env_ids) == 0:
+            return
+        self.motion.reset(env_ids)
+        self.requested_commands[env_ids] = 0
+        self.commands[env_ids] = 0
+        self.command_sampler.sequence_target[env_ids] = False
+        self.symmetry_bias[env_ids] = 0
         super().reset_idx(env_ids)
         self.joint_friction.reset(self.dof_pos, env_ids)
         self.passive_joint_torques[env_ids] = 0.
         self.net_joint_torques[env_ids] = 0.
+
+    def _update_stand_contact_state(self):
+        super()._update_stand_contact_state()
+        raw_stop = torch.linalg.vector_norm(self.requested_commands[:, :3], dim=1) < 1e-7
+        reference_stop = torch.linalg.vector_norm(self.commands[:, :3], dim=1) < 1e-7
+        cfg = self.cfg.rewards
+        speed = torch.linalg.vector_norm(self.base_lin_vel[:, :2], dim=1)
+        yaw = self.base_ang_vel[:, 2].abs()
+        width = cfg.stand_speed_exit - cfg.stand_speed_enter
+        self.standing_weight.copy_(raw_stop * reference_stop * ((cfg.stand_speed_exit - speed) / width).clamp(0, 1) * ((cfg.stand_speed_exit - yaw) / width).clamp(0, 1))
+        quiet = (speed < 0.05) & (yaw < 0.05) & (self.dof_vel.square().mean(dim=1).sqrt() < 0.25) & self.stand_contacts.all(dim=1)
+        self.motion_phase.copy_(torch.where(raw_stop, torch.where(reference_stop & (speed < cfg.stand_speed_exit) & (yaw < cfg.stand_speed_exit), torch.where(quiet, 3, 2), 1), 0))
+        self.straight_mask = (self.requested_commands[:, 1].abs() < 1e-7) & (self.requested_commands[:, 2].abs() < 1e-7) & (self.requested_commands[:, 0].abs() >= self.cfg.commands.min_translation_speed) & (torch.linalg.vector_norm(self.commands[:, :3] - self.requested_commands[:, :3], dim=1) < 0.03) & (self.command_sampler.segment_steps * self.dt > 1.0)
+        feet = self.feet_pos - self.root_states[:, None, :3]
+        quat = self.base_quat[:, None].expand(-1, 4, -1).reshape(-1, 4)
+        feet = quat_rotate_inverse(quat, feet.reshape(-1, 3)).reshape(self.num_envs, 4, 3)
+        bias = torch.stack((feet[:, 0, 0] - feet[:, 1, 0], feet[:, 2, 0] - feet[:, 3, 0], feet[:, 0, 1] + feet[:, 1, 1], feet[:, 2, 1] + feet[:, 3, 1]), dim=1)
+        updated = torch.lerp(self.symmetry_bias, bias, self.dt / (cfg.symmetry_time_constant + self.dt))
+        self.symmetry_bias.copy_(torch.where(self.straight_mask[:, None], updated, 0.0))
+
+    def _reward_tracking_lin_vel(self):
+        cfg = self.cfg.rewards
+        scale = cfg.tracking_absolute_tolerance + cfg.tracking_relative_tolerance * torch.linalg.vector_norm(self.commands[:, :2], dim=1)
+        return torch.exp(-(self.commands[:, :2] - self.base_lin_vel[:, :2]).square().sum(dim=1) / scale.square())
+
+    def _reward_tracking_ang_vel(self):
+        cfg = self.cfg.rewards
+        scale = cfg.yaw_absolute_tolerance + cfg.yaw_relative_tolerance * self.commands[:, 2].abs()
+        return torch.exp(-(self.commands[:, 2] - self.base_ang_vel[:, 2]).square() / scale.square())
+
+    def _reward_stand_still(self):
+        return (self.dof_pos - self.default_dof_pos).abs().sum(dim=1) * self.standing_weight
+
+    def _reward_stand_contacts(self):
+        return (~self.stand_contacts).float().mean(dim=1) * self.standing_weight
+
+    def _reward_stand_joint_motion(self):
+        return self.dof_vel.square().mean(dim=1) * self.standing_weight
+
+    def _reward_braking(self):
+        raw_stop = torch.linalg.vector_norm(self.requested_commands[:, :3], dim=1) < 1e-7
+        error = (self.base_lin_vel[:, :2] - self.commands[:, :2]).square().sum(dim=1) + 0.25 * (self.base_ang_vel[:, 2] - self.commands[:, 2]).square()
+        return (torch.sqrt(error + 0.01) - 0.1) * raw_stop
+
+    def _reward_straight_symmetry(self):
+        return (self.symmetry_bias / self.cfg.rewards.symmetry_position_scale).square().mean(dim=1) * self.straight_mask
