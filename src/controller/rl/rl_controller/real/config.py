@@ -9,7 +9,8 @@ from typing import Any
 import numpy as np
 import yaml
 
-from ..input.keyboard_controller import REQUIRED_BINDING_ACTIONS
+from ..commands import MotionCommandLimits
+from ..input.keyboard_controller import KeyboardCommandController, REQUIRED_BINDING_ACTIONS, required_binding_actions
 
 
 SUPPORTED_SCHEMA_VERSION = 1
@@ -146,6 +147,8 @@ class RealKeyboardConfig:
     max_translation_speed: float
     speed_levels: np.ndarray
     default_speed_level: int
+    motion_limits: MotionCommandLimits | None = None
+    backward_speed_levels: np.ndarray | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -421,47 +424,18 @@ class RealDeploymentConfig:
 
     def _validate_keyboard(self) -> None:
         keyboard = self.keyboard
-        _require_positive(keyboard.max_translation_speed, 'keyboard.max_translation_speed')
-        missing_actions = set(REQUIRED_KEYBOARD_ACTIONS) - set(keyboard.bindings)
-        if missing_actions:
-            raise RealConfigError(
-                'keyboard.bindings is missing actions: '
-                f'{", ".join(sorted(missing_actions))}'
+        try:
+            KeyboardCommandController(
+                command_limits=keyboard.command_limits,
+                max_translation_speed=keyboard.max_translation_speed,
+                bindings=keyboard.bindings,
+                speed_levels=keyboard.speed_levels,
+                default_speed_level=keyboard.default_speed_level,
+                motion_limits=keyboard.motion_limits,
+                backward_speed_levels=keyboard.backward_speed_levels,
             )
-
-        configured_keys = [
-            keyboard.bindings[action] for action in REQUIRED_KEYBOARD_ACTIONS
-        ]
-        if len(set(configured_keys)) != len(configured_keys):
-            raise RealConfigError(
-                'keyboard.bindings must assign a unique key to every action'
-            )
-        if not all(key.startswith('KEY_') for key in configured_keys):
-            raise RealConfigError(
-                'keyboard.bindings values must use Linux evdev KEY_* names'
-            )
-
-        if (
-            keyboard.command_limits.shape != (3,)
-            or np.any(keyboard.command_limits <= 0.0)
-        ):
-            raise RealConfigError(
-                'keyboard.command_limits must contain three finite positive values'
-            )
-        if (
-            keyboard.speed_levels.shape != (3,)
-            or np.any(keyboard.speed_levels <= 0.0)
-            or np.any(keyboard.speed_levels > 1.0)
-            or np.any(np.diff(keyboard.speed_levels) <= 0.0)
-        ):
-            raise RealConfigError(
-                'keyboard.speed_levels must be three strictly increasing '
-                'values in (0, 1]'
-            )
-        if keyboard.default_speed_level not in (1, 2, 3):
-            raise RealConfigError(
-                'keyboard.default_speed_level must be 1, 2, or 3'
-            )
+        except ValueError as exc:
+            raise RealConfigError(f'keyboard: {exc}') from exc
 
     def _validate_backend_combinations(self) -> None:
         for index, bus in enumerate(self.motors.buses):
@@ -855,11 +829,14 @@ def _parse_keyboard(value: Any) -> RealKeyboardConfig:
             'default_speed_level',
         },
         'keyboard',
+        optional={'motion_limits', 'backward_speed_levels'},
     )
+    levels_raw = _as_list(raw['speed_levels'], 'keyboard.speed_levels')
+    actions = required_binding_actions(len(levels_raw))
     bindings_raw = _as_mapping(raw['bindings'], 'keyboard.bindings')
     _require_fields(
         bindings_raw,
-        set(REQUIRED_KEYBOARD_ACTIONS),
+        set(actions),
         'keyboard.bindings',
     )
     bindings = {
@@ -867,8 +844,19 @@ def _parse_keyboard(value: Any) -> RealKeyboardConfig:
             bindings_raw[action],
             f'keyboard.bindings.{action}',
         )
-        for action in REQUIRED_KEYBOARD_ACTIONS
+        for action in actions
     }
+    motion_limits = None
+    if raw.get('motion_limits') is not None:
+        motion = _as_mapping(raw['motion_limits'], 'keyboard.motion_limits')
+        _require_fields(motion, {'backward', 'diagonal', 'moving_turn'}, 'keyboard.motion_limits')
+        try:
+            motion_limits = MotionCommandLimits(**{
+                name: _as_float(number, f'keyboard.motion_limits.{name}')
+                for name, number in motion.items()
+            })
+        except ValueError as exc:
+            raise RealConfigError(str(exc)) from exc
     return RealKeyboardConfig(
         bindings=MappingProxyType(bindings),
         command_limits=_as_float_vector(
@@ -881,13 +869,18 @@ def _parse_keyboard(value: Any) -> RealKeyboardConfig:
             'keyboard.max_translation_speed',
         ),
         speed_levels=_as_float_vector(
-            raw['speed_levels'],
-            3,
+            levels_raw,
+            len(levels_raw),
             'keyboard.speed_levels',
         ),
         default_speed_level=_as_int(
             raw['default_speed_level'],
             'keyboard.default_speed_level',
+        ),
+        motion_limits=motion_limits,
+        backward_speed_levels=(
+            _as_float_vector(raw['backward_speed_levels'], len(levels_raw), 'keyboard.backward_speed_levels')
+            if 'backward_speed_levels' in raw else None
         ),
     )
 
@@ -905,6 +898,7 @@ def _require_fields(
     raw: Mapping[str, Any],
     required: set[str],
     path: str,
+    optional: set[str] | frozenset[str] = frozenset(),
 ) -> None:
     keys = set(raw)
     missing = sorted(required - keys)
@@ -912,7 +906,7 @@ def _require_fields(
         raise RealConfigError(
             f'{path} is missing required fields: {", ".join(missing)}'
         )
-    unknown = sorted(keys - required)
+    unknown = sorted(keys - required - optional)
     if unknown:
         raise RealConfigError(
             f'{path} contains unknown fields: {", ".join(unknown)}'

@@ -7,7 +7,8 @@ from typing import Any
 import numpy as np
 import yaml
 
-from ..commands import limit_velocity_command
+from ..commands import MotionCommandLimits, limit_velocity_command
+from ..input.keyboard_controller import KeyboardCommandController
 
 
 # 新增配置字段时请同步补充中文说明，确保训练/部署配置一致可读。
@@ -151,8 +152,8 @@ class RobotRLConfig:
     max_translation_speed: float  # 平面合成速度上限 [m/s]
     command_scale: np.ndarray  # 命令观测缩放
     keyboard_bindings: dict[str, str]  # Linux evdev 键名到控制语义的映射
-    keyboard_speed_levels: np.ndarray  # 键盘低、中、高三档速度比例
-    keyboard_default_speed_level: int  # 默认速度档位，取值 1/2/3
+    keyboard_speed_levels: np.ndarray  # 键盘三档或四档速度比例
+    keyboard_default_speed_level: int  # 默认速度档位，从1开始
     fall_height_threshold: float  # 跌倒高度阈值
     fall_gravity_z_threshold: float  # 跌倒重力方向阈值
     obs_scale_lin_vel: float  # 线速度观测缩放
@@ -162,6 +163,8 @@ class RobotRLConfig:
     initial_base_pos: np.ndarray  # 初始机身位置
     initial_base_quat: np.ndarray  # 初始机身姿态
     simulation_joint_dynamics_path: Path | None = None  # 仅仿真被动关节损耗；实机不施加虚拟摩擦
+    motion_limits: MotionCommandLimits | None = None  # 后退、斜移、边走边转的独立训练上限
+    keyboard_backward_speed_levels: np.ndarray | None = None  # 各档后退速度绝对值 [m/s]
 
     @classmethod
     def from_yaml(
@@ -221,6 +224,7 @@ class RobotRLConfig:
         )
         command_limits = _as_float_array(raw.get('command_limits'), 3, DEFAULT_COMMAND_LIMITS)
         max_translation_speed = float(raw.get('max_translation_speed', DEFAULT_MAX_TRANSLATION_SPEED))
+        motion_limits = MotionCommandLimits.from_mapping(raw.get('motion_limits'))
         _require_finite_array(command_limits, 'command_limits')
         if np.any(command_limits <= 0.0):
             raise ValueError('command_limits must be positive')
@@ -231,7 +235,7 @@ class RobotRLConfig:
             DEFAULT_COMMAND_INIT,
         )
         if command_init is not None:
-            command = limit_velocity_command(command, command_limits, max_translation_speed)
+            command = limit_velocity_command(command, command_limits, max_translation_speed, motion_limits)
 
         cfg = cls(
             robot_name=robot_name,
@@ -264,11 +268,7 @@ class RobotRLConfig:
             max_translation_speed=max_translation_speed,
             command_scale=_as_float_array(raw.get('command_scale'), 3, DEFAULT_COMMAND_SCALE),
             keyboard_bindings=keyboard_bindings,
-            keyboard_speed_levels=_as_float_array(
-                keyboard_raw.get('speed_levels'),
-                3,
-                DEFAULT_KEYBOARD_SPEED_LEVELS,
-            ),
+            keyboard_speed_levels=np.asarray(keyboard_raw.get('speed_levels', DEFAULT_KEYBOARD_SPEED_LEVELS), dtype=np.float32),
             keyboard_default_speed_level=int(
                 keyboard_raw.get('default_speed_level', DEFAULT_KEYBOARD_DEFAULT_SPEED_LEVEL)
             ),
@@ -286,10 +286,15 @@ class RobotRLConfig:
                 _resolve_path(package_root, raw['simulation_joint_dynamics_path'])
                 if raw.get('simulation_joint_dynamics_path') is not None else None
             ),
+            motion_limits=motion_limits,
+            keyboard_backward_speed_levels=(
+                np.asarray(keyboard_raw['backward_speed_levels'], dtype=np.float32)
+                if 'backward_speed_levels' in keyboard_raw else None
+            ),
         )
         cfg.validate()
         cfg.command_init = limit_velocity_command(
-            cfg.command_init, cfg.command_limits, cfg.max_translation_speed,
+            cfg.command_init, cfg.command_limits, cfg.max_translation_speed, cfg.motion_limits,
         )
         return cfg
 
@@ -385,27 +390,12 @@ class RobotRLConfig:
         quaternion_norm = float(np.linalg.norm(self.initial_base_quat))
         if not np.isclose(quaternion_norm, 1.0, rtol=0.0, atol=1e-4):
             raise ValueError('initial_base_quat must be normalized')
-        missing_keyboard_actions = set(DEFAULT_KEYBOARD_BINDINGS) - set(self.keyboard_bindings)
-        if missing_keyboard_actions:
-            raise ValueError(
-                f'Missing keyboard bindings: {", ".join(sorted(missing_keyboard_actions))}'
-            )
-        configured_keys = [
-            self.keyboard_bindings[action]
-            for action in DEFAULT_KEYBOARD_BINDINGS
-        ]
-        if len(set(configured_keys)) != len(configured_keys):
-            raise ValueError('Each keyboard action must use a unique key')
-        if not all(key.startswith('KEY_') for key in configured_keys):
-            raise ValueError('keyboard bindings must use Linux evdev KEY_* names')
-        if (
-            not np.all(np.isfinite(self.keyboard_speed_levels))
-            or np.any(self.keyboard_speed_levels <= 0.0)
-            or np.any(self.keyboard_speed_levels > 1.0)
-            or np.any(np.diff(self.keyboard_speed_levels) <= 0.0)
-        ):
-            raise ValueError(
-                'keyboard.speed_levels must be strictly increasing values in (0, 1]'
-            )
-        if self.keyboard_default_speed_level not in (1, 2, 3):
-            raise ValueError('keyboard.default_speed_level must be 1, 2, or 3')
+        KeyboardCommandController(
+            command_limits=self.command_limits,
+            max_translation_speed=self.max_translation_speed,
+            bindings=self.keyboard_bindings,
+            speed_levels=self.keyboard_speed_levels,
+            default_speed_level=self.keyboard_default_speed_level,
+            motion_limits=self.motion_limits,
+            backward_speed_levels=self.keyboard_backward_speed_levels,
+        )

@@ -125,12 +125,17 @@ command_init:
 
 # 键盘速度命令幅度上限 [m/s, m/s, rad/s]，与训练命令范围匹配
 command_limits:
+  - 4.0
   - 1.0
   - 1.0
-  - 1.0
-# XY 合成速度上限 [m/s]，对应训练 commands.max_translation_speed；各档按同一比例缩放
-# 高速 W+A 输出约 [0.707, 0.707]，不因组合按键超过训练范围；yaw 独立限幅
-max_translation_speed: 1.0
+# 全局 XY 合成速度包络 [m/s]；只有直线前进开放至4 m/s
+max_translation_speed: 4.0
+# 按训练运动状态限幅 [m/s]；侧移与转向仍由 command_limits 的后两项限制
+# 斜移和边走边转均限制 XY 模长；不把高速前进上限带入混合动作
+motion_limits:
+  backward: 1.0
+  diagonal: 1.0
+  moving_turn: 1.0
 
 # 命令进入观测后的缩放，沿用当前框架契约；不是速度上限
 command_scale:
@@ -154,15 +159,24 @@ keyboard:
     speed_low: KEY_1
     speed_medium: KEY_2
     speed_high: KEY_3
+    speed_max: KEY_4
     reset_sim: KEY_R
     print_status: KEY_P
-  # 低 / 中 / 高三档分别占速度命令上限的比例
+  # 四档直线前进分别为1/2/3/4 m/s；侧移、斜移和边走边转为0.25/0.5/0.75/1 m/s
+  # 转向为0.25/0.5/0.75/1 rad/s，按训练上限同步缩放
   speed_levels:
     - 0.25
     - 0.5
+    - 0.75
     - 1.0
-  # 默认中速档；键盘控制仍需显式使能
-  default_speed_level: 2
+  # 各档后退速度绝对值 [m/s]，独立于前进比例；符合训练后退上限1 m/s
+  backward_speed_levels:
+    - 0.5
+    - 0.5
+    - 1.0
+    - 1.0
+  # 默认第一档；键盘控制仍需显式使能
+  default_speed_level: 1
 
 # 禁用机身绝对高度判跌倒，避免将低站姿或地形高度变化误判为摔倒
 fall_height_threshold: 0.0

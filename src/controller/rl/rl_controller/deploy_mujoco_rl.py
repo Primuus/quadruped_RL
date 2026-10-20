@@ -63,7 +63,7 @@ class MujocoRLRunner:
             self.command = self.keyboard_controller.current_command.copy()
         else:
             self.command = limit_velocity_command(
-                cfg.command_init, cfg.command_limits, cfg.max_translation_speed,
+                cfg.command_init, cfg.command_limits, cfg.max_translation_speed, cfg.motion_limits,
             )
         self.last_action = np.zeros(cfg.num_actions, dtype=np.float32)
         self.observation_history = ObservationHistory(cfg)
@@ -398,6 +398,8 @@ def main(argv: list[str] | None = None) -> None:
             bindings=cfg.keyboard_bindings,
             speed_levels=cfg.keyboard_speed_levels,
             default_speed_level=cfg.keyboard_default_speed_level,
+            motion_limits=cfg.motion_limits,
+            backward_speed_levels=cfg.keyboard_backward_speed_levels,
         )
         keyboard_input = KeyboardInput(
             args.keyboard_device,

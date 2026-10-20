@@ -114,6 +114,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 bindings=config.keyboard.bindings,
                 speed_levels=config.keyboard.speed_levels,
                 default_speed_level=config.keyboard.default_speed_level,
+                motion_limits=config.keyboard.motion_limits,
+                backward_speed_levels=config.keyboard.backward_speed_levels,
             )
 
         runner.start()

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..commands import limit_velocity_command
+from ..commands import MotionCommandLimits, limit_velocity_command
 
 
 REQUIRED_BINDING_ACTIONS = (
@@ -35,6 +35,10 @@ DIRECTION_ACTIONS = (
 )
 
 
+def required_binding_actions(level_count: int) -> tuple[str, ...]:
+    return REQUIRED_BINDING_ACTIONS + (('speed_max',) if level_count == 4 else ())
+
+
 @dataclass(frozen=True, slots=True)
 class KeyboardKeyEffect:
     reset_sim: bool = False
@@ -55,6 +59,8 @@ class KeyboardCommandController:
         bindings: Mapping[str, str],
         speed_levels: np.ndarray,
         default_speed_level: int = 2,
+        motion_limits: MotionCommandLimits | None = None,
+        backward_speed_levels: np.ndarray | None = None,
     ) -> None:
         self.command_limits = np.asarray(command_limits, dtype=np.float32).reshape(3)
         if not np.all(np.isfinite(self.command_limits)) or np.any(self.command_limits <= 0.0):
@@ -63,27 +69,44 @@ class KeyboardCommandController:
         if not np.isfinite(self.max_translation_speed) or self.max_translation_speed <= 0.0:
             raise ValueError('max_translation_speed must be finite and positive')
 
-        self.bindings = {str(action): str(key) for action, key in bindings.items()}
-        missing_actions = [action for action in REQUIRED_BINDING_ACTIONS if action not in self.bindings]
-        if missing_actions:
-            raise ValueError(f'Missing keyboard bindings: {", ".join(missing_actions)}')
-        configured_keys = [self.bindings[action] for action in REQUIRED_BINDING_ACTIONS]
-        if len(set(configured_keys)) != len(configured_keys):
-            raise ValueError('Each keyboard action must use a unique key')
-
         self.speed_levels = np.asarray(speed_levels, dtype=np.float32)
-        if self.speed_levels.shape != (3,):
-            raise ValueError(f'speed_levels must have shape (3,), got {self.speed_levels.shape}')
+        if self.speed_levels.ndim != 1 or self.speed_levels.size not in (3, 4):
+            raise ValueError('speed_levels must contain three or four values')
         if not np.all(np.isfinite(self.speed_levels)) or np.any(self.speed_levels <= 0.0):
-            raise ValueError('speed_levels must contain three finite positive values')
+            raise ValueError('speed_levels must contain finite positive values')
         if np.any(self.speed_levels > 1.0) or np.any(np.diff(self.speed_levels) <= 0.0):
             raise ValueError('speed_levels must be strictly increasing and no greater than 1.0')
-        if default_speed_level not in (1, 2, 3):
-            raise ValueError('default_speed_level must be 1, 2, or 3')
+        if not 1 <= default_speed_level <= len(self.speed_levels):
+            raise ValueError('default_speed_level must refer to a configured speed level')
+        self.motion_limits = motion_limits
+        if motion_limits is not None:
+            if motion_limits.backward > self.command_limits[0] or max(motion_limits.diagonal, motion_limits.moving_turn) > self.max_translation_speed:
+                raise ValueError('motion_limits must fit command_limits and max_translation_speed')
+        self.backward_speed_levels = None
+        if backward_speed_levels is not None:
+            values = np.asarray(backward_speed_levels, dtype=np.float32)
+            if motion_limits is None:
+                raise ValueError('backward_speed_levels requires motion_limits')
+            if values.shape != self.speed_levels.shape or not np.all(np.isfinite(values)) or np.any(values <= 0.0) or np.any(np.diff(values) < 0.0):
+                raise ValueError('backward_speed_levels must be positive, nondecreasing, and match speed_levels')
+            if np.any(values > motion_limits.backward) or np.any(values > self.command_limits[0] * self.speed_levels):
+                raise ValueError('backward_speed_levels exceed the configured backward/gear limits')
+            self.backward_speed_levels = values
+
+        self.bindings = {str(action): str(key) for action, key in bindings.items()}
+        actions = required_binding_actions(len(self.speed_levels))
+        missing_actions = [action for action in actions if action not in self.bindings]
+        if missing_actions:
+            raise ValueError(f'Missing keyboard bindings: {", ".join(missing_actions)}')
+        configured_keys = [self.bindings[action] for action in actions]
+        if len(set(configured_keys)) != len(configured_keys):
+            raise ValueError('Each keyboard action must use a unique key')
+        if not all(key.startswith('KEY_') for key in configured_keys):
+            raise ValueError('keyboard bindings must use Linux evdev KEY_* names')
 
         self._key_to_action = {
             self.bindings[action]: action
-            for action in REQUIRED_BINDING_ACTIONS
+            for action in actions
         }
         self._direction_keys = frozenset(self.bindings[action] for action in DIRECTION_ACTIONS)
         self._speed_level = int(default_speed_level)
@@ -144,6 +167,7 @@ class KeyboardCommandController:
             'speed_low': 1,
             'speed_medium': 2,
             'speed_high': 3,
+            'speed_max': 4,
         }
         self._speed_level = speed_level_by_action[action]
         return KeyboardKeyEffect(
@@ -181,10 +205,23 @@ class KeyboardCommandController:
             dtype=np.float32,
         )
         command = axis * self.command_limits * self.speed_scale
+        limits = None
+        if self.motion_limits is not None:
+            backward = (
+                float(self.backward_speed_levels[self._speed_level - 1])
+                if self.backward_speed_levels is not None else None
+            )
+            limits = self.motion_limits.scaled(self.speed_scale, backward=backward)
+            if axis[0] < 0.0:
+                command[0] = -limits.backward
+            if axis[0] != 0.0 and axis[1] != 0.0:
+                # Two direction keys denote a 45-degree bearing, even with a faster forward range.
+                command[:2] = axis[:2] * (limits.diagonal / np.sqrt(2.0))
         self.current_command = limit_velocity_command(
             command,
             self.command_limits * self.speed_scale,
             self.max_translation_speed * self.speed_scale,
+            limits,
         )
         return self.current_command.copy()
 

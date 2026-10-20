@@ -292,6 +292,7 @@ class RealRLRunner:
             command,
             self.config.keyboard.command_limits,
             self.config.keyboard.max_translation_speed,
+            self.config.keyboard.motion_limits,
         )
         with self._control_lock:
             self._velocity_command = clipped

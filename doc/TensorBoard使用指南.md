@@ -130,20 +130,28 @@ exp(-(command_yaw - base_ang_vel_z)² / tracking_sigma)
 
 当前权重0.5。它只衡量偏航速度跟踪，不保证转向时抬脚、不滑移或机身姿态自然。
 
-两项都高仍需看四类命令的误差；平均值会混入更容易的站立或低速样本。
+两项都高仍需看各类命令的误差；平均值会混入更容易的站立或低速样本。
 
 ## 6. Command 分组指标
 
-当前模式名固定为：
+Primuus当前模式与配置采样概率为：
 
 ```text
 Command/turn/*          原地转向
 Command/moving_turn/*   边走边转
-Command/translate/*     平移
 Command/stand/*         零命令站立
+Command/forward/*       直线前进
+Command/backward/*      直线后退
+Command/lateral/*       侧移
+Command/diagonal/*      斜移
 ```
 
-Go2与Primuus配置比例均为25%、25%、30%、20%，但曲线是本迭代实际采样占比，不保证每次都恰好等于配置概率。
+按站立、前进、后退、侧移、斜移、原地转向、边走边转的顺序，配置比例为20%、35%、10%、10%、5%、10%、10%。
+曲线是本迭代实际时间占比，会受复位和提前终止影响。旧四模式run中的`Command/translate`是合并平移统计，不能直接当作新run的前进曲线。
+
+`Command/forward_low`、`forward_normal`、`forward_fast`另外统计0.12–1、1–2、2–4 m/s的前进样本，
+它们的`fraction`仍以所有环境步为分母，是`Command/forward`的细分，不能和七类主模式再次相加。
+`Curriculum/forward_limit`表示当前前进采样上限，最高4 m/s；`high_speed_tracking`、`high_speed_failure_rate`和`evaluated_segments`记录最近一个有效课程评估窗口。
 
 | 后缀 | 统计含义 |
 | --- | --- |
