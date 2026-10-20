@@ -320,11 +320,7 @@ python quadruped_rl/scripts/train_primuus.py --headless --resume \
   --max_iterations 1000 --run_name forward_curriculum
 ```
 
-无需Isaac Gym的采样、课程和检查点回归检查：
-
-```bash
-python -m unittest discover -s tests -v
-```
+验证脚本放在工程外的临时目录；每次验证完成后，立即清理本地和服务器上的测试脚本、smoke目录、测试模型、测试日志及测试缓存。正式训练检查点、TensorBoard日志和后台续训运行记录保留。
 
 ## 策略导出
 
