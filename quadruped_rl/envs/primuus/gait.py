@@ -15,6 +15,11 @@ QUALITY_FIELDS = (
 )
 
 
+def _smoothstep(value):
+    weight = value.clamp(0, 1)
+    return weight.square() * (3 - 2 * weight)
+
+
 def _rotation(axis, angle):
     axis = np.asarray(axis, dtype=float)
     axis = axis / np.linalg.norm(axis)
@@ -66,7 +71,8 @@ class GaitQuality:
             value = getattr(cfg, name)
             if not name.startswith('_') and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0):
                 raise ValueError('gait.%s must be finite and positive' % name)
-        if cfg.clearance_min >= cfg.clearance_max or cfg.region_tolerance >= cfg.lateral_margin:
+        if (not cfg.clearance_min <= cfg.clearance_motion_height < cfg.clearance_max or
+                cfg.region_tolerance >= cfg.lateral_margin):
             raise ValueError('Invalid Primuus clearance interval or foot region tolerance')
         self.nominal = torch.as_tensor(feet, dtype=torch.float, device=device)
         self.limits = torch.as_tensor(limits, dtype=torch.float, device=device)
@@ -81,6 +87,7 @@ class GaitQuality:
         self.swing_peak = torch.zeros_like(self.ground)
         self.placement_penalty = torch.zeros(num_envs, device=device)
         self.clearance_penalty = torch.zeros_like(self.placement_penalty)
+        self.direction_penalty = torch.zeros_like(self.placement_penalty)
         self.target_penalty = torch.zeros_like(self.placement_penalty)
 
     def reset(self, env_ids):
@@ -90,7 +97,8 @@ class GaitQuality:
         self.air_time[env_ids] = 0
         self.swing_peak[env_ids] = 0
 
-    def update(self, feet_body, feet_z, feet_velocity, contacts, commands, targets, gravity_z, height_error, raw_contacts=None):
+    def update(self, feet_body, feet_z, feet_velocity, contacts, commands, targets, gravity_z, height_error,
+               feet_body_velocity, raw_contacts=None):
         cfg = self.cfg
         speed = torch.linalg.vector_norm(commands[:, :2], dim=1)
         mixed = torch.maximum(commands[:, 1].abs() / cfg.mixed_lateral_speed,
@@ -112,7 +120,7 @@ class GaitQuality:
                                   (crossing / cfg.placement_scale).square() +
                                   (center_excess / cfg.placement_scale).square().sum(dim=2)).mean(dim=1)
 
-        # 触地足更新平地基准；持续摆动才要求最低离地高度，抬脚上限立即生效。
+        # 对地高度配合对地水平速度；换脚时持续检查，收住水平速度后允许自然落地。
         raw_contacts = contacts if raw_contacts is None else raw_contacts
         self.ground.copy_(torch.where(raw_contacts, feet_z, self.ground))
         self.ground_seen |= raw_contacts
@@ -122,10 +130,26 @@ class GaitQuality:
         maximum = cfg.clearance_max + cfg.clearance_speed_scale * speed[:, None]
         minimum = (self.air_time >= cfg.clearance_min_air_time) * cfg.clearance_min
         swing = ~contacts & self.ground_seen & ((speed + commands[:, 2].abs())[:, None] > 0.1)
-        # 已经抬到最低高度后允许自然落脚，不能在着地前再次强迫抬高。
-        low = (minimum - self.swing_peak).clamp(min=0)
+        horizontal_speed = torch.linalg.vector_norm(feet_velocity[:, :, :2], dim=2)
+        motion_height = (cfg.clearance_motion_height * _smoothstep(horizontal_speed / cfg.clearance_motion_speed) *
+                         _smoothstep(self.air_time / cfg.clearance_min_air_time))
+        motion_low = (motion_height - clearance).clamp(min=0)
+        # 峰值合格后，低空快速换脚仍有代价；起脚平滑增强，水平减速时平滑放松。
+        low = torch.maximum((minimum - self.swing_peak).clamp(min=0), motion_low)
         high = (clearance - maximum).clamp(min=0)
         self.clearance_penalty = (((low + high) / cfg.clearance_scale).square() * swing).mean(dim=1)
+
+        # 每足的换脚方向随 v_xy + yaw * [-y, x] 变化，不给转向套用直行方向。
+        tangent = torch.stack((-feet_body[:, :, 1], feet_body[:, :, 0]), dim=2)
+        desired = commands[:, None, :2] + commands[:, None, 2:3] * tangent
+        desired_speed = torch.linalg.vector_norm(desired, dim=2)
+        direction = desired / desired_speed.clamp(min=1e-6)[:, :, None]
+        perpendicular = (feet_body_velocity[:, :, 0] * direction[:, :, 1] -
+                         feet_body_velocity[:, :, 1] * direction[:, :, 0]).abs()
+        direction_excess = (perpendicular - cfg.swing_direction_tolerance).clamp(min=0)
+        direction_weight = _smoothstep(desired_speed / cfg.swing_direction_speed)
+        self.direction_penalty = ((direction_excess / cfg.swing_direction_scale).square() *
+                                  direction_weight * swing).mean(dim=1)
         # 只惩罚不可达目标，不在训练侧加入部署中没有的目标硬裁剪。
         target_excess = (self.limits[:, 0] - targets).clamp(min=0) + (targets - self.limits[:, 1]).clamp(min=0)
         self.target_penalty = (target_excess / cfg.target_scale).square().mean(dim=1)
@@ -137,8 +161,12 @@ class GaitQuality:
             'tilt': torch.acos((-gravity_z).clamp(-1, 1)),
             'target_violation': (target_excess > cfg.target_tolerance).float().mean(dim=1),
             'clearance_violation': (((low + high) > cfg.region_tolerance) & swing).float().mean(dim=1),
+            'clearance_motion_violation': ((motion_low > cfg.region_tolerance) & swing).float().mean(dim=1),
             'height_error': height_error,
             'swing_clearance': (clearance * swing).sum(dim=1) / swing.sum(dim=1).clamp(min=1),
+            'swing_height_target': (motion_height * swing).sum(dim=1) / swing.sum(dim=1).clamp(min=1),
+            'swing_horizontal_speed': (horizontal_speed * swing).sum(dim=1) / swing.sum(dim=1).clamp(min=1),
+            'swing_direction_error': (direction_excess * swing).sum(dim=1) / swing.sum(dim=1).clamp(min=1),
         }
 
     def curriculum_values(self, position_bias, contacts):

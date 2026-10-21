@@ -185,6 +185,9 @@ class PrimuusEnv(LeggedRobot):
         self.straight_mask = (self.requested_commands[:, 1].abs() < 1e-7) & (self.requested_commands[:, 2].abs() < 1e-7) & (self.requested_commands[:, 0].abs() >= self.cfg.commands.min_translation_speed) & (torch.linalg.vector_norm(self.commands[:, :3] - self.requested_commands[:, :3], dim=1) < 0.03) & (self.command_sampler.segment_steps * self.dt > 1.0)
         feet = self.feet_pos - self.root_states[:, None, :3]
         quat = self.base_quat[:, None].expand(-1, 4, -1).reshape(-1, 4)
+        angular_velocity = self.root_states[:, None, 10:13].expand_as(feet)
+        feet_velocity = self.feet_vel - self.root_states[:, None, 7:10] - torch.cross(angular_velocity, feet, dim=2)
+        feet_velocity = quat_rotate_inverse(quat, feet_velocity.reshape(-1, 3)).reshape(self.num_envs, 4, 3)
         feet = quat_rotate_inverse(quat, feet.reshape(-1, 3)).reshape(self.num_envs, 4, 3)
         bias = torch.stack((feet[:, 0, 0] - feet[:, 1, 0], feet[:, 2, 0] - feet[:, 3, 0], feet[:, 0, 1] + feet[:, 1, 1], feet[:, 2, 1] + feet[:, 3, 1]), dim=1)
         updated = torch.lerp(self.symmetry_bias, bias, self.dt / (cfg.symmetry_time_constant + self.dt))
@@ -193,7 +196,7 @@ class PrimuusEnv(LeggedRobot):
         raw_contacts = self.contact_forces[:, self.feet_indices, 2] > cfg.stand_contact_force_threshold
         self.gait.update(feet, self.feet_pos[:, :, 2], self.feet_vel, self.stand_contacts,
                          self.commands[:, :3], targets, self.projected_gravity[:, 2],
-                         (self._get_base_heights() - self._motion_height_target()).abs(), raw_contacts)
+                         (self._get_base_heights() - self._motion_height_target()).abs(), feet_velocity, raw_contacts)
         self.standing.update(self.dof_pos, self.default_dof_pos, feet,
                              self._get_base_heights(), self.projected_gravity[:, 2])
         quiet = ((speed < 0.05) & (yaw < 0.05) & (self.dof_vel.square().mean(dim=1).sqrt() < 0.25) &
@@ -220,6 +223,9 @@ class PrimuusEnv(LeggedRobot):
 
     def _reward_foot_clearance(self):
         return self.gait.clearance_penalty
+
+    def _reward_foot_swing_direction(self):
+        return self.gait.direction_penalty
 
     def _reward_joint_target_limits(self):
         return self.gait.target_penalty

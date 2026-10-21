@@ -161,8 +161,13 @@ class PrimuusCfg(LeggedRobotCfg):
         clearance_min = 0.025  # [m]；持续摆动足最低离地高度
         clearance_max = 0.07  # [m]；低速摆动足离地上限
         clearance_speed_scale = 0.008  # [s]；高速离地上限随 |v_xy| 适度增加
-        clearance_min_air_time = 0.06  # [s]；起落脚阶段不强迫立即达到最低高度
+        clearance_min_air_time = 0.06  # [s]；起脚引导平滑增强到完整高度，之后检查摆动峰值
+        clearance_motion_height = 0.04  # [m]；快速水平换脚时的最低离地引导，减速落地时下降
+        clearance_motion_speed = 0.5  # [m/s]；对地水平速度达到此值时启用完整引导高度
         clearance_scale = 0.04  # [m]；抬脚越界惩罚的归一化尺度
+        swing_direction_tolerance = 0.10  # [m/s]；允许的摆动横向修正，按各足指令方向判断
+        swing_direction_scale = 0.5  # [m/s]；垂直于换脚方向的速度超差归一化尺度
+        swing_direction_speed = 0.25  # [m/s]；指令在本足位置接近零时平滑弱化方向引导
         target_scale = 0.25  # [rad]；目标角超机械范围的归一化尺度
         target_tolerance = 0.005  # [rad]；日志/课程的目标越界检测容差
 
@@ -200,7 +205,8 @@ class PrimuusCfg(LeggedRobotCfg):
             orientation = -0.2
             dof_acc = -2.5e-7
             base_height = -0.4
-            foot_clearance = -0.05  # 按触地基准约束摆动高度区间，取代固定机身相对高度
+            foot_clearance = -0.05  # 对地高度区间及水平换脚时的持续离地引导
+            foot_swing_direction = -0.05  # 弱化无关方向的摆动，随平移和每足转向切线变化
             foot_placement = -0.4  # 单足活动区域、跨中线和时间平均中心越界
             joint_target_limits = -0.3  # 惩罚不可达目标角，不增加训练侧专有限幅
             foot_slip = -0.10
