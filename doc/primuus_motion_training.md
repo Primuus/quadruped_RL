@@ -52,13 +52,17 @@ python quadruped_rl/scripts/train_primuus.py --headless --run_name foot_placemen
 不要求尚在高速制动的机器人立即摆成静态站姿。
 
 稳态直行中，以0.8秒时间常数统计左右足端平均位置的镜像偏差，保留为诊断指标。
-`straight_symmetry`奖励权重暂设为0，不计入训练回报；动作镜像一致性训练继续保留。
+`straight_symmetry`奖励权重暂设为0，不计入训练回报；动作镜像一致性损失也暂设为0。
 
-HIM-PPO增加确定性动作均值的左右镜像一致性损失，系数0.05、200轮线性热身；
-不改变原PPO采样动作和旧策略概率。HIM估计器独立追加镜像历史及对应速度/特权标签。
+HIM-PPO保留确定性动作均值的左右镜像一致性损失实现，当前`symmetry_loss_coef=0.0`，
+不计算该损失、不参与策略更新；200轮线性热身参数仅在重新启用时生效。
+HIM估计器的镜像数据增强仍开启（`mirror_estimator=True`），独立追加镜像历史及对应速度/特权标签。
 Primuus髋轴在模型中已经镜像，关节与动作交换 FL/FR、RL/RR，无需套用其他机器人的符号。
 六帧观测均变换命令vy/yaw、轴向角速度x/z、重力y及关节/上次动作顺序；
 critic额外变换真实速度y、外力y及17×11高度网格y方向。
+
+关闭验证（2026-10-21）：CPU执行一次完整HIM-PPO更新（5个epoch、4个mini-batch），
+确认不进入动作镜像一致性分支、`Loss/symmetry=0`、估计器镜像数据增强仍执行，损失和权重均有限。
 
 ## 晋级门槛
 
@@ -92,7 +96,7 @@ XY均误差不超过0.10 m/s，yaw均误差不超过0.15 rad/s，才允许提高
 
 ## 日志与验收
 
-- `Loss/symmetry`：未乘热身系数的镜像一致性损失。
+- `Loss/symmetry`：未乘热身系数的镜像一致性损失，当前关闭时记录为0。
 - `Symmetry/position_bias`：稳态直行的周期平均足端位置偏差，单位m。
 - `Tracking/low_xy_error`、`low_yaw_error`：参考已接近目标时的低速执行误差。
 - `Tracking/directional_low_*_error/direction_N`：各部署方向的低速误差。

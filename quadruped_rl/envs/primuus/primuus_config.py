@@ -231,8 +231,8 @@ class PrimuusCfg(LeggedRobotCfg):
 
 class PrimuusCfgPPO(LeggedRobotCfgPPO):
     class algorithm(LeggedRobotCfgPPO.algorithm):
-        symmetry_loss_coef = 0.05
-        symmetry_warmup_iterations = 200
+        symmetry_loss_coef = 0.0  # 暂停动作镜像一致性损失
+        symmetry_warmup_iterations = 200  # 重新启用一致性损失时使用
         mirror_estimator = True
 
     class runner(LeggedRobotCfgPPO.runner):
