@@ -164,10 +164,6 @@ class PrimuusCfg(LeggedRobotCfg):
         clearance_motion_height = 0.04  # [m]；快速水平换脚时的最低离地引导，减速落地时下降
         clearance_motion_speed = 0.5  # [m/s]；对地水平速度达到此值时启用完整引导高度
         clearance_scale = 0.04  # [m]；抬脚越界惩罚的归一化尺度
-        swing_direction_tolerance = 0.10  # [m/s]；允许的摆动横向修正，按各足指令方向判断
-        swing_direction_scale = 0.5  # [m/s]；垂直于换脚方向的速度超差归一化尺度
-        swing_direction_speed = 0.25  # [m/s]；指令在本足位置接近零时平滑弱化方向引导
-        target_scale = 0.25  # [rad]；目标角超机械范围的归一化尺度
         target_tolerance = 0.005  # [rad]；日志/课程的目标越界检测容差
 
     class rewards(LeggedRobotCfg.rewards):
@@ -205,9 +201,7 @@ class PrimuusCfg(LeggedRobotCfg):
             base_height = -0.4
             feet_air_time = 0.0  # 基础walk不额外奖励长腾空，避免鼓励跳跃
             foot_clearance = -0.01  # 通用机身系目标高度误差×摆动足水平相对速度
-            foot_swing_direction = 0.0  # 暂停新增方向整形，仍记录诊断指标
             foot_placement = 0.0  # 暂停活动区域、跨中线及平均中心奖励整形
-            joint_target_limits = 0.0  # 暂停额外PD目标角惩罚，保留实际关节软限位奖励
             foot_slip = -0.10
             turn_step = 0.1
             action_rate = -0.01
@@ -215,7 +209,6 @@ class PrimuusCfg(LeggedRobotCfg):
             torques = -0.0002
             collision = -1.0
             stand_still = -0.1  # 零参考命令下的默认关节角绝对偏差，使用通用公式
-            stand_foot_placement = 0.0  # 暂停额外的站姿足端区域整形
             stand_height = 0.0  # 高度统一由 base_height 约束，避免回正时重复计分
             stand_contacts = -0.4  # 零参考命令下的缺足比例，使用通用四足支撑公式
             dof_pos_limits = -10.0

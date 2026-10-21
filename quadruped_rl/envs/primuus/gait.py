@@ -89,8 +89,6 @@ class GaitQuality:
         self.region_penalty = torch.zeros_like(self.placement_penalty)
         self.crossing_penalty = torch.zeros_like(self.placement_penalty)
         self.clearance_penalty = torch.zeros_like(self.placement_penalty)
-        self.direction_penalty = torch.zeros_like(self.placement_penalty)
-        self.target_penalty = torch.zeros_like(self.placement_penalty)
 
     def reset(self, env_ids):
         self.center[env_ids] = self.nominal[:, :2]
@@ -100,7 +98,7 @@ class GaitQuality:
         self.swing_peak[env_ids] = 0
 
     def update(self, feet_body, feet_z, feet_velocity, contacts, commands, targets, gravity_z, height_error,
-               feet_body_velocity, raw_contacts=None):
+               raw_contacts=None):
         cfg = self.cfg
         speed = torch.linalg.vector_norm(commands[:, :2], dim=1)
         mixed = torch.maximum(commands[:, 1].abs() / cfg.mixed_lateral_speed,
@@ -143,20 +141,8 @@ class GaitQuality:
         high = (clearance - maximum).clamp(min=0)
         self.clearance_penalty = (((low + high) / cfg.clearance_scale).square() * swing).mean(dim=1)
 
-        # 每足的换脚方向随 v_xy + yaw * [-y, x] 变化，不给转向套用直行方向。
-        tangent = torch.stack((-feet_body[:, :, 1], feet_body[:, :, 0]), dim=2)
-        desired = commands[:, None, :2] + commands[:, None, 2:3] * tangent
-        desired_speed = torch.linalg.vector_norm(desired, dim=2)
-        direction = desired / desired_speed.clamp(min=1e-6)[:, :, None]
-        perpendicular = (feet_body_velocity[:, :, 0] * direction[:, :, 1] -
-                         feet_body_velocity[:, :, 1] * direction[:, :, 0]).abs()
-        direction_excess = (perpendicular - cfg.swing_direction_tolerance).clamp(min=0)
-        direction_weight = _smoothstep(desired_speed / cfg.swing_direction_speed)
-        self.direction_penalty = ((direction_excess / cfg.swing_direction_scale).square() *
-                                  direction_weight * swing).mean(dim=1)
-        # 只惩罚不可达目标，不在训练侧加入部署中没有的目标硬裁剪。
+        # 目标角越界只用于诊断和课程验收，不再计算额外奖励惩罚。
         target_excess = (self.limits[:, 0] - targets).clamp(min=0) + (targets - self.limits[:, 1]).clamp(min=0)
-        self.target_penalty = (target_excess / cfg.target_scale).square().mean(dim=1)
         slip = torch.linalg.vector_norm(feet_velocity[:, :, :2], dim=2)
         self.measurements = {
             'foot_region_violation': region.float().mean(dim=1),
@@ -170,7 +156,6 @@ class GaitQuality:
             'swing_clearance': (clearance * swing).sum(dim=1) / swing.sum(dim=1).clamp(min=1),
             'swing_height_target': (motion_height * swing).sum(dim=1) / swing.sum(dim=1).clamp(min=1),
             'swing_horizontal_speed': (horizontal_speed * swing).sum(dim=1) / swing.sum(dim=1).clamp(min=1),
-            'swing_direction_error': (direction_excess * swing).sum(dim=1) / swing.sum(dim=1).clamp(min=1),
         }
 
     def curriculum_values(self, contacts):

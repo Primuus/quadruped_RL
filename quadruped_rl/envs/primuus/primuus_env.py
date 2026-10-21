@@ -182,15 +182,12 @@ class PrimuusEnv(LeggedRobot):
         self.standing_weight.copy_(raw_stop * reference_stop * ((cfg.stand_speed_exit - speed) / width).clamp(0, 1) * ((cfg.stand_speed_exit - yaw) / width).clamp(0, 1))
         feet = self.feet_pos - self.root_states[:, None, :3]
         quat = self.base_quat[:, None].expand(-1, 4, -1).reshape(-1, 4)
-        angular_velocity = self.root_states[:, None, 10:13].expand_as(feet)
-        feet_velocity = self.feet_vel - self.root_states[:, None, 7:10] - torch.cross(angular_velocity, feet, dim=2)
-        feet_velocity = quat_rotate_inverse(quat, feet_velocity.reshape(-1, 3)).reshape(self.num_envs, 4, 3)
         feet = quat_rotate_inverse(quat, feet.reshape(-1, 3)).reshape(self.num_envs, 4, 3)
         targets = self.default_dof_pos + self.cfg.control.action_scale * self.actions
         raw_contacts = self.contact_forces[:, self.feet_indices, 2] > cfg.stand_contact_force_threshold
         self.gait.update(feet, self.feet_pos[:, :, 2], self.feet_vel, self.stand_contacts,
                          self.commands[:, :3], targets, self.projected_gravity[:, 2],
-                         (self._get_base_heights() - self._motion_height_target()).abs(), feet_velocity, raw_contacts)
+                         (self._get_base_heights() - self._motion_height_target()).abs(), raw_contacts)
         self.standing.update(self.dof_pos, self.default_dof_pos, feet,
                              self._get_base_heights(), self.projected_gravity[:, 2])
         # 基础四足支撑奖励直接计算缺足比例，不使用自定义换脚宽限。
@@ -217,15 +214,6 @@ class PrimuusEnv(LeggedRobot):
     # 下列 Primuus 额外整形项默认权重为0；对应测量仍用于日志和课程验收。
     def _reward_foot_placement(self):
         return self.gait.crossing_penalty + self.gait.region_penalty * (1 - self.standing_weight)
-
-    def _reward_foot_swing_direction(self):
-        return self.gait.direction_penalty
-
-    def _reward_joint_target_limits(self):
-        return self.gait.target_penalty
-
-    def _reward_stand_foot_placement(self):
-        return self.standing.foot_penalty * self.standing_weight
 
     def _reward_stand_height(self):
         return self.standing.height_penalty * self.standing_weight

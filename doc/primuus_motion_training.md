@@ -42,8 +42,9 @@ Primuus 使用独立模型、默认角、关节损耗、PD和指令采样器。
 支撑足使用5N阈值并保留一帧接触滤波。缺足奖励直接按四足缺失比例计分，
 不使用原0.4秒换脚宽限；`Standing/support_grace_fraction`在当前基线中为0。
 
-以下额外整形项均为0：`foot_placement`、`foot_swing_direction`、`joint_target_limits`、
-`stand_foot_placement`、`braking`、`stand_joint_motion`、`stand_height`。
+今天增加的整形奖励仅保留`foot_placement`和`stand_height`，两项权重均为0；
+摆脚方向、不可达目标角和站姿足端区域的额外奖励及其配置已删除。
+此前已有的`braking`、`stand_joint_motion`权重仍为0。
 `feet_air_time`仍为0。直行对称奖励、左右偏置日志和对应课程门槛已删除；
 动作镜像一致性损失、热身参数和估计器镜像数据增强也已删除。
 HIM估计器仍使用原始观测学习速度和隐变量，保留正常估计与表征损失。
