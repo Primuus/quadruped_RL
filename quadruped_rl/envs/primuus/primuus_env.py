@@ -9,6 +9,7 @@ from quadruped_rl.envs.base.legged_robot import LeggedRobot
 from quadruped_rl.envs.primuus.commands import PrimuusCommandSampler
 from quadruped_rl.envs.primuus.reference import advance_reference
 from quadruped_rl.envs.primuus.motion import MotionTracker
+from quadruped_rl.envs.primuus.gait import GaitQuality, LEGS, nominal_geometry
 from quadruped_rl.utils.joint_dynamics import JointDynamicsParameters, JenkinsJointFriction
 
 
@@ -26,6 +27,16 @@ class PrimuusEnv(LeggedRobot):
         props['friction'].fill(0.)
         props['damping'].fill(0.)
         return props
+
+    def _parse_cfg(self, cfg):
+        super()._parse_cfg(cfg)
+        # Primuus 的课程也需要足端测量，不能随某个奖励权重关闭而停采。
+        self.use_rigid_body_state = True
+        heights = torch.tensor(cfg.rewards.motion_height_targets)
+        if heights.shape != (7,) or not torch.isfinite(heights).all() or (heights <= 0).any():
+            raise ValueError('motion_height_targets must contain seven finite positive heights')
+        if cfg.control.control_type != 'P':
+            raise ValueError('Primuus gait target constraints require position control')
 
     def _init_buffers(self):
         super()._init_buffers()
@@ -45,6 +56,18 @@ class PrimuusEnv(LeggedRobot):
         self.motion_phase = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         self.symmetry_bias = torch.zeros(self.num_envs, 4, device=self.device)
         self.straight_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        expected = [leg + '_' + part + '_joint' for leg in LEGS for part in ('hip', 'thigh', 'calf')]
+        if self.dof_names != expected:
+            raise ValueError('Primuus gait requires FL/FR/RL/RR hip/thigh/calf order')
+        expected_feet = [self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], leg + '_foot_link') for leg in LEGS]
+        if self.feet_indices.tolist() != expected_feet:
+            raise ValueError('Primuus gait requires FL/FR/RL/RR foot order')
+        feet, limits = nominal_geometry(
+            self.cfg.asset.file.format(QUADRUPED_RL_ROOT_DIR=QUADRUPED_RL_ROOT_DIR),
+            self.cfg.init_state.default_joint_angles, self.dof_names,
+        )
+        self.gait = GaitQuality(self.cfg.gait, feet, limits, self.num_envs, self.device, self.dt)
+        self.motion_height_targets = torch.tensor(self.cfg.rewards.motion_height_targets, device=self.device)
 
     def _post_physics_step_callback(self):
         # Commands change after this step's reward/metrics, immediately before the next observation.
@@ -73,7 +96,12 @@ class PrimuusEnv(LeggedRobot):
             self.dof_vel, self.stand_contacts, self.reset_buf, self.time_out_buf, self.motion_phase,
         )
         self.extras['motion_metrics']['Symmetry/position_bias'] = torch.stack((self.straight_mask.sum(), torch.where(self.straight_mask[:, None], self.symmetry_bias.abs(), 0.0).sum() / 4)).float()
-        self.command_sampler.observe(self.commands, self.base_lin_vel, self.reset_buf, self.time_out_buf, self.base_ang_vel[:, 2], self.motion.quality_ready)
+        for name, values in self.gait.measurements.items():
+            self.extras['motion_metrics']['Gait/' + name] = torch.stack((values.new_tensor(self.num_envs), values.sum()))
+        raw_contacts = self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.stand_contact_force_threshold
+        gait_values = self.gait.curriculum_values(self.symmetry_bias.abs().mean(dim=1), raw_contacts)
+        self.command_sampler.observe(self.commands, self.base_lin_vel, self.reset_buf, self.time_out_buf,
+                                     self.base_ang_vel[:, 2], self.motion.quality_ready, gait_values)
         self.command_ranges["lin_vel_x"][1] = self.command_sampler.forward_limit
         return super()._collect_command_metrics()
 
@@ -108,6 +136,8 @@ class PrimuusEnv(LeggedRobot):
         self.commands.zero_()
         self.requested_commands.zero_()
         self.motion.reset(torch.arange(self.num_envs, device=self.device))
+        self.gait.reset(torch.arange(self.num_envs, device=self.device))
+        self.symmetry_bias.zero_()
         self._resample_commands(torch.arange(self.num_envs, device=self.device))
         super().compute_observations()
 
@@ -125,6 +155,7 @@ class PrimuusEnv(LeggedRobot):
         self.commands[env_ids] = 0
         self.command_sampler.sequence_target[env_ids] = False
         self.symmetry_bias[env_ids] = 0
+        self.gait.reset(env_ids)
         super().reset_idx(env_ids)
         self.joint_friction.reset(self.dof_pos, env_ids)
         self.passive_joint_torques[env_ids] = 0.
@@ -148,6 +179,34 @@ class PrimuusEnv(LeggedRobot):
         bias = torch.stack((feet[:, 0, 0] - feet[:, 1, 0], feet[:, 2, 0] - feet[:, 3, 0], feet[:, 0, 1] + feet[:, 1, 1], feet[:, 2, 1] + feet[:, 3, 1]), dim=1)
         updated = torch.lerp(self.symmetry_bias, bias, self.dt / (cfg.symmetry_time_constant + self.dt))
         self.symmetry_bias.copy_(torch.where(self.straight_mask[:, None], updated, 0.0))
+        targets = self.default_dof_pos + self.cfg.control.action_scale * self.actions
+        raw_contacts = self.contact_forces[:, self.feet_indices, 2] > cfg.stand_contact_force_threshold
+        self.gait.update(feet, self.feet_pos[:, :, 2], self.feet_vel, self.stand_contacts,
+                         self.commands[:, :3], targets, self.projected_gravity[:, 2],
+                         (self._get_base_heights() - self._motion_height_target()).abs(), raw_contacts)
+
+    def _motion_height_target(self):
+        # 使用实际执行的参考判断运动状态，高速减速/停车阶段不提前压低机身。
+        x, y, yaw = self.commands[:, 0].abs(), self.commands[:, 1].abs(), self.commands[:, 2].abs()
+        moving, turning = torch.maximum(x, y) > 0.1, yaw > 0.1
+        mode = torch.where(moving, torch.where(y > 0.1, torch.where(x > 0.1, 4, 3),
+                           torch.where(self.commands[:, 0] < 0, 2, 1)), 0)
+        mode = torch.where(turning, torch.where(moving, 6, 5), mode)
+        return self.motion_height_targets[mode]
+
+    def _reward_base_height(self):
+        excess = ((self._get_base_heights() - self._motion_height_target()).abs() -
+                  self.cfg.rewards.base_height_tolerance).clamp(min=0)
+        return (excess / self.cfg.rewards.base_height_sigma).square()
+
+    def _reward_foot_placement(self):
+        return self.gait.placement_penalty
+
+    def _reward_foot_clearance(self):
+        return self.gait.clearance_penalty
+
+    def _reward_joint_target_limits(self):
+        return self.gait.target_penalty
 
     def _reward_tracking_lin_vel(self):
         cfg = self.cfg.rewards

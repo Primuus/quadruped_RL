@@ -49,6 +49,15 @@ class PrimuusCfg(LeggedRobotCfg):
         curriculum_min_time = 20.0  # [s]；至少间隔 20 仿真秒检查一次
         curriculum_settle_time = 1.0  # 每次切换命令后，跟踪统计先留 1 秒过渡
         curriculum_min_segment_time = 1.0  # 至少 1 秒有效统计；过早失败仍计入失败率
+        # 高速直行段同时验收步态；停车/低速方向验收也必须通过，才允许晋级。
+        curriculum_max_position_bias = 0.035  # [m]；长期左右足端位置偏置，仅作门槛
+        curriculum_max_foot_region_violation = 0.05  # 越出活动区域的足端样本比例
+        curriculum_max_foot_slip_speed = 0.12  # [m/s]；触地足水平滑移均速
+        curriculum_max_tilt = 0.25  # [rad]；机身倾斜均值
+        curriculum_max_target_violation = 0.01  # 目标关节角越出硬限位的分量比例
+        curriculum_max_clearance_violation = 0.05  # 超过抬脚上限的足端样本比例
+        curriculum_max_height_error = 0.04  # [m]；相对当前运动状态高度目标
+        curriculum_min_foot_contact = 0.15  # 每只足的触地占比，允许正常腾空阶段
         resampling_time = 5.0  # [s]
         min_resampling_time = 3.0  # 每环境独立随机保持3–5秒，覆盖不同步态相位
         low_speed_boundary = 0.4
@@ -128,13 +137,37 @@ class PrimuusCfg(LeggedRobotCfg):
     class noise(LeggedRobotCfg.noise):
         add_noise = True
 
+    class gait:
+        # 每只足的中心由本机 URDF 默认角正运动学标定，不使用其他机器人的站距。
+        center_time_constant = 0.6  # [s]；全周期足端中心，不要求四腿同时迈步
+        stance_x_margin = 0.10  # [m]；足端相对默认中心的前后基础半宽
+        stride_time = 0.05  # [s]；前后半宽额外增加 |v_xy| * 此值
+        swing_x_margin = 0.04  # [m]；摆动足额外前后余量
+        lateral_margin = 0.04  # [m]；直行横向半宽
+        mixed_lateral_margin = 0.025  # [m]；侧移/转向的额外横向余量
+        mixed_lateral_speed = 1.0  # [m/s]；横向余量完全开放时的侧移参考速度
+        mixed_yaw_speed = 1.0  # [rad/s]；横向余量完全开放时的转向参考角速度
+        min_lateral_distance = 0.075  # [m]；足端不得跨入机身中线附近
+        center_x_tolerance = 0.04  # [m]；时间平均落脚中心的前后容差
+        center_speed_tolerance = 0.005  # [s]；高速中心额外前后容差
+        center_y_tolerance = 0.025  # [m]；时间平均中心的横向容差
+        placement_scale = 0.04  # [m]；越界惩罚的归一化尺度
+        region_tolerance = 0.005  # [m]；日志/课程的越界检测容差
+        clearance_min = 0.025  # [m]；持续摆动足最低离地高度
+        clearance_max = 0.07  # [m]；低速摆动足离地上限
+        clearance_speed_scale = 0.008  # [s]；高速离地上限随 |v_xy| 适度增加
+        clearance_min_air_time = 0.06  # [s]；起落脚阶段不强迫立即达到最低高度
+        clearance_scale = 0.04  # [m]；抬脚越界惩罚的归一化尺度
+        target_scale = 0.25  # [rad]；目标角超机械范围的归一化尺度
+        target_tolerance = 0.005  # [rad]；日志/课程的目标越界检测容差
+
     class rewards(LeggedRobotCfg.rewards):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.28  # [m]；奖励目标，不代表默认角纯 PD 承重后的实际高度
         base_height_tolerance = 0.03  # 0.25-0.31 m 内不惩罚正常高度浮动
         base_height_sigma = 0.05
-        clearance_height_target = -0.20  # 足端相对机身的摆动目标高度 [m]
-        clearance_height_sigma = 0.05
+        # 按 stand/forward/backward/lateral/diagonal/turn/moving_turn 选择目标高度。
+        motion_height_targets = [0.28, 0.28, 0.27, 0.25, 0.25, 0.25, 0.25]
         turn_step_min_yaw = 0.12
         turn_step_reward_interval = 0.5
         only_positive_rewards = False
@@ -155,7 +188,9 @@ class PrimuusCfg(LeggedRobotCfg):
             orientation = -0.2
             dof_acc = -2.5e-7
             base_height = -0.4
-            foot_clearance = -0.01
+            foot_clearance = -0.05  # 按触地基准约束摆动高度区间，取代固定机身相对高度
+            foot_placement = -0.4  # 单足活动区域、跨中线和时间平均中心越界
+            joint_target_limits = -0.3  # 惩罚不可达目标角，不增加训练侧专有限幅
             foot_slip = -0.10
             turn_step = 0.1
             action_rate = -0.01
