@@ -205,12 +205,7 @@ class PrimuusEnv(LeggedRobot):
         mode = torch.where(turning, torch.where(moving, 6, 5), mode)
         return self.motion_height_targets[mode]
 
-    def _reward_base_height(self):
-        excess = ((self._get_base_heights() - self._motion_height_target()).abs() -
-                  self.cfg.rewards.base_height_tolerance).clamp(min=0)
-        return (excess / self.cfg.rewards.base_height_sigma).square()
-
-    # 速度跟踪、摆动足抬脚、默认站姿和四足支撑使用 LeggedRobot 的通用奖励。
+    # 启用的17项奖励均使用e961f13版本LeggedRobot的通用计算公式。
     # 下列 Primuus 额外整形项默认权重为0；对应测量仍用于日志和课程验收。
     def _reward_foot_placement(self):
         return self.gait.crossing_penalty + self.gait.region_penalty * (1 - self.standing_weight)

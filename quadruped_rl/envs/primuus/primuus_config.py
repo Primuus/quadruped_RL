@@ -55,7 +55,7 @@ class PrimuusCfg(LeggedRobotCfg):
         curriculum_max_tilt = 0.25  # [rad]；机身倾斜均值
         curriculum_max_target_violation = 0.01  # 目标关节角越出硬限位的分量比例
         curriculum_max_clearance_violation = 0.05  # 抬脚区间违规的足端样本比例
-        curriculum_max_height_error = 0.04  # [m]；相对当前运动状态高度目标
+        curriculum_max_height_error = 0.04  # [m]；相对统一机身高度目标
         curriculum_min_foot_contact = 0.15  # 每只足的触地占比，允许正常腾空阶段
         resampling_time = 5.0  # [s]
         min_resampling_time = 3.0  # 每环境独立随机保持3–5秒，覆盖不同步态相位
@@ -167,14 +167,14 @@ class PrimuusCfg(LeggedRobotCfg):
         target_tolerance = 0.005  # [rad]；日志/课程的目标越界检测容差
 
     class rewards(LeggedRobotCfg.rewards):
-        # 恢复通用基础奖励；与现有 Go2 参考机制一致，不导入其他机器人配置。
+        # 对齐2026-10-20 e961f13启用的17项奖励及其通用计算公式。
         tracking_sigma = 0.25  # XY误差平方/yaw误差平方的指数分母，先提供宽跟踪反馈
         soft_dof_pos_limit = 0.9
         base_height_target = 0.28  # [m]；奖励目标，不代表默认角纯 PD 承重后的实际高度
         base_height_tolerance = 0.03  # 0.25-0.31 m 内不惩罚正常高度浮动
         base_height_sigma = 0.05
-        # 按 stand/forward/backward/lateral/diagonal/turn/moving_turn 选择目标高度。
-        motion_height_targets = [base_height_target, 0.28, 0.27, 0.25, 0.25, 0.25, 0.25]
+        # 各运动状态的奖励、诊断和稳站验收共用旧版0.28m目标。
+        motion_height_targets = [base_height_target] * 7
         # 零参考且实际速度降低后恢复正常站姿；均有容差，不要求带载时精确回到零动作角。
         stand_joint_tolerance = [0.10, 0.20, 0.20]  # [rad]；hip/thigh/calf，四腿重复
         stand_pose_scale = 0.15  # [rad]；越出站姿容差后的平滑绝对值尺度
