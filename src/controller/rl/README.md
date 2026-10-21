@@ -227,9 +227,9 @@ MuJoCo中电机力矩进入 `ctrl`，被动损耗进入受控关节的 `qfrc_app
 `limit_velocity_command()`是键盘、MuJoCo固定命令和实机速度接口共用的限幅函数。
 XY使用同一缩放因子，同时满足各轴上限与 `max_translation_speed` 模长上限，保持平移方向；
 yaw单独限幅，不与m/s单位的平移量一起归一化。命令维度和有限值在该动态输入边界检查。
-Primuus的全局包络为4 m/s，但`motion_limits.backward/diagonal/moving_turn`分别将后退、
+Primuus的全局包络为2 m/s，但`motion_limits.backward/diagonal/moving_turn`分别将后退、
 斜移和边走边转限制为1 m/s，侧移和yaw各由轴上限1 m/s和2 rad/s限制。
-该规则用于键盘、YAML/CLI初始命令和实机速度接口；只开放直线前进到4 m/s，不修改PD或观测缩放。
+该规则用于键盘、YAML/CLI初始命令和实机速度接口；只开放直线前进到2 m/s，不修改PD或观测缩放。
 
 Primuus另外启用 `command_transition`：目标指令先限幅，运行器再于20ms策略周期生成参考。
 `command`保留目标，`policy_command`是进入历史观测的实际参考；普通状态打印显示目标，debug同时显示参考。
@@ -260,10 +260,10 @@ NumPy参考与训练Torch参考按相同规则验证，不能在每个物理子�
 
 把 Linux `KEY_*` 映射成速度命令和控制事件。它支持三档或四档速度、组合键、清零、使能、停机、重置和状态输出，不直接访问 MuJoCo 或电机。
 
-Primuus使用KEY_1至KEY_4，前进为1/2/3/4 m/s，后退为0.5/0.5/1/1 m/s；
+Primuus使用KEY_1至KEY_4，前进为0.5/1/1.5/2 m/s，后退为0.5/0.5/1/1 m/s；
 侧移、斜移、边走边转的XY模长为0.25/0.5/0.75/1 m/s，yaw幅度为0.5/1/1.5/2 rad/s。
 默认第一档。两个平移方向键表示45°方向，第四档W+A为约 `[0.707, 0.707, 0]`；
-W+Q为 `[1, 0, 2]`，不会向仅覆盖1 m/s混合动作的策略输入4 m/s转弯指令。
+W+Q为 `[1, 0, 2]`，不会向仅覆盖1 m/s混合动作的策略输入2 m/s转弯指令。
 四档配置须包含`bindings.speed_max`；原有三档配置仍按各自的速度比例运行。
 实机配置必须显式填写 `keyboard.max_translation_speed`，未填写的旧配置会在启动时被拒绝。
 实机入口支持相同`motion_limits`和`backward_speed_levels`字段，均放在`keyboard`下；

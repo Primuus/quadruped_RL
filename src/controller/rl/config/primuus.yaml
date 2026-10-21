@@ -126,11 +126,11 @@ command_init:
 # 键盘速度命令幅度上限 [m/s, m/s, rad/s]，与训练配置最终包络匹配
 # yaw开放至±2；检查点的实际转向课程上限需单独查看，3250轮仍为±1。
 command_limits:
-  - 4.0
+  - 2.0
   - 1.0
   - 2.0
-# 全局 XY 合成速度包络 [m/s]；只有直线前进开放至4 m/s
-max_translation_speed: 4.0
+# 全局 XY 合成速度包络 [m/s]；只有直线前进开放至2 m/s
+max_translation_speed: 2.0
 # 按训练运动状态限幅 [m/s]；侧移与转向仍由 command_limits 的后两项限制
 # 斜移和边走边转均限制 XY 模长；不把高速前进上限带入混合动作
 motion_limits:
@@ -174,7 +174,7 @@ keyboard:
     speed_max: KEY_4
     reset_sim: KEY_R
     print_status: KEY_P
-  # 四档直线前进分别为1/2/3/4 m/s；侧移、斜移和边走边转为0.25/0.5/0.75/1 m/s
+  # 四档直线前进分别为0.5/1/1.5/2 m/s；侧移、斜移和边走边转为0.25/0.5/0.75/1 m/s
   # 转向为0.5/1/1.5/2 rad/s，按训练配置最终上限同步缩放
   speed_levels:
     - 0.25
