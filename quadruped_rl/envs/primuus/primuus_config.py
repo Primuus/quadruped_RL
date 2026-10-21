@@ -40,7 +40,7 @@ class PrimuusCfg(LeggedRobotCfg):
     class commands(LeggedRobotCfg.commands):
         curriculum = True
         initial_forward_speed = 1.0  # 新训练及不含课程状态的旧 checkpoint 从此上限开始
-        max_curriculum = 4.0  # 前进最终上限；是否能达到由跟踪和稳定性决定
+        max_curriculum = 2.0  # 前进最终上限；1→1.5→2 m/s，先保证步态与回正质量
         curriculum_step = 0.5
         curriculum_high_speed_fraction = 0.8  # 只评估当前上限 80% 以上的直线前进段
         curriculum_tracking_threshold = 0.8  # exp(-XY误差平方 / tracking_sigma) 的段均值
@@ -55,7 +55,7 @@ class PrimuusCfg(LeggedRobotCfg):
         curriculum_max_foot_slip_speed = 0.12  # [m/s]；触地足水平滑移均速
         curriculum_max_tilt = 0.25  # [rad]；机身倾斜均值
         curriculum_max_target_violation = 0.01  # 目标关节角越出硬限位的分量比例
-        curriculum_max_clearance_violation = 0.05  # 超过抬脚上限的足端样本比例
+        curriculum_max_clearance_violation = 0.05  # 抬脚区间违规的足端样本比例
         curriculum_max_height_error = 0.04  # [m]；相对当前运动状态高度目标
         curriculum_min_foot_contact = 0.15  # 每只足的触地占比，允许正常腾空阶段
         resampling_time = 5.0  # [s]
@@ -63,7 +63,11 @@ class PrimuusCfg(LeggedRobotCfg):
         low_speed_boundary = 0.4
         low_speed_probability = 0.5  # 非前进平移类的低速子区间比例
         keyboard_bearing_probability = 0.5  # 混合动作的一半采样精确8方向，另一半保持连续角度
-        transition_fraction = 0.2  # 20%环境运行前进→停车/后退/转向/斜移序列
+        transition_fraction = 0.1  # 10%环境运行前进→停车/后退/转向/斜移序列
+        recovery_fraction = 0.1  # 10%环境轮流练六类运动→停车回正，其余80%常规采样
+        stand_min_resampling_time = 6.0  # [s]；零目标保持更久，覆盖制动、回正与持续稳站
+        stand_resampling_time = 8.0
+        stop_observation_time = 5.0  # [s]；完整观察停止后的姿态，不在短暂静止时提前成功
         transition_initial_speed = 1.0
         transition_step = 0.5
         repair_duration = 120.0  # [仿真秒]；转向提速前至少完成行为修复阶段
@@ -73,6 +77,7 @@ class PrimuusCfg(LeggedRobotCfg):
         turn_error_threshold = 0.20  # [rad/s]；左右方向分别评估
         quality_min_events = 200
         quality_min_direction_samples = 200  # 26个部署方向组合分别验收低速跟踪
+        quality_min_stopping_per_mode = 50  # 六类运动后的停车各自验收，不能被直行停车掩盖
         quality_max_failure_rate = 0.02
         quality_low_xy_error = 0.10  # [m/s]
         quality_low_yaw_error = 0.15  # [rad/s]
@@ -90,16 +95,16 @@ class PrimuusCfg(LeggedRobotCfg):
         mode_probabilities = [0.20, 0.35, 0.10, 0.10, 0.05, 0.10, 0.10]
         min_translation_speed = 0.12  # [m/s]
         min_turn_yaw = 0.12  # [rad/s]
-        max_translation_speed = 4.0  # 全局包络；各方向另设限幅，不应用统一圆形上限
+        max_translation_speed = 2.0  # 全局包络；各方向另设限幅，不应用统一圆形上限
         max_backward_speed = 1.0
         max_lateral_speed = 1.0
         max_diagonal_speed = 1.0  # XY 合成速度
         max_moving_turn_speed = 1.0  # XY 合成速度
-        forward_speed_bins = [[0.12, 1.0], [1.0, 2.0], [2.0, 4.0]]
+        forward_speed_bins = [[0.12, 0.5], [0.5, 1.0], [1.0, 2.0]]
         forward_speed_probabilities = [0.30, 0.40, 0.30]  # 前进类内部比例；未开放区间移除后重新归一化
 
         class ranges(LeggedRobotCfg.commands.ranges):
-            lin_vel_x = [-1.0, 4.0]  # 最终包络；运行时正向上限由课程决定
+            lin_vel_x = [-1.0, 2.0]  # 最终包络；运行时正向上限由课程决定
             lin_vel_y = [-1.0, 1.0]
             ang_vel_yaw = [-2.0, 2.0]  # 最终包络，初始及旧检查点仍从±1开始
             heading = [-3.14, 3.14]
@@ -167,7 +172,14 @@ class PrimuusCfg(LeggedRobotCfg):
         base_height_tolerance = 0.03  # 0.25-0.31 m 内不惩罚正常高度浮动
         base_height_sigma = 0.05
         # 按 stand/forward/backward/lateral/diagonal/turn/moving_turn 选择目标高度。
-        motion_height_targets = [0.28, 0.28, 0.27, 0.25, 0.25, 0.25, 0.25]
+        motion_height_targets = [0.30, 0.28, 0.27, 0.25, 0.25, 0.25, 0.25]
+        # 零参考且实际速度降低后恢复正常站姿；均有容差，不要求带载时精确回到零动作角。
+        stand_joint_tolerance = [0.10, 0.20, 0.20]  # [rad]；hip/thigh/calf，四腿重复
+        stand_pose_scale = 0.15  # [rad]；越出站姿容差后的平滑绝对值尺度
+        stand_foot_tolerance = [0.03, 0.025]  # [m]；足端相对本腿默认中心的XY容差
+        stand_foot_scale = 0.04  # [m]
+        stand_recovery_height_tolerance = 0.02  # [m]；稳站高度0.30±0.02
+        stand_recovery_tilt = 0.15  # [rad]；稳站倾斜上限约8.6°
         turn_step_min_yaw = 0.12
         turn_step_reward_interval = 0.5
         only_positive_rewards = False
@@ -197,7 +209,9 @@ class PrimuusCfg(LeggedRobotCfg):
             smoothness = -0.01
             torques = -0.0002
             collision = -1.0
-            stand_still = -0.1
+            stand_still = -0.8  # 回正关节姿态；改为有容差、归一化的非饱和平滑惩罚
+            stand_foot_placement = -0.4  # 回正后各足回到本腿站姿区域
+            stand_height = -0.2  # 回正阶段的站立高度约束
             stand_contacts = -0.4
             dof_pos_limits = -10.0
             braking = -0.4  # 停车时未消除的参考跟踪误差，采用非饱和平滑绝对值

@@ -39,6 +39,10 @@ class PrimuusCommandSampler:
         self.repair_elapsed = 0.0
         self.sequence_env = torch.arange(num_envs, device=device) < int(num_envs * cfg.transition_fraction) if training else torch.zeros(num_envs, device=device, dtype=torch.bool)
         self.sequence_target = torch.zeros(num_envs, device=device, dtype=torch.bool)
+        indices = torch.arange(num_envs, device=device)
+        self.recovery_env = ((indices >= int(num_envs * cfg.transition_fraction)) &
+                             (indices < int(num_envs * (cfg.transition_fraction + cfg.recovery_fraction)))) if training else torch.zeros_like(self.sequence_env)
+        self.recovery_target = torch.zeros_like(self.sequence_target)
         self.segment_modes = torch.zeros(num_envs, device=device, dtype=torch.long)
         self.segment_yaw = torch.zeros(num_envs, device=device)
         self.segment_yaw_limit = torch.zeros(num_envs, device=device)
@@ -105,6 +109,12 @@ class PrimuusCommandSampler:
             raise ValueError("Random command durations must permit settling and evaluation")
         if not 0 <= cfg.transition_fraction <= 1 or not 0 < cfg.low_speed_probability < 1:
             raise ValueError("Invalid command mixture probabilities")
+        if not 0 <= cfg.recovery_fraction <= 1 - cfg.transition_fraction:
+            raise ValueError('Primuus transition and recovery environment fractions must fit one')
+        if (not all(math.isfinite(v) for v in (cfg.stand_min_resampling_time, cfg.stand_resampling_time, cfg.stop_observation_time)) or
+                not 2 <= cfg.stop_observation_time < cfg.stand_min_resampling_time <= cfg.stand_resampling_time or
+                not isinstance(cfg.quality_min_stopping_per_mode, int) or cfg.quality_min_stopping_per_mode <= 0):
+            raise ValueError('Invalid Primuus standing duration or per-motion stopping coverage')
         if not minimum_valid(cfg):
             raise ValueError("Invalid Primuus turn/transition curriculum or repair settings")
         limits = [getattr(cfg, 'curriculum_max_' + name) for name in QUALITY_FIELDS[:7]]
@@ -171,9 +181,14 @@ class PrimuusCommandSampler:
         weights = torch.tensor([0.35, 0.15, 0.20, 0.20, 0.10], device=self.device)
         sequence_modes = choices[torch.multinomial(weights, count, replacement=True)]
         modes = torch.where(sequence, torch.where(destination, sequence_modes, torch.ones_like(modes)), modes)
+        recovery = self.recovery_env[env_ids]
+        recover_to_stand = self.recovery_target[env_ids]
+        recovery_modes = torch.randint(1, len(MODE_NAMES), (count,), device=self.device)
+        modes = torch.where(recovery, torch.where(recover_to_stand, torch.zeros_like(modes), recovery_modes), modes)
         source_speed = self._uniform(count, max(minimum, 0.8 * self.transition_limit), self.transition_limit)
-        forward = torch.where(sequence & ~destination, source_speed, forward)
+        forward = torch.where((sequence & ~destination) | (recovery & ~recover_to_stand), source_speed, forward)
         self.sequence_target[env_ids] = torch.where(sequence, ~destination, destination)
+        self.recovery_target[env_ids] = torch.where(recovery, ~recover_to_stand, recover_to_stand)
         commands[:, 0] = torch.where(modes == 1, forward, torch.where(modes == 2, backward, 0.0))
         commands[:, 1] = torch.where(modes == 3, lateral, 0.0)
         commands[:, 0] += torch.where(modes == 4, diagonal_x, torch.where(modes == 6, moving_speed * moving_direction[:, 0], 0.0))
@@ -310,6 +325,7 @@ class PrimuusCommandSampler:
         self.repair_elapsed = 0.0
         self.turn_window.zero_()
         self.sequence_target.zero_()
+        self.recovery_target.zero_()
         self.last_quality_ready = False
         self.gait_sum.zero_()
         self.gait_steps.zero_()
@@ -336,9 +352,10 @@ class PrimuusCommandSampler:
         self.last_segments = state.get("last_segments", 0)
         for name, low, high in (("turn_limit", self.cfg.initial_turn_speed, self.cfg.max_turn_speed), ("moving_turn_limit", self.cfg.initial_turn_speed, self.cfg.max_turn_speed), ("transition_limit", self.cfg.transition_initial_speed, self.forward_limit)):
             value = state.get(name, low)
-            if not math.isfinite(value) or not low <= value <= high:
+            if not math.isfinite(value) or value < low or (name != 'transition_limit' and value > high):
                 raise ValueError("Invalid saved %s" % name)
-            setattr(self, name, value)
+            # 配置收窄前进范围时，历史过渡上限也必须一起收窄。
+            setattr(self, name, min(value, high))
         self.repair_elapsed = state.get("repair_elapsed", 0.0)
         if not math.isfinite(self.repair_elapsed) or self.repair_elapsed < 0:
             raise ValueError("Invalid repair elapsed time")
@@ -366,6 +383,12 @@ class PrimuusCommandSampler:
             self.window.zero_()
             self.turn_window.zero_()
             self.check_elapsed = 0.0
+        if self.forward_limit != saved_limit:
+            self.window.zero_()
+            self.gait_window.zero_()
+            self.turn_window.zero_()
+            self.check_elapsed = 0.0
+            self.last_gait_ready = False
 
     def metrics(self):
         metrics = {

@@ -10,6 +10,7 @@ from quadruped_rl.envs.primuus.commands import PrimuusCommandSampler
 from quadruped_rl.envs.primuus.reference import advance_reference
 from quadruped_rl.envs.primuus.motion import MotionTracker
 from quadruped_rl.envs.primuus.gait import GaitQuality, LEGS, nominal_geometry
+from quadruped_rl.envs.primuus.standing import StandingRecovery
 from quadruped_rl.utils.joint_dynamics import JointDynamicsParameters, JenkinsJointFriction
 
 
@@ -68,6 +69,7 @@ class PrimuusEnv(LeggedRobot):
         )
         self.gait = GaitQuality(self.cfg.gait, feet, limits, self.num_envs, self.device, self.dt)
         self.motion_height_targets = torch.tensor(self.cfg.rewards.motion_height_targets, device=self.device)
+        self.standing = StandingRecovery(self.cfg.rewards, self.gait.nominal, self.device)
 
     def _post_physics_step_callback(self):
         # Commands change after this step's reward/metrics, immediately before the next observation.
@@ -78,12 +80,16 @@ class PrimuusEnv(LeggedRobot):
         if len(env_ids) == 0:
             return
         commands, modes = self.command_sampler.sample(env_ids)
-        self.motion.begin(env_ids, self.requested_commands[env_ids, :3], commands[:, :3], self.root_states[env_ids, :3])
+        self.motion.begin(env_ids, self.requested_commands[env_ids, :3], commands[:, :3],
+                          self.root_states[env_ids, :3], self.command_modes[env_ids])
         self.requested_commands[env_ids] = commands
         self.command_modes[env_ids] = modes
         cfg = self.cfg.commands
         low, high = int(round(cfg.min_resampling_time / self.dt)), int(round(cfg.resampling_time / self.dt))
         self.next_command_step[env_ids] = self.common_step_counter + torch.randint(low, high + 1, (len(env_ids),), device=self.device)
+        stopping = env_ids[modes == 0]
+        low, high = int(round(cfg.stand_min_resampling_time / self.dt)), int(round(cfg.stand_resampling_time / self.dt))
+        self.next_command_step[stopping] = self.common_step_counter + torch.randint(low, high + 1, (len(stopping),), device=self.device)
 
     def update_command_curriculum(self, env_ids):
         # The Primuus sampler evaluates completed high-speed segments, not whole-episode reward.
@@ -94,10 +100,15 @@ class PrimuusEnv(LeggedRobot):
             self.requested_commands[:, :3], self.commands[:, :3], self.base_lin_vel,
             self.base_ang_vel[:, 2], self.root_states[:, :3], self.projected_gravity[:, 2],
             self.dof_vel, self.stand_contacts, self.reset_buf, self.time_out_buf, self.motion_phase,
+            self.standing.normal_pose,
         )
         self.extras['motion_metrics']['Symmetry/position_bias'] = torch.stack((self.straight_mask.sum(), torch.where(self.straight_mask[:, None], self.symmetry_bias.abs(), 0.0).sum() / 4)).float()
         for name, values in self.gait.measurements.items():
             self.extras['motion_metrics']['Gait/' + name] = torch.stack((values.new_tensor(self.num_envs), values.sum()))
+        stop = torch.linalg.vector_norm(self.requested_commands[:, :3], dim=1) < 1e-7
+        for name, values in (('pose_error', self.standing.joint_error), ('foot_error', self.standing.foot_error),
+                             ('height_error', self.standing.height_error), ('normal_pose_fraction', self.standing.normal_pose.float())):
+            self.extras['motion_metrics']['Standing/' + name] = torch.stack((stop.sum(), torch.where(stop, values, 0.0).sum())).float()
         raw_contacts = self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.stand_contact_force_threshold
         gait_values = self.gait.curriculum_values(self.symmetry_bias.abs().mean(dim=1), raw_contacts)
         self.command_sampler.observe(self.commands, self.base_lin_vel, self.reset_buf, self.time_out_buf,
@@ -154,6 +165,7 @@ class PrimuusEnv(LeggedRobot):
         self.requested_commands[env_ids] = 0
         self.commands[env_ids] = 0
         self.command_sampler.sequence_target[env_ids] = False
+        self.command_sampler.recovery_target[env_ids] = False
         self.symmetry_bias[env_ids] = 0
         self.gait.reset(env_ids)
         super().reset_idx(env_ids)
@@ -170,8 +182,6 @@ class PrimuusEnv(LeggedRobot):
         yaw = self.base_ang_vel[:, 2].abs()
         width = cfg.stand_speed_exit - cfg.stand_speed_enter
         self.standing_weight.copy_(raw_stop * reference_stop * ((cfg.stand_speed_exit - speed) / width).clamp(0, 1) * ((cfg.stand_speed_exit - yaw) / width).clamp(0, 1))
-        quiet = (speed < 0.05) & (yaw < 0.05) & (self.dof_vel.square().mean(dim=1).sqrt() < 0.25) & self.stand_contacts.all(dim=1)
-        self.motion_phase.copy_(torch.where(raw_stop, torch.where(reference_stop & (speed < cfg.stand_speed_exit) & (yaw < cfg.stand_speed_exit), torch.where(quiet, 3, 2), 1), 0))
         self.straight_mask = (self.requested_commands[:, 1].abs() < 1e-7) & (self.requested_commands[:, 2].abs() < 1e-7) & (self.requested_commands[:, 0].abs() >= self.cfg.commands.min_translation_speed) & (torch.linalg.vector_norm(self.commands[:, :3] - self.requested_commands[:, :3], dim=1) < 0.03) & (self.command_sampler.segment_steps * self.dt > 1.0)
         feet = self.feet_pos - self.root_states[:, None, :3]
         quat = self.base_quat[:, None].expand(-1, 4, -1).reshape(-1, 4)
@@ -184,6 +194,12 @@ class PrimuusEnv(LeggedRobot):
         self.gait.update(feet, self.feet_pos[:, :, 2], self.feet_vel, self.stand_contacts,
                          self.commands[:, :3], targets, self.projected_gravity[:, 2],
                          (self._get_base_heights() - self._motion_height_target()).abs(), raw_contacts)
+        self.standing.update(self.dof_pos, self.default_dof_pos, feet,
+                             self._get_base_heights(), self.projected_gravity[:, 2])
+        quiet = ((speed < 0.05) & (yaw < 0.05) & (self.dof_vel.square().mean(dim=1).sqrt() < 0.25) &
+                 self.stand_contacts.all(dim=1) & self.standing.normal_pose)
+        self.motion_phase.copy_(torch.where(raw_stop, torch.where(reference_stop & (speed < cfg.stand_speed_exit) &
+                               (yaw < cfg.stand_speed_exit), torch.where(quiet, 3, 2), 1), 0))
 
     def _motion_height_target(self):
         # 使用实际执行的参考判断运动状态，高速减速/停车阶段不提前压低机身。
@@ -219,13 +235,19 @@ class PrimuusEnv(LeggedRobot):
         return torch.exp(-(self.commands[:, 2] - self.base_ang_vel[:, 2]).square() / scale.square())
 
     def _reward_stand_still(self):
-        return (self.dof_pos - self.default_dof_pos).abs().sum(dim=1) * self.standing_weight
+        return self.standing.pose_penalty * self.standing_weight
+
+    def _reward_stand_foot_placement(self):
+        return self.standing.foot_penalty * self.standing_weight
+
+    def _reward_stand_height(self):
+        return self.standing.height_penalty * self.standing_weight
 
     def _reward_stand_contacts(self):
         return (~self.stand_contacts).float().mean(dim=1) * self.standing_weight
 
     def _reward_stand_joint_motion(self):
-        return self.dof_vel.square().mean(dim=1) * self.standing_weight
+        return self.dof_vel.square().mean(dim=1) * self.standing_weight * self.standing.quiet_weight
 
     def _reward_braking(self):
         raw_stop = torch.linalg.vector_norm(self.requested_commands[:, :3], dim=1) < 1e-7
