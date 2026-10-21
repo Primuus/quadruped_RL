@@ -26,11 +26,13 @@ from rl_controller.input import KeyboardCommandController, KeyboardInput
 GRAVITY_VECTOR = np.array([0.0, 0.0, -1.0], dtype=np.float32)
 
 
-def _validate_runtime_options(render_fps: float, status_interval: float) -> None:
+def _validate_runtime_options(render_fps: float, status_interval: float, cpu_threads: int = 1) -> None:
     if not math.isfinite(render_fps) or render_fps <= 0.0:
         raise ValueError('render_fps must be finite and positive')
     if not math.isfinite(status_interval) or status_interval < 0.0:
         raise ValueError('status_interval must be finite and nonnegative')
+    if isinstance(cpu_threads, bool) or not isinstance(cpu_threads, int) or cpu_threads <= 0:
+        raise ValueError('cpu_threads must be a positive integer')
 
 
 def _close_viewer(viewer: mujoco.viewer.Handle) -> None:
@@ -58,15 +60,18 @@ class MujocoRLRunner:
         debug_steps: int = 0,
         render_fps: float = 60.0,
         status_interval: float = 1.0,
+        cpu_threads: int = 1,
     ) -> None:
-        _validate_runtime_options(render_fps, status_interval)
+        _validate_runtime_options(render_fps, status_interval, cpu_threads)
         self.cfg = cfg
         self.render_fps = render_fps
         self.status_interval = status_interval
         self.model = mujoco.MjModel.from_xml_path(str(cfg.xml_path))
         self.model.opt.timestep = cfg.simulation_dt
         self.data = mujoco.MjData(self.model)
-        self.policy = load_policy(cfg.policy_path, backend=policy_backend, device=device)
+        self.policy = load_policy(
+            cfg.policy_path, backend=policy_backend, device=device, cpu_threads=cpu_threads,
+        )
         self.keyboard_input = keyboard_input
         self.keyboard_controller = keyboard_controller
         self.command_reference = CommandReference(cfg.command_transition)
@@ -76,7 +81,7 @@ class MujocoRLRunner:
         print(
             f'MuJoCo {mujoco.__version__}: physics_dt={cfg.simulation_dt:g}s '
             f'policy_dt={cfg.simulation_dt * cfg.control_decimation:g}s '
-            f'render_fps<={render_fps:g}'
+            f'render_fps<={render_fps:g} cpu_threads={cpu_threads}'
         )
 
         self.joint_qpos_adr = self._resolve_joint_qpos_adr()
@@ -355,6 +360,7 @@ class MujocoRLRunner:
     def _print_runtime_status(
         self, sim_elapsed: float, wall_elapsed: float, real_time_factor: float,
         viewer_syncs: int, *, finished: bool = False,
+        frame_sim_max_ms: float = 0.0, frame_wall_max_ms: float = 0.0,
     ) -> None:
         state = self._read_state()
         actual = (state.base_lin_vel[0], state.base_lin_vel[1], state.base_ang_vel[2])
@@ -366,6 +372,7 @@ class MujocoRLRunner:
         print(
             f'[{label}] sim={sim_elapsed:.2f}s wall={wall_elapsed:.2f}s '
             f'RTF={real_time_factor:.3f} viewer_syncs={viewer_syncs} '
+            f'frame_gap_max_ms(sim/wall)={frame_sim_max_ms:.1f}/{frame_wall_max_ms:.1f} '
             f'target={velocity(self.command)} reference={velocity(self.policy_command)} '
             f'actual={velocity(actual)} [vx, vy m/s; yaw rad/s]',
             flush=True,
@@ -380,6 +387,10 @@ class MujocoRLRunner:
         last_status_sim = 0.0
         sim_elapsed = 0.0
         viewer_syncs = 0
+        last_render_wall = None
+        last_render_sim = 0.0
+        window_sim_gap_ms = window_wall_gap_ms = 0.0
+        total_sim_gap_ms = total_wall_gap_ms = 0.0
         for step in range(total_steps):
             self._process_keyboard_input()
             if step % decimation == 0:
@@ -396,6 +407,14 @@ class MujocoRLRunner:
             if viewer is not None and now >= next_render:
                 if not viewer.is_running():
                     break
+                if last_render_wall is not None:
+                    sim_gap_ms = (sim_elapsed - last_render_sim) * 1000.0
+                    wall_gap_ms = (now - last_render_wall) * 1000.0
+                    window_sim_gap_ms = max(window_sim_gap_ms, sim_gap_ms)
+                    window_wall_gap_ms = max(window_wall_gap_ms, wall_gap_ms)
+                    total_sim_gap_ms = max(total_sim_gap_ms, sim_gap_ms)
+                    total_wall_gap_ms = max(total_wall_gap_ms, wall_gap_ms)
+                last_render_wall, last_render_sim = now, sim_elapsed
                 viewer.sync()
                 viewer_syncs += 1
                 now = time.perf_counter()
@@ -408,9 +427,12 @@ class MujocoRLRunner:
                     sim_elapsed, now - wall_start,
                     (sim_elapsed - last_status_sim) / (now - last_status_wall),
                     viewer_syncs,
+                    frame_sim_max_ms=window_sim_gap_ms,
+                    frame_wall_max_ms=window_wall_gap_ms,
                 )
                 last_status_wall, last_status_sim = now, sim_elapsed
                 next_status = now + self.status_interval
+                window_sim_gap_ms = window_wall_gap_ms = 0.0
 
             # Absolute deadlines avoid accumulating one sleep overshoot at every 0.5ms step.
             sleep_time = wall_start + sim_elapsed - time.perf_counter()
@@ -421,6 +443,7 @@ class MujocoRLRunner:
         self._print_runtime_status(
             sim_elapsed, wall_elapsed, sim_elapsed / max(wall_elapsed, 1e-9),
             viewer_syncs, finished=True,
+            frame_sim_max_ms=total_sim_gap_ms, frame_wall_max_ms=total_wall_gap_ms,
         )
 
 
@@ -446,6 +469,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument('--device', type=str, default='cpu', help='Policy inference device, for example cpu or cuda:0.')
     parser.add_argument('--headless', action='store_true', help='Run without the MuJoCo viewer.')
+    parser.add_argument(
+        '--cpu-threads', type=int, default=1,
+        help='CPU inference threads for TorchScript/ONNX; 1 avoids competing with rendering. Default: 1.',
+    )
     parser.add_argument(
         '--render-fps', type=float, default=60.0,
         help='Maximum viewer synchronization rate in wall-clock Hz. Default: 60.',
@@ -478,7 +505,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     try:
-        _validate_runtime_options(args.render_fps, args.status_interval)
+        _validate_runtime_options(args.render_fps, args.status_interval, args.cpu_threads)
     except ValueError as exc:
         parser.error(str(exc))
     if args.no_keyboard and args.keyboard_device is not None:
@@ -532,6 +559,7 @@ def main(argv: list[str] | None = None) -> None:
             debug_steps=args.debug_steps,
             render_fps=args.render_fps,
             status_interval=args.status_interval,
+            cpu_threads=args.cpu_threads,
         )
         runner.run(headless=args.headless)
     finally:

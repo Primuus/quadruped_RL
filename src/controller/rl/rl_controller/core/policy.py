@@ -14,6 +14,13 @@ class Policy(Protocol):
         ...
 
 
+def _validate_cpu_threads(cpu_threads: int | None) -> None:
+    if cpu_threads is not None and (
+        isinstance(cpu_threads, bool) or not isinstance(cpu_threads, int) or cpu_threads <= 0
+    ):
+        raise ValueError('cpu_threads must be a positive integer or None')
+
+
 def _resolve_model_path(model_path: str | Path) -> Path:
     path = Path(model_path).expanduser().resolve()
     if not path.exists():
@@ -48,7 +55,12 @@ def _validate_action(action: np.ndarray, backend_name: str) -> np.ndarray:
 class TorchScriptPolicy:
     backend_name = 'torchscript'
 
-    def __init__(self, model_path: str | Path, device: str = 'cpu') -> None:
+    def __init__(
+        self, model_path: str | Path, device: str = 'cpu', cpu_threads: int | None = None,
+    ) -> None:
+        _validate_cpu_threads(cpu_threads)
+        if cpu_threads is not None:
+            torch.set_num_threads(cpu_threads)
         self.model_path = _resolve_model_path(model_path)
         self.device = torch.device(device)
         self.model = torch.jit.load(str(self.model_path), map_location=self.device)
@@ -89,7 +101,10 @@ class TorchScriptPolicy:
 class OnnxRuntimePolicy:
     backend_name = 'onnxruntime'
 
-    def __init__(self, model_path: str | Path, device: str = 'cpu') -> None:
+    def __init__(
+        self, model_path: str | Path, device: str = 'cpu', cpu_threads: int | None = None,
+    ) -> None:
+        _validate_cpu_threads(cpu_threads)
         self.model_path = _resolve_model_path(model_path)
         try:
             import onnxruntime as ort
@@ -100,7 +115,13 @@ class OnnxRuntimePolicy:
             ) from exc
 
         providers = self._providers_for_device(ort, device)
-        self.session = ort.InferenceSession(str(self.model_path), providers=providers)
+        options = ort.SessionOptions()
+        if cpu_threads is not None:
+            options.intra_op_num_threads = cpu_threads
+            options.inter_op_num_threads = 1
+        self.session = ort.InferenceSession(
+            str(self.model_path), sess_options=options, providers=providers,
+        )
         inputs = self.session.get_inputs()
         outputs = self.session.get_outputs()
         if len(inputs) != 1:
@@ -167,8 +188,11 @@ def resolve_policy_backend(model_path: str | Path, backend: str = 'auto') -> str
     return normalized
 
 
-def load_policy(model_path: str | Path, backend: str = 'auto', device: str = 'cpu') -> Policy:
+def load_policy(
+    model_path: str | Path, backend: str = 'auto', device: str = 'cpu',
+    cpu_threads: int | None = None,
+) -> Policy:
     resolved_backend = resolve_policy_backend(model_path, backend)
     if resolved_backend == 'onnx':
-        return OnnxRuntimePolicy(model_path, device=device)
-    return TorchScriptPolicy(model_path, device=device)
+        return OnnxRuntimePolicy(model_path, device=device, cpu_threads=cpu_threads)
+    return TorchScriptPolicy(model_path, device=device, cpu_threads=cpu_threads)
