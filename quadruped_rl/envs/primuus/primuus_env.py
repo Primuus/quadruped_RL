@@ -205,8 +205,8 @@ class PrimuusEnv(LeggedRobot):
         mode = torch.where(turning, torch.where(moving, 6, 5), mode)
         return self.motion_height_targets[mode]
 
-    # 启用的17项奖励均使用e961f13版本LeggedRobot的通用计算公式。
-    # 下列 Primuus 额外整形项默认权重为0；对应测量仍用于日志和课程验收。
+    # 17项基础奖励使用e961f13版本LeggedRobot的通用计算公式。
+    # 下列额外整形项按配置启用；对应测量也用于日志和课程验收。
     def _reward_foot_placement(self):
         return self.gait.crossing_penalty + self.gait.region_penalty * (1 - self.standing_weight)
 
