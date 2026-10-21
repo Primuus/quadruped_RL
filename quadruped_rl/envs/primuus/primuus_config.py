@@ -172,13 +172,13 @@ class PrimuusCfg(LeggedRobotCfg):
         base_height_tolerance = 0.03  # 0.25-0.31 m 内不惩罚正常高度浮动
         base_height_sigma = 0.05
         # 按 stand/forward/backward/lateral/diagonal/turn/moving_turn 选择目标高度。
-        motion_height_targets = [0.30, 0.28, 0.27, 0.25, 0.25, 0.25, 0.25]
+        motion_height_targets = [base_height_target, 0.28, 0.27, 0.25, 0.25, 0.25, 0.25]
         # 零参考且实际速度降低后恢复正常站姿；均有容差，不要求带载时精确回到零动作角。
         stand_joint_tolerance = [0.10, 0.20, 0.20]  # [rad]；hip/thigh/calf，四腿重复
         stand_pose_scale = 0.15  # [rad]；越出站姿容差后的平滑绝对值尺度
         stand_foot_tolerance = [0.03, 0.025]  # [m]；足端相对本腿默认中心的XY容差
         stand_foot_scale = 0.04  # [m]
-        stand_recovery_height_tolerance = 0.02  # [m]；稳站高度0.30±0.02
+        # 站姿恢复沿用上述站立目标及 base_height_tolerance，不另设高度标准。
         stand_recovery_tilt = 0.15  # [rad]；稳站倾斜上限约8.6°
         turn_step_min_yaw = 0.12
         turn_step_reward_interval = 0.5
