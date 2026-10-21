@@ -172,6 +172,8 @@ class PrimuusCfg(LeggedRobotCfg):
         target_tolerance = 0.005  # [rad]；日志/课程的目标越界检测容差
 
     class rewards(LeggedRobotCfg.rewards):
+        # 恢复通用基础奖励；与现有 Go2 参考机制一致，不导入其他机器人配置。
+        tracking_sigma = 0.25  # XY误差平方/yaw误差平方的指数分母，先提供宽跟踪反馈
         soft_dof_pos_limit = 0.9
         base_height_target = 0.28  # [m]；奖励目标，不代表默认角纯 PD 承重后的实际高度
         base_height_tolerance = 0.03  # 0.25-0.31 m 内不惩罚正常高度浮动
@@ -185,14 +187,12 @@ class PrimuusCfg(LeggedRobotCfg):
         stand_foot_scale = 0.04  # [m]
         # 站姿恢复沿用上述站立目标及 base_height_tolerance，不另设高度标准。
         stand_recovery_tilt = 0.15  # [rad]；稳站倾斜上限约8.6°
-        stand_recovery_step_time = 0.4  # [s]；三足支撑下的单足回正宽限，超时仍要求落地
+        stand_recovery_step_time = 0.4  # [s]；旧换脚诊断参数，当前基础支撑奖励不使用宽限
+        clearance_height_target = -0.20  # [m]；机身坐标系摆动足目标高度，使用通用抬脚机制
+        clearance_height_sigma = 0.05  # [m]；仅对未接触且有水平相对运动的足端计算
         turn_step_min_yaw = 0.12
         turn_step_reward_interval = 0.5
         only_positive_rewards = False
-        tracking_absolute_tolerance = 0.08  # [m/s]；误差尺度=绝对项+相对项*指令幅值
-        tracking_relative_tolerance = 0.10
-        yaw_absolute_tolerance = 0.08  # [rad/s]
-        yaw_relative_tolerance = 0.10
         stand_speed_enter = 0.10
         stand_speed_exit = 0.25  # 在两阈值之间平滑启用站姿约束
         symmetry_time_constant = 0.8  # [s]；周期平均，允许交替步态
@@ -206,23 +206,24 @@ class PrimuusCfg(LeggedRobotCfg):
             orientation = -0.2
             dof_acc = -2.5e-7
             base_height = -0.4
-            foot_clearance = -0.05  # 对地高度区间及水平换脚时的持续离地引导
-            foot_swing_direction = -0.05  # 弱化无关方向的摆动，随平移和每足转向切线变化
-            foot_placement = -0.4  # 活动区域/平均中心与站姿区域交接，跨中线始终约束
-            joint_target_limits = -0.3  # 惩罚不可达目标角，不增加训练侧专有限幅
+            feet_air_time = 0.0  # 基础walk不额外奖励长腾空，避免鼓励跳跃
+            foot_clearance = -0.01  # 通用机身系目标高度误差×摆动足水平相对速度
+            foot_swing_direction = 0.0  # 暂停新增方向整形，仍记录诊断指标
+            foot_placement = 0.0  # 暂停活动区域、跨中线及平均中心奖励整形
+            joint_target_limits = 0.0  # 暂停额外PD目标角惩罚，保留实际关节软限位奖励
             foot_slip = -0.10
             turn_step = 0.1
             action_rate = -0.01
             smoothness = -0.01
             torques = -0.0002
             collision = -1.0
-            stand_still = -0.8  # 回正关节姿态；改为有容差、归一化的非饱和平滑惩罚
-            stand_foot_placement = -0.4  # 回正后各足回到本腿站姿区域
+            stand_still = -0.1  # 零参考命令下的默认关节角绝对偏差，使用通用公式
+            stand_foot_placement = 0.0  # 暂停额外的站姿足端区域整形
             stand_height = 0.0  # 高度统一由 base_height 约束，避免回正时重复计分
-            stand_contacts = -0.4  # 回正时允许三足支撑下短暂换脚，稳站仍要求四足
+            stand_contacts = -0.4  # 零参考命令下的缺足比例，使用通用四足支撑公式
             dof_pos_limits = -10.0
-            braking = -0.4  # 停车时未消除的参考跟踪误差，采用非饱和平滑绝对值
-            stand_joint_motion = -0.02
+            braking = 0.0  # 暂停额外制动奖励，停车由零指令速度跟踪学习
+            stand_joint_motion = 0.0  # 暂停额外回正关节静止惩罚
             straight_symmetry = 0.0  # 暂停直行足端对称奖励，保留偏置诊断统计
 
     class sim(LeggedRobotCfg.sim):

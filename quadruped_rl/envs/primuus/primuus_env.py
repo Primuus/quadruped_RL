@@ -202,7 +202,7 @@ class PrimuusEnv(LeggedRobot):
                          (self._get_base_heights() - self._motion_height_target()).abs(), feet_velocity, raw_contacts)
         self.standing.update(self.dof_pos, self.default_dof_pos, feet,
                              self._get_base_heights(), self.projected_gravity[:, 2])
-        self.standing.update_support(self.stand_contacts, self.standing_weight)
+        # 基础四足支撑奖励直接计算缺足比例，不使用自定义换脚宽限。
         quiet = ((speed < 0.05) & (yaw < 0.05) & (self.dof_vel.square().mean(dim=1).sqrt() < 0.25) &
                  self.stand_contacts.all(dim=1) & self.standing.normal_pose)
         self.motion_phase.copy_(torch.where(raw_stop, torch.where(reference_stop & (speed < cfg.stand_speed_exit) &
@@ -222,11 +222,10 @@ class PrimuusEnv(LeggedRobot):
                   self.cfg.rewards.base_height_tolerance).clamp(min=0)
         return (excess / self.cfg.rewards.base_height_sigma).square()
 
+    # 速度跟踪、摆动足抬脚、默认站姿和四足支撑使用 LeggedRobot 的通用奖励。
+    # 下列 Primuus 额外整形项默认权重为0；对应测量仍用于日志和课程验收。
     def _reward_foot_placement(self):
         return self.gait.crossing_penalty + self.gait.region_penalty * (1 - self.standing_weight)
-
-    def _reward_foot_clearance(self):
-        return self.gait.clearance_penalty
 
     def _reward_foot_swing_direction(self):
         return self.gait.direction_penalty
@@ -234,27 +233,11 @@ class PrimuusEnv(LeggedRobot):
     def _reward_joint_target_limits(self):
         return self.gait.target_penalty
 
-    def _reward_tracking_lin_vel(self):
-        cfg = self.cfg.rewards
-        scale = cfg.tracking_absolute_tolerance + cfg.tracking_relative_tolerance * torch.linalg.vector_norm(self.commands[:, :2], dim=1)
-        return torch.exp(-(self.commands[:, :2] - self.base_lin_vel[:, :2]).square().sum(dim=1) / scale.square())
-
-    def _reward_tracking_ang_vel(self):
-        cfg = self.cfg.rewards
-        scale = cfg.yaw_absolute_tolerance + cfg.yaw_relative_tolerance * self.commands[:, 2].abs()
-        return torch.exp(-(self.commands[:, 2] - self.base_ang_vel[:, 2]).square() / scale.square())
-
-    def _reward_stand_still(self):
-        return self.standing.pose_penalty * self.standing_weight
-
     def _reward_stand_foot_placement(self):
         return self.standing.foot_penalty * self.standing_weight
 
     def _reward_stand_height(self):
         return self.standing.height_penalty * self.standing_weight
-
-    def _reward_stand_contacts(self):
-        return self.standing.support_penalty * self.standing_weight
 
     def _reward_stand_joint_motion(self):
         return self.dof_vel.square().mean(dim=1) * self.standing_weight * self.standing.quiet_weight
