@@ -69,7 +69,7 @@ class PrimuusEnv(LeggedRobot):
         )
         self.gait = GaitQuality(self.cfg.gait, feet, limits, self.num_envs, self.device, self.dt)
         self.motion_height_targets = torch.tensor(self.cfg.rewards.motion_height_targets, device=self.device)
-        self.standing = StandingRecovery(self.cfg.rewards, self.gait.nominal, self.device)
+        self.standing = StandingRecovery(self.cfg.rewards, self.gait.nominal, self.num_envs, self.device, self.dt)
 
     def _post_physics_step_callback(self):
         # Commands change after this step's reward/metrics, immediately before the next observation.
@@ -107,7 +107,8 @@ class PrimuusEnv(LeggedRobot):
             self.extras['motion_metrics']['Gait/' + name] = torch.stack((values.new_tensor(self.num_envs), values.sum()))
         stop = torch.linalg.vector_norm(self.requested_commands[:, :3], dim=1) < 1e-7
         for name, values in (('pose_error', self.standing.joint_error), ('foot_error', self.standing.foot_error),
-                             ('height_error', self.standing.height_error), ('normal_pose_fraction', self.standing.normal_pose.float())):
+                             ('height_error', self.standing.height_error), ('normal_pose_fraction', self.standing.normal_pose.float()),
+                             ('support_grace_fraction', self.standing.support_grace.any(dim=1).float())):
             self.extras['motion_metrics']['Standing/' + name] = torch.stack((stop.sum(), torch.where(stop, values, 0.0).sum())).float()
         raw_contacts = self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.stand_contact_force_threshold
         gait_values = self.gait.curriculum_values(self.symmetry_bias.abs().mean(dim=1), raw_contacts)
@@ -148,6 +149,7 @@ class PrimuusEnv(LeggedRobot):
         self.requested_commands.zero_()
         self.motion.reset(torch.arange(self.num_envs, device=self.device))
         self.gait.reset(torch.arange(self.num_envs, device=self.device))
+        self.standing.reset(torch.arange(self.num_envs, device=self.device))
         self.symmetry_bias.zero_()
         self._resample_commands(torch.arange(self.num_envs, device=self.device))
         super().compute_observations()
@@ -168,6 +170,7 @@ class PrimuusEnv(LeggedRobot):
         self.command_sampler.recovery_target[env_ids] = False
         self.symmetry_bias[env_ids] = 0
         self.gait.reset(env_ids)
+        self.standing.reset(env_ids)
         super().reset_idx(env_ids)
         self.joint_friction.reset(self.dof_pos, env_ids)
         self.passive_joint_torques[env_ids] = 0.
@@ -199,6 +202,7 @@ class PrimuusEnv(LeggedRobot):
                          (self._get_base_heights() - self._motion_height_target()).abs(), feet_velocity, raw_contacts)
         self.standing.update(self.dof_pos, self.default_dof_pos, feet,
                              self._get_base_heights(), self.projected_gravity[:, 2])
+        self.standing.update_support(self.stand_contacts, self.standing_weight)
         quiet = ((speed < 0.05) & (yaw < 0.05) & (self.dof_vel.square().mean(dim=1).sqrt() < 0.25) &
                  self.stand_contacts.all(dim=1) & self.standing.normal_pose)
         self.motion_phase.copy_(torch.where(raw_stop, torch.where(reference_stop & (speed < cfg.stand_speed_exit) &
@@ -219,7 +223,7 @@ class PrimuusEnv(LeggedRobot):
         return (excess / self.cfg.rewards.base_height_sigma).square()
 
     def _reward_foot_placement(self):
-        return self.gait.placement_penalty
+        return self.gait.crossing_penalty + self.gait.region_penalty * (1 - self.standing_weight)
 
     def _reward_foot_clearance(self):
         return self.gait.clearance_penalty
@@ -250,7 +254,7 @@ class PrimuusEnv(LeggedRobot):
         return self.standing.height_penalty * self.standing_weight
 
     def _reward_stand_contacts(self):
-        return (~self.stand_contacts).float().mean(dim=1) * self.standing_weight
+        return self.standing.support_penalty * self.standing_weight
 
     def _reward_stand_joint_motion(self):
         return self.dof_vel.square().mean(dim=1) * self.standing_weight * self.standing.quiet_weight

@@ -185,6 +185,7 @@ class PrimuusCfg(LeggedRobotCfg):
         stand_foot_scale = 0.04  # [m]
         # 站姿恢复沿用上述站立目标及 base_height_tolerance，不另设高度标准。
         stand_recovery_tilt = 0.15  # [rad]；稳站倾斜上限约8.6°
+        stand_recovery_step_time = 0.4  # [s]；三足支撑下的单足回正宽限，超时仍要求落地
         turn_step_min_yaw = 0.12
         turn_step_reward_interval = 0.5
         only_positive_rewards = False
@@ -207,7 +208,7 @@ class PrimuusCfg(LeggedRobotCfg):
             base_height = -0.4
             foot_clearance = -0.05  # 对地高度区间及水平换脚时的持续离地引导
             foot_swing_direction = -0.05  # 弱化无关方向的摆动，随平移和每足转向切线变化
-            foot_placement = -0.4  # 单足活动区域、跨中线和时间平均中心越界
+            foot_placement = -0.4  # 活动区域/平均中心与站姿区域交接，跨中线始终约束
             joint_target_limits = -0.3  # 惩罚不可达目标角，不增加训练侧专有限幅
             foot_slip = -0.10
             turn_step = 0.1
@@ -217,8 +218,8 @@ class PrimuusCfg(LeggedRobotCfg):
             collision = -1.0
             stand_still = -0.8  # 回正关节姿态；改为有容差、归一化的非饱和平滑惩罚
             stand_foot_placement = -0.4  # 回正后各足回到本腿站姿区域
-            stand_height = -0.2  # 回正阶段的站立高度约束
-            stand_contacts = -0.4
+            stand_height = 0.0  # 高度统一由 base_height 约束，避免回正时重复计分
+            stand_contacts = -0.4  # 回正时允许三足支撑下短暂换脚，稳站仍要求四足
             dof_pos_limits = -10.0
             braking = -0.4  # 停车时未消除的参考跟踪误差，采用非饱和平滑绝对值
             stand_joint_motion = -0.02
