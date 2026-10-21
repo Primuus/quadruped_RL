@@ -50,7 +50,6 @@ class PrimuusCfg(LeggedRobotCfg):
         curriculum_settle_time = 1.0  # 每次切换命令后，跟踪统计先留 1 秒过渡
         curriculum_min_segment_time = 1.0  # 至少 1 秒有效统计；过早失败仍计入失败率
         # 高速直行段同时验收步态；停车/低速方向验收也必须通过，才允许晋级。
-        curriculum_max_position_bias = 0.035  # [m]；长期左右足端位置偏置，仅作门槛
         curriculum_max_foot_region_violation = 0.05  # 越出活动区域的足端样本比例
         curriculum_max_foot_slip_speed = 0.12  # [m/s]；触地足水平滑移均速
         curriculum_max_tilt = 0.25  # [rad]；机身倾斜均值
@@ -195,8 +194,6 @@ class PrimuusCfg(LeggedRobotCfg):
         only_positive_rewards = False
         stand_speed_enter = 0.10
         stand_speed_exit = 0.25  # 在两阈值之间平滑启用站姿约束
-        symmetry_time_constant = 0.8  # [s]；周期平均，允许交替步态
-        symmetry_position_scale = 0.10  # [m]
 
         class scales(LeggedRobotCfg.rewards.scales):
             tracking_lin_vel = 1.0
@@ -224,7 +221,6 @@ class PrimuusCfg(LeggedRobotCfg):
             dof_pos_limits = -10.0
             braking = 0.0  # 暂停额外制动奖励，停车由零指令速度跟踪学习
             stand_joint_motion = 0.0  # 暂停额外回正关节静止惩罚
-            straight_symmetry = 0.0  # 暂停直行足端对称奖励，保留偏置诊断统计
 
     class sim(LeggedRobotCfg.sim):
         dt = 0.002  # [s]；部署仍为 0.5 ms，两侧策略周期均为 20 ms
@@ -238,11 +234,6 @@ class PrimuusCfg(LeggedRobotCfg):
 
 
 class PrimuusCfgPPO(LeggedRobotCfgPPO):
-    class algorithm(LeggedRobotCfgPPO.algorithm):
-        symmetry_loss_coef = 0.0  # 暂停动作镜像一致性损失
-        symmetry_warmup_iterations = 200  # 重新启用一致性损失时使用
-        mirror_estimator = True
-
     class runner(LeggedRobotCfgPPO.runner):
         policy_class_name = 'HIMActorCritic'
         algorithm_class_name = 'HIMPPO'

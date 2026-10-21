@@ -55,8 +55,6 @@ class PrimuusEnv(LeggedRobot):
         self.motion = MotionTracker(self.num_envs, self.device, self.dt, self.cfg.commands)
         self.standing_weight = torch.zeros(self.num_envs, device=self.device)
         self.motion_phase = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
-        self.symmetry_bias = torch.zeros(self.num_envs, 4, device=self.device)
-        self.straight_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         expected = [leg + '_' + part + '_joint' for leg in LEGS for part in ('hip', 'thigh', 'calf')]
         if self.dof_names != expected:
             raise ValueError('Primuus gait requires FL/FR/RL/RR hip/thigh/calf order')
@@ -102,7 +100,6 @@ class PrimuusEnv(LeggedRobot):
             self.dof_vel, self.stand_contacts, self.reset_buf, self.time_out_buf, self.motion_phase,
             self.standing.normal_pose,
         )
-        self.extras['motion_metrics']['Symmetry/position_bias'] = torch.stack((self.straight_mask.sum(), torch.where(self.straight_mask[:, None], self.symmetry_bias.abs(), 0.0).sum() / 4)).float()
         for name, values in self.gait.measurements.items():
             self.extras['motion_metrics']['Gait/' + name] = torch.stack((values.new_tensor(self.num_envs), values.sum()))
         stop = torch.linalg.vector_norm(self.requested_commands[:, :3], dim=1) < 1e-7
@@ -111,7 +108,7 @@ class PrimuusEnv(LeggedRobot):
                              ('support_grace_fraction', self.standing.support_grace.any(dim=1).float())):
             self.extras['motion_metrics']['Standing/' + name] = torch.stack((stop.sum(), torch.where(stop, values, 0.0).sum())).float()
         raw_contacts = self.contact_forces[:, self.feet_indices, 2] > self.cfg.rewards.stand_contact_force_threshold
-        gait_values = self.gait.curriculum_values(self.symmetry_bias.abs().mean(dim=1), raw_contacts)
+        gait_values = self.gait.curriculum_values(raw_contacts)
         self.command_sampler.observe(self.commands, self.base_lin_vel, self.reset_buf, self.time_out_buf,
                                      self.base_ang_vel[:, 2], self.motion.quality_ready, gait_values)
         self.command_ranges["lin_vel_x"][1] = self.command_sampler.forward_limit
@@ -150,7 +147,6 @@ class PrimuusEnv(LeggedRobot):
         self.motion.reset(torch.arange(self.num_envs, device=self.device))
         self.gait.reset(torch.arange(self.num_envs, device=self.device))
         self.standing.reset(torch.arange(self.num_envs, device=self.device))
-        self.symmetry_bias.zero_()
         self._resample_commands(torch.arange(self.num_envs, device=self.device))
         super().compute_observations()
 
@@ -168,7 +164,6 @@ class PrimuusEnv(LeggedRobot):
         self.commands[env_ids] = 0
         self.command_sampler.sequence_target[env_ids] = False
         self.command_sampler.recovery_target[env_ids] = False
-        self.symmetry_bias[env_ids] = 0
         self.gait.reset(env_ids)
         self.standing.reset(env_ids)
         super().reset_idx(env_ids)
@@ -185,16 +180,12 @@ class PrimuusEnv(LeggedRobot):
         yaw = self.base_ang_vel[:, 2].abs()
         width = cfg.stand_speed_exit - cfg.stand_speed_enter
         self.standing_weight.copy_(raw_stop * reference_stop * ((cfg.stand_speed_exit - speed) / width).clamp(0, 1) * ((cfg.stand_speed_exit - yaw) / width).clamp(0, 1))
-        self.straight_mask = (self.requested_commands[:, 1].abs() < 1e-7) & (self.requested_commands[:, 2].abs() < 1e-7) & (self.requested_commands[:, 0].abs() >= self.cfg.commands.min_translation_speed) & (torch.linalg.vector_norm(self.commands[:, :3] - self.requested_commands[:, :3], dim=1) < 0.03) & (self.command_sampler.segment_steps * self.dt > 1.0)
         feet = self.feet_pos - self.root_states[:, None, :3]
         quat = self.base_quat[:, None].expand(-1, 4, -1).reshape(-1, 4)
         angular_velocity = self.root_states[:, None, 10:13].expand_as(feet)
         feet_velocity = self.feet_vel - self.root_states[:, None, 7:10] - torch.cross(angular_velocity, feet, dim=2)
         feet_velocity = quat_rotate_inverse(quat, feet_velocity.reshape(-1, 3)).reshape(self.num_envs, 4, 3)
         feet = quat_rotate_inverse(quat, feet.reshape(-1, 3)).reshape(self.num_envs, 4, 3)
-        bias = torch.stack((feet[:, 0, 0] - feet[:, 1, 0], feet[:, 2, 0] - feet[:, 3, 0], feet[:, 0, 1] + feet[:, 1, 1], feet[:, 2, 1] + feet[:, 3, 1]), dim=1)
-        updated = torch.lerp(self.symmetry_bias, bias, self.dt / (cfg.symmetry_time_constant + self.dt))
-        self.symmetry_bias.copy_(torch.where(self.straight_mask[:, None], updated, 0.0))
         targets = self.default_dof_pos + self.cfg.control.action_scale * self.actions
         raw_contacts = self.contact_forces[:, self.feet_indices, 2] > cfg.stand_contact_force_threshold
         self.gait.update(feet, self.feet_pos[:, :, 2], self.feet_vel, self.stand_contacts,
@@ -246,6 +237,3 @@ class PrimuusEnv(LeggedRobot):
         raw_stop = torch.linalg.vector_norm(self.requested_commands[:, :3], dim=1) < 1e-7
         error = (self.base_lin_vel[:, :2] - self.commands[:, :2]).square().sum(dim=1) + 0.25 * (self.base_ang_vel[:, 2] - self.commands[:, 2]).square()
         return (torch.sqrt(error + 0.01) - 0.1) * raw_stop
-
-    def _reward_straight_symmetry(self):
-        return (self.symmetry_bias / self.cfg.rewards.symmetry_position_scale).square().mean(dim=1) * self.straight_mask

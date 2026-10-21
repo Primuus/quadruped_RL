@@ -9,7 +9,7 @@ import torch
 
 LEGS = ("FL", "FR", "RL", "RR")
 QUALITY_FIELDS = (
-    "position_bias", "foot_region_violation", "foot_slip_speed", "tilt",
+    "foot_region_violation", "foot_slip_speed", "tilt",
     "target_violation", "clearance_violation", "height_error",
     "contact_fl", "contact_fr", "contact_rl", "contact_rr",
 )
@@ -173,6 +173,6 @@ class GaitQuality:
             'swing_direction_error': (direction_excess * swing).sum(dim=1) / swing.sum(dim=1).clamp(min=1),
         }
 
-    def curriculum_values(self, position_bias, contacts):
-        values = [position_bias] + [self.measurements[name] for name in QUALITY_FIELDS[1:7]]
+    def curriculum_values(self, contacts):
+        values = [self.measurements[name] for name in QUALITY_FIELDS[:-4]]
         return torch.cat((torch.stack(values, dim=1), contacts.float()), dim=1)

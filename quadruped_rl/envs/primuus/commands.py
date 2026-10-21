@@ -117,7 +117,7 @@ class PrimuusCommandSampler:
             raise ValueError('Invalid Primuus standing duration or per-motion stopping coverage')
         if not minimum_valid(cfg):
             raise ValueError("Invalid Primuus turn/transition curriculum or repair settings")
-        limits = [getattr(cfg, 'curriculum_max_' + name) for name in QUALITY_FIELDS[:7]]
+        limits = [getattr(cfg, 'curriculum_max_' + name) for name in QUALITY_FIELDS[:-4]]
         if any(not math.isfinite(v) or v <= 0 for v in limits) or not 0 < cfg.curriculum_min_foot_contact < 1:
             raise ValueError('Invalid Primuus gait curriculum thresholds')
         if any(getattr(cfg, 'curriculum_max_' + name) > 1 for name in ('foot_region_violation', 'target_violation', 'clearance_violation')):
@@ -247,10 +247,10 @@ class PrimuusCommandSampler:
             gait_count = self.gait_window[0].item()
             self.last_gait_segments = int(gait_count)
             self.last_gait_values.copy_(self.gait_window[1:] / max(gait_count, 1))
-            limits = self.last_gait_values.new_tensor([getattr(self.cfg, 'curriculum_max_' + name) for name in QUALITY_FIELDS[:7]])
+            limits = self.last_gait_values.new_tensor([getattr(self.cfg, 'curriculum_max_' + name) for name in QUALITY_FIELDS[:-4]])
             self.last_gait_ready = bool(gait_count >= self.cfg.curriculum_min_segments and
-                                       (self.last_gait_values[:7] <= limits).all() and
-                                       (self.last_gait_values[7:] >= self.cfg.curriculum_min_foot_contact).all())
+                                       (self.last_gait_values[:-4] <= limits).all() and
+                                       (self.last_gait_values[-4:] >= self.cfg.curriculum_min_foot_contact).all())
             if (self.last_tracking >= self.cfg.curriculum_tracking_threshold and
                     self.last_failure_rate <= self.cfg.curriculum_max_failure_rate and
                     self.last_gait_ready and quality_ready):
@@ -296,7 +296,7 @@ class PrimuusCommandSampler:
 
     def state_dict(self):
         return {
-            "version": 3,
+            "version": 4,
             "forward_limit": float(self.forward_limit),
             "window": self.window.tolist(),
             "check_elapsed": self.check_elapsed,
@@ -336,7 +336,7 @@ class PrimuusCommandSampler:
         if state is None:
             self.forward_limit = self.cfg.initial_forward_speed if self.cfg.curriculum else self.cfg.max_curriculum
             return
-        if state.get("version") not in (1, 2, 3) or not math.isfinite(state["forward_limit"]):
+        if state.get("version") not in (1, 2, 3, 4) or not math.isfinite(state["forward_limit"]):
             raise ValueError("unsupported or invalid Primuus command curriculum checkpoint")
         saved_limit = state["forward_limit"]
         self.forward_limit = min(max(saved_limit, self.cfg.initial_forward_speed), self.cfg.max_curriculum) if self.cfg.curriculum else self.cfg.max_curriculum
@@ -363,13 +363,13 @@ class PrimuusCommandSampler:
         if turn_window.shape != (2, 2, 3) or not torch.isfinite(turn_window).all() or (turn_window < 0).any() or (turn_window[..., 2] > turn_window[..., 0]).any():
             raise ValueError("Invalid saved turn evaluation window")
         self.turn_window.copy_(turn_window)
-        if state.get('version') == 3:
+        if state.get('version') == 4:
             gait_window = torch.tensor(state.get('gait_window'), device=self.device)
             last_values = torch.tensor(state.get('last_gait_values'), device=self.device)
             for values, shape in ((gait_window, self.gait_window.shape), (last_values, self.last_gait_values.shape)):
                 if values.shape != shape or not torch.isfinite(values).all() or (values < 0).any():
                     raise ValueError('Invalid saved Primuus gait evaluation window')
-            if (gait_window[8:] > gait_window[0]).any() or (last_values[7:] > 1).any():
+            if (gait_window[-4:] > gait_window[0]).any() or (last_values[-4:] > 1).any():
                 raise ValueError('Invalid saved Primuus foot contact fractions')
             self.last_gait_segments = state.get('last_gait_segments', 0)
             if not isinstance(self.last_gait_segments, int) or self.last_gait_segments < 0 or not isinstance(state.get('last_gait_ready'), bool):
@@ -379,7 +379,7 @@ class PrimuusCommandSampler:
                 self.last_gait_values.copy_(last_values)
                 self.last_gait_ready = state['last_gait_ready']
         else:
-            # 旧窗口未包含足端质量，保留已存上限，但必须重新累计晋级证据。
+            # 旧窗口的指标布局不同，保留已存速度上限，重新累计晋级证据。
             self.window.zero_()
             self.turn_window.zero_()
             self.check_elapsed = 0.0
