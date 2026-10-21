@@ -167,7 +167,7 @@ class PrimuusCfg(LeggedRobotCfg):
             dof_pos_limits = -10.0
             braking = -0.4  # 停车时未消除的参考跟踪误差，采用非饱和平滑绝对值
             stand_joint_motion = -0.02
-            straight_symmetry = -0.05
+            straight_symmetry = 0.0  # 暂停直行足端对称奖励，保留偏置诊断统计
 
     class sim(LeggedRobotCfg.sim):
         dt = 0.002  # [s]；部署仍为 0.5 ms，两侧策略周期均为 20 ms
