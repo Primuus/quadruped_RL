@@ -68,7 +68,7 @@ src/controller/rl/
 
 ### `setup.py`
 
-定义 Python 包、Python 版本和运行依赖。依赖包含 NumPy、PyYAML、pyserial、evdev、PyTorch、MuJoCo 和 ONNX Runtime，不包含 ROS2 或测试框架。`zip_safe=False` 明确该包依赖源码树资产。
+定义 Python 包、Python 版本和运行依赖。依赖包含 NumPy、PyYAML、pyserial、evdev、PyTorch、MuJoCo 和 ONNX Runtime，不包含 ROS2。`zip_safe=False` 明确该包依赖源码树资产。
 
 ### `pyproject.toml`
 
@@ -228,29 +228,20 @@ MuJoCo中电机力矩进入 `ctrl`，被动损耗进入受控关节的 `qfrc_app
 XY使用同一缩放因子，同时满足各轴上限与 `max_translation_speed` 模长上限，保持平移方向；
 yaw单独限幅，不与m/s单位的平移量一起归一化。命令维度和有限值在该动态输入边界检查。
 Primuus的全局包络为2 m/s，但`motion_limits.backward/diagonal/moving_turn`分别将后退、
-斜移和边走边转限制为1 m/s，侧移和yaw各由轴上限1 m/s和2 rad/s限制。
+斜移和边走边转限制为1 m/s，侧移和yaw各由轴上限1 m/s和1 rad/s限制。
 该规则用于键盘、YAML/CLI初始命令和实机速度接口；只开放直线前进到2 m/s，不修改PD或观测缩放。
 
 Primuus另外启用 `command_transition`：目标指令先限幅，运行器再于20ms策略周期生成参考。
 `command`保留目标，`policy_command`是进入历史观测的实际参考；普通状态打印显示目标，debug同时显示参考。
 高速直行先以4 m/s²减至1 m/s范围再引入侧移/转向，退出混合动作后再以3 m/s²恢复直行；
 停车目标立即锁零，参考以6 m/s²制动，yaw变化率分别为3/4 rad/s²（常规/停车）。
-NumPy参考与训练Torch参考按相同规则验证，不能在每个物理子步重复推进。
-原MuJoCo逐物理步累积sleep误差已改为绝对墙钟期限调度，物理步数与策略周期保持原值。
+参考仅在策略周期推进，不能在每个物理子步重复推进。配置应与所用策略的训练指令规则配套。
+MuJoCo使用绝对墙钟期限调度，显示频率独立于物理步和策略更新频率。
 
 真实运行器在 `keyboard.command_transition` 中接受相同配置，默认关闭，必须显式按训练配置填写。
 正常零速目标由参考模块制动；运行时停机/故障处理仍通过原安全状态机执行。
-部署yaw范围现按训练配置最终包络开放至±2 rad/s。3250轮策略的原地/移动转向课程上限仍为1 rad/s，
-允许发送2 rad/s指令不表示策略已达到该跟踪能力；课程与验收见
+当前Primuus部署偏航范围为±1 rad/s。训练指令与奖励定义见
 [训练侧运动说明](https://github.com/Primuus/quadruped_RL/blob/train/doc/primuus_motion_training.md)。
-
-2026-10-20验证：2500轮策略加参考过渡，在名义模型下完成四档104个基础组合、42项换挡、
-48项换向和28项额外停车相位，共222例未翻倒；基础用例停车末段速度均低于0.1 m/s。
-生产循环3秒仿真约需3.00秒墙钟时间。未改变策略权重；步态对称性及更快转向需正式续训后另行验收。
-
-3250轮策略在±2 rad/s部署范围下，四档72项原地/移动转向与16项直行→转向→停车检查均未翻倒。
-第四档原地左/右转末2秒平均角速度幅值为2.07/1.94 rad/s，前进转向为2.01/1.83 rad/s。
-这些数值来自本次名义模型与固定起点，独立于训练课程的晋级状态。
 
 ### `rl_controller/input/keyboard_input.py`
 
@@ -261,7 +252,7 @@ NumPy参考与训练Torch参考按相同规则验证，不能在每个物理子�
 把 Linux `KEY_*` 映射成速度命令和控制事件。它支持三档或四档速度、组合键、清零、使能、停机、重置和状态输出，不直接访问 MuJoCo 或电机。
 
 Primuus使用KEY_1至KEY_4，前进为0.5/1/1.5/2 m/s，后退为0.5/0.5/1/1 m/s；
-侧移、斜移、边走边转的XY模长为0.25/0.5/0.75/1 m/s，yaw幅度为0.5/1/1.5/2 rad/s。
+侧移、斜移、边走边转的XY模长为0.25/0.5/0.75/1 m/s，yaw幅度为0.25/0.5/0.75/1 rad/s。
 默认第一档。两个平移方向键表示45°方向，第四档W+A为约 `[0.707, 0.707, 0]`；
 W+Q为 `[1, 0, 2]`，不会向仅覆盖1 m/s混合动作的策略输入2 m/s转弯指令。
 四档配置须包含`bindings.speed_max`；原有三档配置仍按各自的速度比例运行。
@@ -397,7 +388,7 @@ YIS130 私有 UART 后端，负责：
 
 ### `rl_controller/real/policy/factory.py`
 
-根据已验证实机配置创建 `OnnxPolicy + PolicyExecutor`。当前实机链路不接受 TorchScript；TorchScript 只用于 MuJoCo 和导出对比。
+根据实机配置创建`OnnxPolicy + PolicyExecutor`。当前实机链路不接受TorchScript；TorchScript用于MuJoCo和模型输出对照。
 
 
 ## 状态机、安全和运行器
@@ -446,7 +437,7 @@ state_age_s, command, raw_action, target_position, cycle_duration_s
 runner 负责：
 
 - 只有第一份完整、新鲜、同步状态到达后才进入 READY；
-- 从实测姿态平滑过渡到 `default_angles`；
+- 从当前关节反馈姿态平滑过渡到`default_angles`；
 - 历史预热完成后才进入 RL；
 - 任意线程异常直接锁存 FAULT；
 - 电机线程独占运行期电机 I/O，并在正常或故障退出路径执行幂等 `safe_stop()`；
@@ -503,7 +494,7 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 
 内部模块只消费经过边界校验的数据，不使用默认值、旧状态或上一帧动作掩盖外部故障。
 
-正式源码没有mock后端、实机dry-run或独立 `test/` 运行链路。MuJoCo debug与 `tools/compare_policy_backends.py` 是保留的正式诊断能力，不应因为它们能输出数据就把它们当作待删除的临时验证代码。
+MuJoCo debug用于查看状态、动作、目标角和力矩；`tools/compare_policy_backends.py`用于对照两种模型格式的输出。
 
 ## 新增四足机器人
 
@@ -523,6 +514,5 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 4. 标定 YIS130 安装旋转；
 5. 根据硬件能力确定 PD、温度、倾角、时限和目标步长；
 6. 若更换电机或 IMU，在 `hardware/base.py` Protocol 下增加新后端，并在配置和工厂中显式注册；
-7. 由用户依次执行单电机、单总线、悬空关节、IMU、默认站姿、零命令和低速落地验证。
 
 实机前必须具备独立物理急停和驱动器底层通信超时。Python watchdog 与 `safe_stop()` 不能替代硬件急停。

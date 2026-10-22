@@ -139,19 +139,13 @@ Primuus当前模式与配置采样概率为：
 ```text
 Command/turn/*          原地转向
 Command/moving_turn/*   边走边转
+Command/translate/*     平移，包含前后、左右和斜向
 Command/stand/*         零命令站立
-Command/forward/*       直线前进
-Command/backward/*      直线后退
-Command/lateral/*       侧移
-Command/diagonal/*      斜移
 ```
 
-按站立、前进、后退、侧移、斜移、原地转向、边走边转的顺序，配置比例为20%、35%、10%、10%、5%、10%、10%。
-曲线是本迭代实际时间占比，会受复位和提前终止影响。旧四模式run中的`Command/translate`是合并平移统计，不能直接当作新run的前进曲线。
-
-`Command/forward_low`、`forward_normal`、`forward_fast`另外统计0.12–1、1–2、2–4 m/s的前进样本，
-它们的`fraction`仍以所有环境步为分母，是`Command/forward`的细分，不能和七类主模式再次相加。
-`Curriculum/forward_limit`表示当前前进采样上限，最高4 m/s；`high_speed_tracking`、`high_speed_failure_rate`和`evaluated_segments`记录最近一个有效课程评估窗口。
+按原地转向、边走边转、平移和站立的顺序，配置采样概率为25%、25%、30%、20%，每类指令统一保持5秒。
+曲线是本迭代实际时间占比，会受复位和提前终止影响。`Command/translate`统计所有平移方向，
+不能单独代表前进。当前速度课程关闭，XY合速度上限1 m/s，偏航上限1 rad/s。
 
 | 后缀 | 统计含义 |
 | --- | --- |
@@ -314,35 +308,12 @@ scp -P 2222 hurricane@10.109.69.166:~/quadruped_train/logs/primuus/exported/poli
 
 这会覆盖同名文件。需要留存时使用独立版本目录，并相应修改机器人YAML；模型不会因源码更新自动变成新训练结果。
 
-先在相同输入上比较双模型，再用平地MuJoCo观察：
+本地MuJoCo部署入口：
 
 ```bash
-python3 src/controller/rl/tools/compare_policy_backends.py \
-  --config src/controller/rl/config/primuus.yaml \
-  --torchscript-path src/controller/rl/models/primuus/policy.pt \
-  --onnx-path src/controller/rl/models/primuus/policy.onnx
-
 python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
   --config src/controller/rl/config/primuus.yaml
 ```
 
-Primuus配置使用自身平地场景。Go2默认配置选择ROBOCON场地，比较平地训练与部署时应指定 `--xml-path src/controller/rl/resources/robots/go2/scene_flat.xml` 并使用Go2配置/策略。完整复制命令和命名规则见[模型目录](../src/controller/rl/models/README.md)。
-
-## 13. 记录模板
-
-```text
-源码commit / 机器人 / URDF或XML版本：
-关节损耗模型 / 参数文件版本：
-完整run目录 / checkpoint / 是否resume：
-追加迭代数 / 控制周期：
-修改的单个参数组：
-各模式fraction与速度误差：
-各模式高度 / supporting_feet / 非足端接触率：
-滑移 / 换步 / 抬脚与动作代价：
-loss / 学习率 / 探索标准差：
-Isaac Gym play现象：
-MuJoCo现象与双模型一致性：
-结论与下一项实验：
-```
-
-训练曲线只能说明当前日志对应的实验。当前源码的参数表、历史checkpoint的参数和硬件的真实行为必须分别记录，不相互代替。
+Primuus配置使用自身平地场景，`--xml-path`可覆盖配置中的场景路径。
+复制命令、双模型工具参数和命名规则见[模型目录](../src/controller/rl/models/README.md)。

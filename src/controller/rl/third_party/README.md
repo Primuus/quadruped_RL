@@ -23,7 +23,7 @@ API 2的 `sendRecv()` 使用 `py::gil_scoped_release`，使不同总线、IMU和
 2. 保留上游 `LICENSE`。
 3. 同步更新 version 文件、Python wrapper、硬件后端和构建脚本中的 commit 标记；绑定契约变化时递增 API 版本。
 4. 重新执行本地构建和 Python 导入检查。
-5. 重新验证 GO-M8010-6 的命令与反馈字段。
+5. 同步GO-M8010-6命令与反馈字段的适配。
 
 构建当前主机对应的 C++ 示例和 Python 绑定：
 

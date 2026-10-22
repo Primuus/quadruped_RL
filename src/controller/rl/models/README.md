@@ -60,11 +60,11 @@ scp -P 2222 'hurricane@10.109.69.166:~/quadruped_train/logs/go2/exported/policie
   src/controller/rl/models/go2/
 ```
 
-训练、导出和本地复制是三个独立操作。服务器重训或重新导出不会自动更新本地策略；只有复制时才覆盖目标文件。复制后分别对两端对应文件运行 `sha256sum`，确认PT和ONNX均完整传输，再进行数值对比。需要保留旧版本时先另存，不能依赖固定文件名找回旧权重。
+训练、导出和本地复制是三个独立操作。服务器重训或重新导出不会自动更新本地策略，只有复制时才覆盖目标文件。模型版本由来源run、checkpoint编号和文件SHA256共同标识。需要保留旧版本时先另存，不能依赖固定文件名找回旧权重。
 
 Primuus的仿真损耗模型不打包进神经网络。`joint_dynamics.json`与两端适配算法必须另行保持一致；改变损耗模型后，不能仅凭权重维度兼容就认为旧策略已适配，见[关节动力学](../../../../doc/关节动力学.md)。
 
-## 数值对比
+## 双模型工具
 
 从部署仓库根目录执行：
 
@@ -75,6 +75,8 @@ python3 src/controller/rl/tools/compare_policy_backends.py \
   --onnx-path src/controller/rl/models/primuus/policy.onnx
 ```
 
-可加 `--observations observations.npy` 使用记录的270维输入。通过只表示这批输入的数值一致，不等于闭环步态、实机安全或训练质量。显式模型路径在校验前覆盖配置，最终配置和模型文件仍须有效。Go2对比时改用其配置及双模型路径。
+工具对同一批270维观测分别调用TorchScript与ONNX，输出动作形状及平均、最大绝对差。
+`--observations observations.npy`指定输入数据，`--torchscript-path`和`--onnx-path`指定模型路径；
+未指定输入文件时按`--samples`生成观测。模型路径与机器人配置共同决定输入输出契约。
 
 权重默认不提交Git；目录里是否存在某个文件是本机产物状态，不是源码保证。需要恢复训练时使用训练侧完整checkpoint，不能用部署PT/ONNX替代。
