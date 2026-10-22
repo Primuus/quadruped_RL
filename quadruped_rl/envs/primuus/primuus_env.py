@@ -11,6 +11,12 @@ from quadruped_rl.envs.primuus.motion import MotionTracker
 from quadruped_rl.utils.joint_dynamics import JointDynamicsParameters, JenkinsJointFriction
 
 
+STABILITY_FIELDS = (
+    "foot_slip_speed", "tilt", "height_error",
+    "contact_fl", "contact_fr", "contact_rl", "contact_rr",
+)
+
+
 class PrimuusEnv(LeggedRobot):
     """独立机器人适配器，不继承或导入 Go2 环境。"""
 
@@ -52,7 +58,7 @@ class PrimuusEnv(LeggedRobot):
             return
         commands, modes = self.command_sampler.sample(env_ids)
         self.motion.begin(env_ids, self.requested_commands[env_ids, :3], commands[:, :3],
-                          self.root_states[env_ids, :3], self.command_modes[env_ids])
+                          self.root_states[env_ids, :3])
         self.requested_commands[env_ids] = commands
         self.command_modes[env_ids] = modes
         cfg = self.cfg.commands
@@ -79,15 +85,17 @@ class PrimuusEnv(LeggedRobot):
             torch.acos((-self.projected_gravity[:, 2]).clamp(-1, 1)),
             (self._get_base_heights() - self.cfg.rewards.base_height_target).abs(),
         ), dim=1), raw_contacts.float()), dim=1)
-        self.command_sampler.observe(self.commands, self.base_lin_vel, self.reset_buf, self.time_out_buf,
-                                     self.base_ang_vel[:, 2], self.motion.quality_ready, stability_values)
+        count = stability_values.new_tensor(self.num_envs)
+        totals = stability_values.sum(dim=0)
+        for index, name in enumerate(STABILITY_FIELDS):
+            self.extras['motion_metrics']['Stability/' + name] = torch.stack((count, totals[index]))
+        self.command_sampler.observe(self.commands, self.base_lin_vel, self.reset_buf, self.time_out_buf)
         self.command_ranges["lin_vel_x"][1] = self.command_sampler.forward_limit
         return super()._collect_command_metrics()
 
     def _command_metric_masks(self):
         masks = super()._command_metric_masks()
-        # Keep settled standing separate from braking and posture recovery.
-        masks['stand'] &= self.motion_phase == 3
+        # stand按零目标指令统计；制动和收稳是其中的辅助分类。
         masks['braking'] = self.motion_phase == 1
         masks['settling'] = self.motion_phase == 2
         for name, (low, high) in zip(("forward_low", "forward_normal", "forward_fast"), self.cfg.commands.forward_speed_bins):
@@ -130,8 +138,6 @@ class PrimuusEnv(LeggedRobot):
         self.motion.reset(env_ids)
         self.requested_commands[env_ids] = 0
         self.commands[env_ids] = 0
-        self.command_sampler.sequence_target[env_ids] = False
-        self.command_sampler.recovery_target[env_ids] = False
         super().reset_idx(env_ids)
         self.joint_friction.reset(self.dof_pos, env_ids)
         self.passive_joint_torques[env_ids] = 0.

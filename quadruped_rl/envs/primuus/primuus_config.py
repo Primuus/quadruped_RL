@@ -49,34 +49,14 @@ class PrimuusCfg(LeggedRobotCfg):
         curriculum_min_time = 20.0  # [s]；至少间隔 20 仿真秒检查一次
         curriculum_settle_time = 1.0  # 每次切换命令后，跟踪统计先留 1 秒过渡
         curriculum_min_segment_time = 1.0  # 至少 1 秒有效统计；过早失败仍计入失败率
-        # 高速直行段保留基础稳定性验收；停车/低速方向也必须通过。
-        curriculum_max_foot_slip_speed = 0.12  # [m/s]；触地足水平滑移均速
-        curriculum_max_tilt = 0.25  # [rad]；机身倾斜均值
-        curriculum_max_height_error = 0.04  # [m]；相对统一机身高度目标
-        curriculum_min_foot_contact = 0.15  # 每只足的触地占比，允许正常腾空阶段
         resampling_time = 5.0  # [s]
         min_resampling_time = 3.0  # 每环境独立随机保持3–5秒，覆盖不同步态相位
         low_speed_boundary = 0.4
         low_speed_probability = 0.5  # 非前进平移类的低速子区间比例
-        keyboard_bearing_probability = 0.5  # 混合动作的一半采样精确8方向，另一半保持连续角度
-        transition_fraction = 0.1  # 10%环境运行前进→停车/后退/转向/斜移序列
-        recovery_fraction = 0.1  # 10%环境轮流练六类运动→停车，其余80%常规采样
         stand_min_resampling_time = 6.0  # [s]；零目标保持更久，覆盖制动、回正与持续稳站
         stand_resampling_time = 8.0
         stop_observation_time = 5.0  # [s]；完整观察停止后的姿态，不在短暂静止时提前成功
-        transition_initial_speed = 1.0
-        transition_step = 0.5
-        repair_duration = 120.0  # [仿真秒]；转向提速前至少完成行为修复阶段
-        initial_turn_speed = 1.0
         max_turn_speed = 1.0  # 原地和边走边转统一±1 rad/s，不再通过课程提速
-        turn_curriculum_step = 0.25
-        turn_error_threshold = 0.20  # [rad/s]；左右方向分别评估
-        quality_min_events = 200
-        quality_min_direction_samples = 200  # 26个部署方向组合分别验收低速跟踪
-        quality_min_stopping_per_mode = 50  # 六类运动后的停车各自验收，不能被直行停车掩盖
-        quality_max_failure_rate = 0.02
-        quality_low_xy_error = 0.10  # [m/s]
-        quality_low_yaw_error = 0.15  # [rad/s]
 
         class transition:
             enabled = True
@@ -87,15 +67,14 @@ class PrimuusCfg(LeggedRobotCfg):
             yaw_braking = 4.0
             transition_speed = 1.0  # 引入侧移/转向前先进入此平移包络
         heading_command = False
-        mode_names = ("stand", "forward", "backward", "lateral", "diagonal", "turn", "moving_turn")
-        mode_probabilities = [0.20, 0.35, 0.10, 0.10, 0.05, 0.10, 0.10]
+        mode_names = ("stand", "forward", "backward", "lateral", "turn", "moving_turn")
+        mode_probabilities = [0.20, 0.30, 0.10, 0.10, 0.20, 0.10]  # 左右方向各占对应类别的一半
         min_translation_speed = 0.12  # [m/s]
         min_turn_yaw = 0.12  # [rad/s]
         max_translation_speed = 2.0  # 全局包络；各方向另设限幅，不应用统一圆形上限
         max_backward_speed = 1.0
         max_lateral_speed = 1.0
-        max_diagonal_speed = 1.0  # XY 合成速度
-        max_moving_turn_speed = 1.0  # XY 合成速度
+        max_moving_turn_speed = 1.0  # 边走边转仅向前，vy=0
         forward_speed_bins = [[0.12, 0.5], [0.5, 1.0], [1.0, 2.0]]
         forward_speed_probabilities = [0.30, 0.40, 0.30]  # 前进类内部比例；未开放区间移除后重新归一化
 
