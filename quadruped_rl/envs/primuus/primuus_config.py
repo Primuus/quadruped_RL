@@ -68,7 +68,7 @@ class PrimuusCfg(LeggedRobotCfg):
         transition_step = 0.5
         repair_duration = 120.0  # [仿真秒]；转向提速前至少完成行为修复阶段
         initial_turn_speed = 1.0
-        max_turn_speed = 2.0
+        max_turn_speed = 1.0  # 原地和边走边转统一±1 rad/s，不再通过课程提速
         turn_curriculum_step = 0.25
         turn_error_threshold = 0.20  # [rad/s]；左右方向分别评估
         quality_min_events = 200
@@ -102,7 +102,7 @@ class PrimuusCfg(LeggedRobotCfg):
         class ranges(LeggedRobotCfg.commands.ranges):
             lin_vel_x = [-1.0, 2.0]  # 最终包络；运行时正向上限由课程决定
             lin_vel_y = [-1.0, 1.0]
-            ang_vel_yaw = [-2.0, 2.0]  # 最终包络，初始及旧检查点仍从±1开始
+            ang_vel_yaw = [-1.0, 1.0]  # 原地转向和边走边转共用偏航包络
             heading = [-3.14, 3.14]
 
     class control(LeggedRobotCfg.control):

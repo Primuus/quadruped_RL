@@ -351,9 +351,9 @@ class PrimuusCommandSampler:
         self.last_segments = state.get("last_segments", 0)
         for name, low, high in (("turn_limit", self.cfg.initial_turn_speed, self.cfg.max_turn_speed), ("moving_turn_limit", self.cfg.initial_turn_speed, self.cfg.max_turn_speed), ("transition_limit", self.cfg.transition_initial_speed, self.forward_limit)):
             value = state.get(name, low)
-            if not math.isfinite(value) or value < low or (name != 'transition_limit' and value > high):
+            if not math.isfinite(value) or value < low:
                 raise ValueError("Invalid saved %s" % name)
-            # 配置收窄前进范围时，历史过渡上限也必须一起收窄。
+            # 配置收窄速度范围时，历史转向及过渡上限也按当前配置收窄。
             setattr(self, name, min(value, high))
         self.repair_elapsed = state.get("repair_elapsed", 0.0)
         if not math.isfinite(self.repair_elapsed) or self.repair_elapsed < 0:
