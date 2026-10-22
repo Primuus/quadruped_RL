@@ -9,7 +9,7 @@ from quadruped_rl.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRob
 
 class PrimuusCfg(LeggedRobotCfg):
     class init_state(LeggedRobotCfg.init_state):
-        pos = [0.0, 0.0, 0.42]  # 沿用训练落地高度，不是部署初始高度或奖励目标
+        pos = [0.0, 0.0, 0.35]  # 训练初始及复位高度，不是部署初始高度或奖励目标
         dof_pos_scale_range = [0.9, 1.1]  # 缩小复位扰动，避免小腿初始角越出原始机械限位
         default_joint_angles = {
             'FL_hip_joint': 0.0,
@@ -84,7 +84,8 @@ class PrimuusCfg(LeggedRobotCfg):
     class domain_rand(LeggedRobotCfg.domain_rand):
         randomize_friction = True
         friction_range = [0.4, 1.25]
-        randomize_base_mass = False
+        randomize_base_mass = True
+        added_mass_range = [-1.0, 1.0]  # [kg]；各环境创建时采样机身附加质量
         push_robots = False
 
     class noise(LeggedRobotCfg.noise):
