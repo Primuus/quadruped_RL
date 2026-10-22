@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 import ctypes
 from dataclasses import dataclass
 import importlib
@@ -24,7 +24,7 @@ from .base import (
 )
 
 
-UNITREE_BINDING_API_VERSION = 2
+UNITREE_BINDING_API_VERSION = 3
 UNITREE_SDK_COMMIT = '5b79a42d81cd69adac1367db79efdb972a898fd1'
 
 
@@ -87,7 +87,11 @@ class UnitreeM8010Backend:
 
         self._lock = threading.RLock()
         self._ports: dict[str, Any] = {}
-        self._bus_executor: ThreadPoolExecutor | None = None
+        # A single owner per port also serializes braking after in-flight I/O.
+        self._bus_executors: dict[str, ThreadPoolExecutor] = {}
+        self._cycle_futures: dict[str, Future] = {}
+        self._stop_futures: dict[str, Future] = {}
+        self._stop_requested = threading.Event()
         self._motor_type: Any | None = None
         self._foc_mode: Any | None = None
         self._brake_mode: Any | None = None
@@ -167,10 +171,16 @@ class UnitreeM8010Backend:
 
             ports: dict[str, Any] = {}
             try:
-                # The official SerialPort API receives only the device path. The
-                # motor-specific baud rate is selected internally by the SDK.
                 for bus in self.config.buses:
-                    ports[bus.name] = sdk.SerialPort(bus.device)
+                    # Reserve half the complete-cycle budget for scheduling and
+                    # conversion; a bus may exchange several motors sequentially.
+                    timeout_us = max(1, int(
+                        self.config.state_timeout_s * 1e6
+                        / (2 * len(self._joints_by_bus[bus.name]))
+                    ))
+                    ports[bus.name] = sdk.SerialPort(
+                        bus.device, bus.baud_rate, timeout_us,
+                    )
             except Exception as exc:
                 self._close_ports(ports)
                 raise BackendUnavailableError(
@@ -186,10 +196,12 @@ class UnitreeM8010Backend:
                     motor_type,
                     sdk.MotorMode.BRAKE,
                 )
-                bus_executor = ThreadPoolExecutor(
-                    max_workers=len(self._buses),
-                    thread_name_prefix='unitree-rs485',
-                )
+                bus_executors = {
+                    name: ThreadPoolExecutor(
+                        max_workers=1, thread_name_prefix=f'unitree-rs485-{name}',
+                    )
+                    for name in self._buses
+                }
             except Exception as exc:
                 self._close_ports(ports)
                 raise BackendUnavailableError(
@@ -201,7 +213,10 @@ class UnitreeM8010Backend:
             self._foc_mode = foc_mode
             self._brake_mode = brake_mode
             self._ports = ports
-            self._bus_executor = bus_executor
+            self._bus_executors = bus_executors
+            self._cycle_futures.clear()
+            self._stop_futures.clear()
+            self._stop_requested.clear()
             self._is_open = True
             self._safe_stopped = False
             self._last_complete_state_timestamp = None
@@ -212,19 +227,18 @@ class UnitreeM8010Backend:
         self._validate_command(command)
         with self._lock:
             self._require_open()
-            if self._safe_stopped:
+            if self._safe_stopped or self._stop_requested.is_set():
                 raise BackendError(
                     'Unitree motor backend is safe-stopped; close and reopen it '
                     'before sending FOC commands'
                 )
 
-            executor = self._bus_executor
-            if executor is None:
+            if not self._bus_executors:
                 raise BackendError('Unitree motor bus workers are unavailable')
 
             cycle_start = self._read_clock()
             futures = {
-                bus_name: executor.submit(
+                bus_name: self._bus_executors[bus_name].submit(
                     self._exchange_bus,
                     bus_name,
                     indexed_joints,
@@ -232,17 +246,20 @@ class UnitreeM8010Backend:
                 )
                 for bus_name, indexed_joints in self._joints_by_bus.items()
             }
+            self._cycle_futures = futures
+            deadline = cycle_start + self.config.state_timeout_s
             results: dict[str, _BusCycleResult] = {}
             failures: list[str] = []
             for bus_name, future in futures.items():
                 try:
-                    results[bus_name] = future.result()
+                    results[bus_name] = future.result(
+                        timeout=max(0.0, deadline - self._read_clock()),
+                    )
                     self._bus_errors[bus_name] = None
-                except BackendCommunicationError as exc:
-                    message = f'Bus {bus_name!r} communication failed: {exc}'
-                    self._bus_errors[bus_name] = message
-                    failures.append(message)
                 except Exception as exc:
+                    self._stop_requested.set()
+                    if isinstance(exc, FutureTimeoutError):
+                        exc = BackendCommunicationError('motor cycle deadline exceeded')
                     message = f'Bus {bus_name!r} communication failed: {exc}'
                     self._bus_errors[bus_name] = message
                     failures.append(message)
@@ -272,6 +289,7 @@ class UnitreeM8010Backend:
             if state_age < 0.0 or cycle_duration < 0.0:
                 raise BackendCommunicationError('Motor backend clock moved backwards')
             if cycle_duration > self.config.state_timeout_s:
+                self._stop_requested.set()
                 message = (
                     f'Complete motor cycle took {cycle_duration:.6f}s; '
                     f'limit is {self.config.state_timeout_s:.6f}s'
@@ -280,6 +298,7 @@ class UnitreeM8010Backend:
                     self._bus_errors[bus_name] = message
                 raise BackendCommunicationError(message)
             if state_age > self.config.state_timeout_s:
+                self._stop_requested.set()
                 message = (
                     f'Complete motor state is already {state_age:.6f}s old; '
                     f'limit is {self.config.state_timeout_s:.6f}s'
@@ -300,24 +319,28 @@ class UnitreeM8010Backend:
             )
 
     def safe_stop(self) -> None:
+        self._stop_requested.set()
         with self._lock:
             if not self._is_open or self._safe_stopped:
                 return
-            executor = self._bus_executor
-            if executor is None:
+            if not self._bus_executors:
                 raise BackendError('Unitree motor bus workers are unavailable')
-            futures = {
-                bus_name: executor.submit(
-                    self._brake_bus,
-                    bus_name,
-                    indexed_joints,
-                )
-                for bus_name, indexed_joints in self._joints_by_bus.items()
-            }
+            # Queue all buses before waiting. A stuck bus cannot occupy another
+            # bus's worker, and no brake races a FOC transaction on the same port.
+            for bus_name, indexed_joints in self._joints_by_bus.items():
+                if bus_name not in self._stop_futures:
+                    self._stop_futures[bus_name] = self._bus_executors[bus_name].submit(
+                        self._brake_bus, bus_name, indexed_joints,
+                    )
+            deadline = self._read_clock() + self.config.state_timeout_s
             failures: list[str] = []
-            for bus_name, future in futures.items():
+            for bus_name, future in self._stop_futures.items():
                 try:
-                    bus_failures = future.result()
+                    bus_failures = future.result(
+                        timeout=max(0.0, deadline - self._read_clock()),
+                    )
+                except FutureTimeoutError:
+                    bus_failures = ['safe-stop deadline exceeded; brake remains queued']
                 except Exception as exc:
                     bus_failures = [f'bus worker failed: {exc}']
                 if bus_failures:
@@ -342,19 +365,29 @@ class UnitreeM8010Backend:
                 self.safe_stop()
             except BackendError as exc:
                 stop_error = exc
-            finally:
-                executor = self._bus_executor
-                self._bus_executor = None
-                self._close_ports(self._ports)
-                self._ports = {}
-                self._is_open = False
-                self._safe_stopped = stop_error is None
-                self._sdk = None
-                self._motor_type = None
-                self._foc_mode = None
-                self._brake_mode = None
-                if executor is not None:
-                    executor.shutdown(wait=True, cancel_futures=True)
+            pending = [
+                name for name in self._buses
+                if any(not future.done() for future in (
+                    self._cycle_futures.get(name), self._stop_futures.get(name),
+                ) if future is not None)
+            ]
+            if pending:
+                # Native code may still own these objects. Do not close a live
+                # port or cancel its queued brake; report incomplete shutdown.
+                raise BackendCommunicationError(
+                    'Motor I/O still active; ports left open: ' + ', '.join(pending)
+                ) from stop_error
+            for executor in self._bus_executors.values():
+                executor.shutdown(wait=True)
+            self._bus_executors.clear()
+            self._close_ports(self._ports)
+            self._ports = {}
+            self._is_open = False
+            self._safe_stopped = stop_error is None
+            self._sdk = None
+            self._motor_type = None
+            self._foc_mode = None
+            self._brake_mode = None
             if stop_error is not None:
                 raise stop_error
 
@@ -367,6 +400,8 @@ class UnitreeM8010Backend:
         port = self._ports[bus_name]
         feedback: list[tuple[int, float, float, float, float, int]] = []
         for index, joint in indexed_joints:
+            if self._stop_requested.is_set():
+                raise BackendCommunicationError('Motor cycle interrupted by stop request')
             data = self._exchange_joint(port, joint, command, index)
             q, dq, tau = self._feedback_to_joint(data, joint)
             feedback.append(

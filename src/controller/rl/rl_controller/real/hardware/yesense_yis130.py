@@ -51,6 +51,11 @@ class YesenseFrameParser:
         self.checksum_error_count = 0
         self.discarded_byte_count = 0
 
+    def discard_pending(self) -> None:
+        """Drop a partial old frame without resetting diagnostic counters."""
+        self.discarded_byte_count += len(self._buffer)
+        self._buffer.clear()
+
     def feed(self, chunk: bytes | bytearray | memoryview) -> list[YesenseFrame]:
         self._buffer.extend(bytes(chunk))
         frames: list[YesenseFrame] = []
@@ -274,6 +279,15 @@ class YesenseYis130Backend:
             assert self._serial is not None
             start = self._read_clock()
             deadline = start + self.config.state_timeout_s
+            # UART arrival time is not sensor acquisition time. Discard queued
+            # bytes and any partial frame, then wait for a new complete sample.
+            try:
+                self._serial.reset_input_buffer()
+            except Exception as exc:
+                message = f'YIS130 failed to discard stale input: {exc}'
+                self._last_error = message
+                raise BackendCommunicationError(message) from exc
+            self._parser.discard_pending()
             last_problem: str | None = None
             checksum_errors_at_start = self._parser.checksum_error_count
 
@@ -287,8 +301,17 @@ class YesenseYis130Backend:
                     self._last_error = message
                     raise BackendCommunicationError(message) from exc
                 received_at = self._read_clock()
+                if received_at >= deadline:
+                    message = 'Timed out waiting for a fresh YIS130 IMU frame'
+                    if last_problem is not None:
+                        message += f'; last protocol error: {last_problem}'
+                    elif self._parser.checksum_error_count > checksum_errors_at_start:
+                        message += '; checksum validation failed'
+                    self._last_error = message
+                    raise BackendCommunicationError(message)
 
                 latest_sample: tuple[YesenseFrame, np.ndarray, np.ndarray] | None = None
+                previous_tid = self._last_frame_tid
                 for frame in self._parser.feed(chunk):
                     try:
                         quaternion, angular_velocity = decode_yesense_imu_frame(
@@ -299,6 +322,12 @@ class YesenseYis130Backend:
                     except YesenseProtocolError as exc:
                         last_problem = f'YIS130 frame {frame.tid} rejected: {exc}'
                         continue
+                    if previous_tid is not None:
+                        delta = (frame.tid - previous_tid) & 0xFFFF
+                        if not 0 < delta < 0x8000:
+                            last_problem = f'YIS130 non-advancing frame TID {frame.tid} after {previous_tid}'
+                            continue
+                    previous_tid = frame.tid
                     latest_sample = (frame, quaternion, angular_velocity)
 
                 if latest_sample is not None:
@@ -317,25 +346,16 @@ class YesenseYis130Backend:
                         raise BackendCommunicationError(message) from exc
 
                     self._last_frame_tid = frame.tid
-                    self._last_state_timestamp = received_at
+                    # Conservative receive boundary: waiting/decoding time must
+                    # count toward state age, not renew an old sample's lifetime.
+                    self._last_state_timestamp = start
                     self._last_error = None
                     return ImuState(
                         quaternion_wxyz=body_quaternion,
                         angular_velocity=body_angular_velocity,
-                        timestamp=received_at,
+                        timestamp=start,
                     )
 
-                if received_at >= deadline:
-                    message = 'Timed out waiting for a complete YIS130 IMU frame'
-                    if last_problem is not None:
-                        message += f'; last protocol error: {last_problem}'
-                    elif (
-                        self._parser.checksum_error_count
-                        > checksum_errors_at_start
-                    ):
-                        message += '; checksum validation failed'
-                    self._last_error = message
-                    raise BackendCommunicationError(message)
                 if not chunk and received_at <= before_read:
                     message = (
                         'YIS130 serial read returned no data without advancing '

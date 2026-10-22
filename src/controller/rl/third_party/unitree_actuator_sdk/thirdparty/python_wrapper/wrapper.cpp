@@ -6,7 +6,7 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(unitree_actuator_sdk, m){ 
 m.doc() = "unitree_actuator_sdk python wrapper"; 
-m.attr("__quadruped_binding_api__") = 2;
+m.attr("__quadruped_binding_api__") = 3;
 m.attr("__quadruped_sdk_commit__") = "5b79a42d81cd69adac1367db79efdb972a898fd1";
  
 py::enum_<MotorType>(m, "MotorType")
@@ -45,7 +45,13 @@ py::class_<MotorData>(m, "MotorData")
   .def_readwrite("correct", &MotorData::correct);
 
 py::class_<SerialPort>(m, "SerialPort")
-  .def(py::init<const std::string &>())
+  .def(py::init([](const std::string &device, uint32_t baudrate, size_t timeout_us) {
+    if (baudrate == 0 || timeout_us == 0) {
+      throw py::value_error("baudrate and timeout_us must be positive");
+    }
+    return new SerialPort(device, 16, baudrate, timeout_us);
+  }), py::arg("device"), py::arg("baudrate") = 4000000,
+      py::arg("timeout_us") = 20000)
   .def("test", &SerialPort::test)
   // Native I/O uses only C++ objects. Each bus owns a separate port and frame.
   // Let the watchdog, IMU and other bus workers run while this call blocks.

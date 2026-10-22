@@ -6,15 +6,17 @@
 
 `unitree_actuator_sdk/` 是 Unitree 官方仓库的固定源码快照，供当前已实现的
 GO-M8010-6 电机后端。电机协议和核心库保持上游实现；本工程只在 Python
-wrapper 中加入绑定 API 与上游提交标记，并在阻塞收发期间释放GIL。机器人关节映射、
+wrapper 中加入绑定 API 与上游提交标记、串口波特率和超时参数，并在阻塞收发期间释放GIL。机器人关节映射、
 机械零位、方向、减速比换算和安全检查均由自己的硬件适配层负责。
 
 上游信息记录在 `unitree_actuator_sdk.version`。
 
-当前固定提交为 `5b79a42d81cd69adac1367db79efdb972a898fd1`、绑定API为2。
-API 2的 `sendRecv()` 使用 `py::gil_scoped_release`，使不同总线、IMU和watchdog线程可在原生I/O期间运行。
-每条总线独占串口及命令/反馈对象，单条总线内部仍顺序收发，生命周期由硬件后端串行管理。
-旧API 1二进制不满足并发契约，会被拒绝，更新源码后须在对应Python环境重新构建。
+当前固定提交为 `5b79a42d81cd69adac1367db79efdb972a898fd1`、绑定API为3。
+`SerialPort(device, baudrate, timeout_us)` 设置原生串口参数；后端按总线电机数量分配 `motors.state_timeout_s` 的一半作为收发等待预算，其余供调度与数据处理使用。
+`sendRecv()` 使用 `py::gil_scoped_release`，使不同总线、IMU和watchdog线程可在原生I/O期间运行。
+每条总线独占串口和单线程执行器；超时后禁止继续发送FOC，制动在各自总线排队，Python等待也受截止时间限制。
+仍在执行原生I/O的串口不会被提前销毁；此时关闭会报告未完成，排队的制动保留。
+旧绑定二进制会被拒绝，更新源码后须在对应Python环境重新构建。
 释放GIL不提供强制取消底层调用的能力。后端源码存在不表示已经通过真实电机验收；不是Unitree SDK2整机接口，也不是训练依赖。
 
 更新 SDK 时必须：

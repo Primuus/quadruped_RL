@@ -131,14 +131,14 @@ keyboard:
     - null
     - null
     - null
-  # 必须填写训练 commands.max_translation_speed；按档位限制 XY 模长，yaw 独立限幅。
-  # Primuus七模式策略需额外在keyboard下填写motion_limits映射：
+  # 按对应策略的命令包络填写；按档位限制 XY 模长，yaw 独立限幅。
+  # 当前Primuus五模式策略需额外在keyboard下填写motion_limits映射：
   #   backward: 1.0, diagonal: 1.0, moving_turn: 1.0（均为m/s）
-  # 按Primuus训练最终包络设置时command_limits为[4.0, 1.0, 2.0]，max_translation_speed为4.0。
-  # 3250轮策略的实际转向课程上限仍为1 rad/s；2 rad/s为允许指令范围，跟踪能力需另行验收。
+  # 当前Primuus的command_limits为[2.0, 1.0, 1.0]，max_translation_speed为2.0。
+  # 2 m/s只适用于纯前进；训练其余平移/边走边转上限为1 m/s，转向上限为1 rad/s。
   # 使用四档时增加bindings.speed_max: KEY_4，speed_levels改为[0.25, 0.5, 0.75, 1.0]，
   # 并填写backward_speed_levels: [0.5, 0.5, 1.0, 1.0]；其余硬件字段仍须实物标定。
-  # 与新Primuus训练配合时，还可填写command_transition映射（默认关闭）：
+  # 部署可选command_transition映射（默认关闭）；当前训练命令直接切换，并无此过渡：
   # enabled: true, acceleration: 3.0, deceleration: 4.0, braking_deceleration: 6.0,
   # yaw_acceleration: 3.0, yaw_braking: 4.0, transition_speed: 1.0。
   max_translation_speed: null
