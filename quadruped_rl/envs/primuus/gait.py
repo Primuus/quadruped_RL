@@ -85,10 +85,6 @@ class GaitQuality:
         self.ground_seen = torch.zeros(num_envs, 4, dtype=torch.bool, device=device)
         self.air_time = torch.zeros_like(self.ground)
         self.swing_peak = torch.zeros_like(self.ground)
-        self.placement_penalty = torch.zeros(num_envs, device=device)
-        self.region_penalty = torch.zeros_like(self.placement_penalty)
-        self.crossing_penalty = torch.zeros_like(self.placement_penalty)
-        self.clearance_penalty = torch.zeros_like(self.placement_penalty)
 
     def reset(self, env_ids):
         self.center[env_ids] = self.nominal[:, :2]
@@ -113,14 +109,6 @@ class GaitQuality:
         side = self.nominal[:, 1].sign()
         crossing = (cfg.min_lateral_distance - feet_body[:, :, 1] * side).clamp(min=0)
         region = (excess.amax(dim=2) > cfg.region_tolerance) | (crossing > cfg.region_tolerance)
-        center_margin = torch.stack((cfg.center_x_tolerance + cfg.center_speed_tolerance * speed,
-                                     cfg.center_y_tolerance + cfg.mixed_lateral_margin * mixed), dim=1)
-        center_excess = (self.center - self.nominal[None, :, :2]).abs().sub(center_margin[:, None]).clamp(min=0)
-        # 活动区域/平均中心在停车时交接给站姿区域；跨中线约束始终保留。
-        self.region_penalty = ((excess / cfg.placement_scale).square().sum(dim=2) +
-                               (center_excess / cfg.placement_scale).square().sum(dim=2)).mean(dim=1)
-        self.crossing_penalty = (crossing / cfg.placement_scale).square().mean(dim=1)
-        self.placement_penalty = self.region_penalty + self.crossing_penalty
 
         # 对地高度配合对地水平速度；换脚时持续检查，收住水平速度后允许自然落地。
         raw_contacts = contacts if raw_contacts is None else raw_contacts
@@ -136,10 +124,9 @@ class GaitQuality:
         motion_height = (cfg.clearance_motion_height * _smoothstep(horizontal_speed / cfg.clearance_motion_speed) *
                          _smoothstep(self.air_time / cfg.clearance_min_air_time))
         motion_low = (motion_height - clearance).clamp(min=0)
-        # 峰值合格后，低空快速换脚仍有代价；起脚平滑增强，水平减速时平滑放松。
+        # 记录摆动峰值与水平换脚高度是否合格，不计算额外抬脚奖励。
         low = torch.maximum((minimum - self.swing_peak).clamp(min=0), motion_low)
         high = (clearance - maximum).clamp(min=0)
-        self.clearance_penalty = (((low + high) / cfg.clearance_scale).square() * swing).mean(dim=1)
 
         # 目标角越界只用于诊断和课程验收，不再计算额外奖励惩罚。
         target_excess = (self.limits[:, 0] - targets).clamp(min=0) + (targets - self.limits[:, 1]).clamp(min=0)

@@ -53,7 +53,6 @@ class PrimuusEnv(LeggedRobot):
         self.requested_commands = torch.zeros_like(self.commands)
         self.next_command_step = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         self.motion = MotionTracker(self.num_envs, self.device, self.dt, self.cfg.commands)
-        self.standing_weight = torch.zeros(self.num_envs, device=self.device)
         self.motion_phase = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         expected = [leg + '_' + part + '_joint' for leg in LEGS for part in ('hip', 'thigh', 'calf')]
         if self.dof_names != expected:
@@ -178,8 +177,6 @@ class PrimuusEnv(LeggedRobot):
         cfg = self.cfg.rewards
         speed = torch.linalg.vector_norm(self.base_lin_vel[:, :2], dim=1)
         yaw = self.base_ang_vel[:, 2].abs()
-        width = cfg.stand_speed_exit - cfg.stand_speed_enter
-        self.standing_weight.copy_(raw_stop * reference_stop * ((cfg.stand_speed_exit - speed) / width).clamp(0, 1) * ((cfg.stand_speed_exit - yaw) / width).clamp(0, 1))
         feet = self.feet_pos - self.root_states[:, None, :3]
         quat = self.base_quat[:, None].expand(-1, 4, -1).reshape(-1, 4)
         feet = quat_rotate_inverse(quat, feet.reshape(-1, 3)).reshape(self.num_envs, 4, 3)
@@ -204,19 +201,3 @@ class PrimuusEnv(LeggedRobot):
                            torch.where(self.commands[:, 0] < 0, 2, 1)), 0)
         mode = torch.where(turning, torch.where(moving, 6, 5), mode)
         return self.motion_height_targets[mode]
-
-    # 17项基础奖励使用e961f13版本LeggedRobot的通用计算公式。
-    # 下列额外整形项按配置启用；对应测量也用于日志和课程验收。
-    def _reward_foot_placement(self):
-        return self.gait.crossing_penalty + self.gait.region_penalty * (1 - self.standing_weight)
-
-    def _reward_stand_height(self):
-        return self.standing.height_penalty * self.standing_weight
-
-    def _reward_stand_joint_motion(self):
-        return self.dof_vel.square().mean(dim=1) * self.standing_weight * self.standing.quiet_weight
-
-    def _reward_braking(self):
-        raw_stop = torch.linalg.vector_norm(self.requested_commands[:, :3], dim=1) < 1e-7
-        error = (self.base_lin_vel[:, :2] - self.commands[:, :2]).square().sum(dim=1) + 0.25 * (self.base_ang_vel[:, 2] - self.commands[:, 2]).square()
-        return (torch.sqrt(error + 0.01) - 0.1) * raw_stop
