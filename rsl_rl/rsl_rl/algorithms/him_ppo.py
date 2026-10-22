@@ -78,9 +78,12 @@ class HIMPPO:
         self.transition.rewards = rewards.clone()
         self.transition.dones = dones
         if 'time_outs' in infos:
-            self.transition.rewards += self.gamma * torch.squeeze(
-                self.transition.values * infos['time_outs'].unsqueeze(1).to(self.device), 1
-            )
+            time_outs = infos['time_outs'].to(self.device).bool()
+            if time_outs.any():
+                # The runner restores pre-reset terminal observations here.
+                with torch.no_grad():
+                    terminal_values = self.actor_critic.evaluate(next_critic_obs[time_outs]).squeeze(-1)
+                self.transition.rewards[time_outs] += self.gamma * terminal_values
 
         self.storage.add_transitions(self.transition)
         self.transition.clear()

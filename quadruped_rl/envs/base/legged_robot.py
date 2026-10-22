@@ -178,6 +178,7 @@ class LeggedRobot(BaseTask):
         Args:
             env_ids (list[int]): List of environment ids which must be reset
         """
+        self.extras.pop("episode", None)
         if len(env_ids) == 0:
             return
 
