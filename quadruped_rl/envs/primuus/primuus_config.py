@@ -42,14 +42,16 @@ class PrimuusCfg(LeggedRobotCfg):
         max_curriculum = 2.0
         resampling_time = 5.0  # [s]；所有运动状态统一保持5秒并直接切换
         heading_command = False
-        mode_probabilities = [0.25, 0.25, 0.30, 0.20]  # 原地转向、边走边转、平移、站立
+        mode_names = ('turn', 'moving_turn', 'translate', 'stand', 'forward')
+        mode_probabilities = [0.25, 0.25, 0.15, 0.20, 0.15]  # 原地转向、边走边转、平移、站立、纯前进
         min_translation_speed = 0.12  # [m/s]
         min_turn_yaw = 0.12  # [rad/s]
-        max_translation_speed = 1.0  # XY 合成速度上限 [m/s]
+        max_translation_speed = 1.0  # 平移和边走边转的 XY 合成速度上限；纯前进使用 lin_vel_forward
         low_speed_probability = 0.30
         low_speed_scale = 0.35
 
         class ranges(LeggedRobotCfg.commands.ranges):
+            lin_vel_forward = [0.12, 2.0]  # 纯前进速度 [m/s]，vy 和 yaw 固定为零
             lin_vel_x = [-1.0, 1.0]
             lin_vel_y = [-1.0, 1.0]
             ang_vel_yaw = [-1.0, 1.0]

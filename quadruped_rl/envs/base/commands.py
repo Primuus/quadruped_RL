@@ -18,13 +18,14 @@ def post_quadruped_command_step(env):
 
 
 def resample_quadruped_commands(env, env_ids):
-    """按原地转向、边走边转、平移和站立场景采样命令。"""
+    """采样基础四类运动命令，并支持 Primuus 的独立纯前进状态。"""
     if len(env_ids) == 0:
         return
 
     probabilities = torch.as_tensor(env.cfg.commands.mode_probabilities, device=env.device)
-    if probabilities.shape != (4,) or torch.any(probabilities < 0) or not torch.isclose(probabilities.sum(), probabilities.new_tensor(1.0)):
-        raise ValueError("commands.mode_probabilities must contain four nonnegative values summing to 1")
+    mode_names = getattr(env.cfg.commands, "mode_names", ("turn", "moving_turn", "translate", "stand"))
+    if probabilities.shape != (len(mode_names),) or torch.any(probabilities < 0) or not torch.isclose(probabilities.sum(), probabilities.new_tensor(1.0)):
+        raise ValueError("commands.mode_probabilities must match mode_names and sum to 1 with nonnegative values")
     modes = torch.searchsorted(torch.cumsum(probabilities, dim=0), torch.rand(len(env_ids), device=env.device))
     env.command_modes[env_ids] = modes
     low_speed = torch.rand(len(env_ids), device=env.device) < env.cfg.commands.low_speed_probability
@@ -67,6 +68,15 @@ def resample_quadruped_commands(env, env_ids):
     ).squeeze(1) * sampling_scale
     yaw = torch.where(modes == 0, pure_turn_yaw, torch.where(modes == 1, combined_yaw, 0.0))
     env.commands[env_ids, 2] = yaw
+
+    if "forward" in mode_names:
+        # 纯前进独立采样，不受其他平移状态的 1 m/s 合速度限幅。
+        min_forward, max_forward = env.command_ranges["lin_vel_forward"]
+        forward_upper = (max_forward * sampling_scale).clamp(min=min_forward)
+        forward_speed = min_forward + (forward_upper - min_forward) * torch.rand(len(env_ids), device=env.device)
+        env.commands[env_ids, 0] = torch.where(
+            modes == mode_names.index("forward"), forward_speed, env.commands[env_ids, 0]
+        )
 
     if env.cfg.commands.heading_command:
         forward = quat_apply(env.base_quat[env_ids], env.forward_vec[env_ids])
