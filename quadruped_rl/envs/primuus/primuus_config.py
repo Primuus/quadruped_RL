@@ -85,7 +85,7 @@ class PrimuusCfg(LeggedRobotCfg):
         randomize_friction = True
         friction_range = [0.4, 1.25]
         randomize_base_mass = True
-        added_mass_range = [-1.0, 1.0]  # [kg]；各环境创建时采样机身附加质量
+        added_mass_range = [-3.0, 3.0]  # [kg]；各环境创建时采样机身附加质量
         push_robots = False
 
     class noise(LeggedRobotCfg.noise):
