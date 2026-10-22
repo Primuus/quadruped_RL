@@ -178,11 +178,11 @@ Primuus快捷训练入口：
 python quadruped_rl/scripts/train_primuus.py --headless
 ```
 
-Primuus的连续速度范围、动作采样比例和前进速度课程见[训练资产说明](resources/robots/primuus/README.md#速度指令与采样)。观测仍为 `45×6`、输出12关节，部署档位由部署工程另行设置。本轮使用原17项奖励建立独立run从头训练，不使用`--resume`；旧策略不会随配置修改而改变。
+Primuus使用独立任务配置和Jenkins关节损耗模型，连续速度范围和采样比例见[训练资产说明](resources/robots/primuus/README.md#速度指令与采样)。观测为 `45×6`、输出12关节，部署档位由部署工程另行设置。修改训练配置不会追溯改变已经导出的策略。
 
-当前仅启用19日从0训练至1500轮时的17项基础奖励，额外整形奖励的Primuus实现、配置和专用惩罚计算已删除；课程参数、检查点兼容及验收方法，见[Primuus运动训练](doc/primuus_motion_training.md)。直行对称奖励、对应偏置日志与课程门槛、动作镜像一致性损失及估计器镜像数据增强均已删除；HIM估计器保留原始样本的速度与隐变量学习。原地及前进转向上限统一1 rad/s；仅前进通过课程从1开放至2 m/s。
+当前启用17项基础奖励，HIM估计器使用原始观测学习速度和隐变量。训练速度课程关闭，XY合速度上限1 m/s，偏航上限1 rad/s；奖励名称、公式及参数见[Primuus运动训练](doc/primuus_motion_training.md)。
 
-`foot_placement`、`stand_joint_motion`、`braking`及Primuus自定义`stand_height`已删除，通用base原有的`stand_height`接口保持未启用。配套的落脚区域、平均足端中心、额外对地抬脚区间、关节目标越界、严格站姿与关节安静度检查也已删除。17项基础奖励与`e961f13`版本一致，所有运动状态共用0.28±0.03 m高度目标。前进课程只要求跟踪分数≥0.8、非超时终止率≤5%，最终上限2 m/s；滑移、倾斜、高度、各足接触及停车只作诊断。全部环境统一采样：站立20%、前进30%、后退10%、左右平移各5%、原地左右转各10%、前进左右转各5%。斜移、多方位混合转向、专用切换/停车环境及26方向验收已删除。
+所有运动状态共用0.28±0.03 m高度目标。采样为原地转向25%、边走边转25%、平移30%、站立20%，统一保持5秒并直接切换。平移和边走边转允许前后、左右和斜向分量；30%命令使用0.35倍低速采样范围。四类`Command/*`日志分别反映速度误差、姿态、换步和足端支撑情况。
 
 Go2快捷入口保持不变，始终训练Go2，不受通用入口默认值影响：
 
@@ -247,9 +247,9 @@ python quadruped_rl/scripts/train_primuus.py \
 | PD / 动作缩放 | `60 / 1.5`、`0.25`，与部署 `config/primuus.yaml` 同步 |
 | 默认关节角 | 按FL/FR/RL/RR排列，每腿 `[0, -0.75, -1.5]`，不使用Go2默认姿态 |
 | 复位条件 | 机身从0.42 m落地，关节角倍率 `[0.9, 1.1]`；不改机械关节限位 |
-| 高度奖励 | 所有运动状态统一0.28 m；高度奖励与稳站验收共用±0.03 m容差，与旧17项奖励版本一致 |
+| 高度奖励 | 所有运动状态统一0.28 m，容差±0.03 m，超出容差后计算归一化平方误差 |
 | 物理及控制周期 | 训练与play为 `dt=0.002 / substeps=1 / decimation=10`，PD 500 Hz；MuJoCo为 `0.0005 * 40`、PD 2 kHz，两侧策略均为50 Hz |
-| 碰撞 | 21 link / 12 DOF / 65形状，比169个减少约61.5%；基础几何与少量凸块组合，保留主槽净宽和折膝挡壁；圆柱不自动替换胶囊，保留固定足端、小腿载体及20对命名排除 |
+| 碰撞 | 21 link / 12 DOF / 65形状；基础几何与少量凸块组合，保留主槽净宽和折膝挡壁；圆柱不自动替换胶囊，保留固定足端、小腿载体及20对命名排除 |
 | 力矩 | 从Primuus URDF读取每关节 `23.7 N m` 上限；不假定与Go2相同 |
 | 关节损耗 | `joint_dynamics.json`与部署侧定义同步，运行时替换原生关节摩擦和阻尼，保留非零被动损耗 |
 | 输出 | checkpoint在 `logs/primuus/<run>/`，导出在 `logs/primuus/exported/policies/` |
@@ -314,17 +314,15 @@ Primuus的碰撞模型说明维护在部署工程 `src/controller/rl/resources/r
 
 例如从 `model_1000.pt` 恢复并设置 `--max_iterations 500`，正常完成后保存 `model_1500.pt`。新进程创建新的日志目录，不把新曲线直接写回旧 run。`Ctrl+C` 不会额外强制保存当前更新；恢复点以磁盘上已经完整写出的 checkpoint 为准。
 
-Primuus的v6课程状态仅保存前进上限、跟踪和失败率窗口。读取v1–v5时保留并按当前范围收窄前进上限，清空旧评估窗口；旧转向/过渡上限和额外质量窗口不再恢复。没有课程字段时，从配置的 `initial_forward_speed=1.0 m/s` 开始。配置改动在新进程生效，检查点不覆盖新的采样比例。恢复会重新创建仿真状态和命令段。
+Primuus指令范围和采样比例由当前配置决定，不保存或恢复额外课程进度。配置改动在之后启动的训练或play进程中生效，不会追溯修改已导出的策略。
 
-从第1500轮追加1000轮的例子（替换 `--load_run` 为实际目录名）：
+从第1500轮追加1000轮的例子（将`RUN_NAME`替换为实际目录名）：
 
 ```bash
 python quadruped_rl/scripts/train_primuus.py --headless --resume \
-  --load_run Oct19_20-36-41_rough --checkpoint 1500 \
-  --max_iterations 1000 --run_name forward_curriculum
+  --load_run RUN_NAME --checkpoint 1500 \
+  --max_iterations 1000 --run_name continuation
 ```
-
-验证脚本放在工程外的临时目录；每次验证完成后，立即清理本地和服务器上的测试脚本、smoke目录、测试模型、测试日志及测试缓存。正式训练检查点、TensorBoard日志和后台续训运行记录保留。
 
 ## 策略导出
 
@@ -424,7 +422,7 @@ Go2 的 `collision=-1.0` 惩罚持续大腿/小腿接触；力阈值 5 N、持�
 
 ### 零命令站立
 
-Primuus停车日志保留机身低速、直立、参考归零与四足支撑判据，已删除足端站姿区域、各关节姿态容差和关节速度RMS门槛。默认关节角由原有`stand_still`奖励引导，高度由`base_height`约束。零指令保持6–8秒，停车事件完整观察5秒，结果不参与课程晋级；`Command/stand`统计全部零目标样本。参数和奖励见[运动训练说明](doc/primuus_motion_training.md)。
+Primuus的零命令站立和其他指令一样保持5秒、直接切换。默认关节角由`stand_still`引导，高度由`base_height`约束，四足支撑由`stand_contacts`引导。`Command/stand`记录速度、姿态和支撑足统计，参数和奖励见[运动训练说明](doc/primuus_motion_training.md)。
 
 站立奖励要求平移命令模长不超过 `rewards.stand_lin_vel_threshold=0.1` m/s，且偏航命令绝对值不超过 `stand_ang_vel_threshold=0.1` rad/s。原地转向不满足这一条件，因此不会被要求保持默认站姿或四足同时支撑。
 
@@ -469,7 +467,7 @@ python quadruped_rl/scripts/train_primuus.py --headless --max_iterations 1500 --
 2. 按站立、平移、原地转向、边走边转分别评估
 3. 微调已有高度、接触、抬脚、滑移与换步奖励
 4. 调整现有噪声、摩擦、机身质量和 push
-5. 其他电机随机化、延迟、粗糙地形和真实高度输入：先实现并验证，再调参数
+5. 其他电机随机化、延迟、粗糙地形和真实高度输入：先接入对应数据与运行逻辑，再调参数
 ```
 
 判断参数是否有效时，不只看总 reward，还要看速度跟踪、力矩、动作平滑、脚是否拖地、是否频繁摔倒，以及 MuJoCo 部署效果。

@@ -69,7 +69,7 @@ python -m pip install --no-deps -e ./rsl_rl
 python -m pip install --no-deps -e .
 ```
 
-Isaac Gym不随本仓库分发。额外系统依赖按安装包内的说明和 `docs/`配置；新主机需分别确认导入、物理响应与训练链路，不能把包版本相同视为兼容保证。
+Isaac Gym不随本仓库分发。额外系统依赖按安装包内的说明和`docs/`配置。
 
 ## 检查安装
 
@@ -87,13 +87,7 @@ nvidia-smi
 python -c "import isaacgym; import torch; import quadruped_rl; from rsl_rl.env import VecEnv; print(torch.__version__)"
 ```
 
-导入正常不等于物理仿真和训练已验证。训练验收由用户在确认 GPU 空闲后执行，例如：
-
-```bash
-python quadruped_rl/scripts/train_primuus.py --headless --max_iterations 100
-```
-
-默认仍为 4096 环境。检查命令不是后台自动任务，不会因阅读文档而运行。
+训练入口和默认参数见[训练首页](../README.md)。
 
 ## 常见问题
 

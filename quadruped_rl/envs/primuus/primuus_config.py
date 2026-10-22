@@ -38,50 +38,21 @@ class PrimuusCfg(LeggedRobotCfg):
         num_actions = 12
 
     class commands(LeggedRobotCfg.commands):
-        curriculum = True
-        initial_forward_speed = 1.0  # 新训练及不含课程状态的旧 checkpoint 从此上限开始
-        max_curriculum = 2.0  # 前进最终上限；1→1.5→2 m/s
-        curriculum_step = 0.5
-        curriculum_high_speed_fraction = 0.8  # 只评估当前上限 80% 以上的直线前进段
-        curriculum_tracking_threshold = 0.8  # exp(-XY误差平方 / tracking_sigma) 的段均值
-        curriculum_max_failure_rate = 0.05  # 完成/失败指令段中非超时终止的比例
-        curriculum_min_segments = 200
-        curriculum_min_time = 20.0  # [s]；至少间隔 20 仿真秒检查一次
-        curriculum_settle_time = 1.0  # 每次切换命令后，跟踪统计先留 1 秒过渡
-        curriculum_min_segment_time = 1.0  # 至少 1 秒有效统计；过早失败仍计入失败率
-        resampling_time = 5.0  # [s]
-        min_resampling_time = 3.0  # 每环境独立随机保持3–5秒，覆盖不同步态相位
-        low_speed_boundary = 0.4
-        low_speed_probability = 0.5  # 非前进平移类的低速子区间比例
-        stand_min_resampling_time = 6.0  # [s]；零目标保持更久，覆盖制动、回正与持续稳站
-        stand_resampling_time = 8.0
-        stop_observation_time = 5.0  # [s]；完整观察停止后的姿态，不在短暂静止时提前成功
-        max_turn_speed = 1.0  # 原地和边走边转统一±1 rad/s，不再通过课程提速
-
-        class transition:
-            enabled = True
-            acceleration = 3.0  # [m/s²]
-            deceleration = 4.0
-            braking_deceleration = 6.0
-            yaw_acceleration = 3.0  # [rad/s²]
-            yaw_braking = 4.0
-            transition_speed = 1.0  # 引入侧移/转向前先进入此平移包络
+        curriculum = False
+        max_curriculum = 2.0
+        resampling_time = 5.0  # [s]；所有运动状态统一保持5秒并直接切换
         heading_command = False
-        mode_names = ("stand", "forward", "backward", "lateral", "turn", "moving_turn")
-        mode_probabilities = [0.20, 0.30, 0.10, 0.10, 0.20, 0.10]  # 左右方向各占对应类别的一半
+        mode_probabilities = [0.25, 0.25, 0.30, 0.20]  # 原地转向、边走边转、平移、站立
         min_translation_speed = 0.12  # [m/s]
         min_turn_yaw = 0.12  # [rad/s]
-        max_translation_speed = 2.0  # 全局包络；各方向另设限幅，不应用统一圆形上限
-        max_backward_speed = 1.0
-        max_lateral_speed = 1.0
-        max_moving_turn_speed = 1.0  # 边走边转仅向前，vy=0
-        forward_speed_bins = [[0.12, 0.5], [0.5, 1.0], [1.0, 2.0]]
-        forward_speed_probabilities = [0.30, 0.40, 0.30]  # 前进类内部比例；未开放区间移除后重新归一化
+        max_translation_speed = 1.0  # XY 合成速度上限 [m/s]
+        low_speed_probability = 0.30
+        low_speed_scale = 0.35
 
         class ranges(LeggedRobotCfg.commands.ranges):
-            lin_vel_x = [-1.0, 2.0]  # 最终包络；运行时正向上限由课程决定
+            lin_vel_x = [-1.0, 1.0]
             lin_vel_y = [-1.0, 1.0]
-            ang_vel_yaw = [-1.0, 1.0]  # 原地转向和边走边转共用偏航包络
+            ang_vel_yaw = [-1.0, 1.0]
             heading = [-3.14, 3.14]
 
     class control(LeggedRobotCfg.control):
@@ -118,18 +89,15 @@ class PrimuusCfg(LeggedRobotCfg):
         add_noise = True
 
     class rewards(LeggedRobotCfg.rewards):
-        # 沿用10月19日0–1500轮的17项基础奖励，新增整形奖励已删除。
-        tracking_sigma = 0.25  # XY误差平方/yaw误差平方的指数分母，先提供宽跟踪反馈
         soft_dof_pos_limit = 0.9
         base_height_target = 0.28  # [m]；奖励目标，不代表默认角纯 PD 承重后的实际高度
         base_height_tolerance = 0.03  # 0.25-0.31 m 内不惩罚正常高度浮动
         base_height_sigma = 0.05
-        clearance_height_target = -0.20  # [m]；机身坐标系摆动足目标高度，使用通用抬脚机制
-        clearance_height_sigma = 0.05  # [m]；仅对未接触且有水平相对运动的足端计算
+        clearance_height_target = -0.20  # 足端相对机身的摆动目标高度 [m]
+        clearance_height_sigma = 0.05
         turn_step_min_yaw = 0.12
         turn_step_reward_interval = 0.5
         only_positive_rewards = False
-        stand_speed_exit = 0.25  # [m/s或rad/s]；停车诊断由制动转入收稳阶段的阈值
 
         class scales(LeggedRobotCfg.rewards.scales):
             tracking_lin_vel = 1.0
@@ -139,15 +107,15 @@ class PrimuusCfg(LeggedRobotCfg):
             orientation = -0.2
             dof_acc = -2.5e-7
             base_height = -0.4
-            foot_clearance = -0.01  # 通用机身系目标高度误差×摆动足水平相对速度
+            foot_clearance = -0.01
             foot_slip = -0.10
             turn_step = 0.1
             action_rate = -0.01
             smoothness = -0.01
             torques = -0.0002
             collision = -1.0
-            stand_still = -0.1  # 零参考命令下的默认关节角绝对偏差，使用通用公式
-            stand_contacts = -0.4  # 零参考命令下的缺足比例，使用通用四足支撑公式
+            stand_still = -0.1
+            stand_contacts = -0.4
             dof_pos_limits = -10.0
 
     class sim(LeggedRobotCfg.sim):

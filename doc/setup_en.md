@@ -69,7 +69,7 @@ python -m pip install --no-deps -e ./rsl_rl
 python -m pip install --no-deps -e .
 ```
 
-Isaac Gym is not distributed with this repository. Follow the archive's local documentation for system dependencies. On a new machine, check package imports, physical responses, and training separately rather than assuming matching versions guarantee compatibility.
+Isaac Gym is not distributed with this repository. Follow the archive's local documentation for system dependencies.
 
 ## Checks And Troubleshooting
 
@@ -87,13 +87,7 @@ Import Isaac Gym before PyTorch:
 python -c "import isaacgym; import torch; import quadruped_rl; from rsl_rl.env import VecEnv; print(torch.__version__)"
 ```
 
-Successful imports do not validate physics or training. The user can run a short training session after checking GPU availability:
-
-```bash
-python quadruped_rl/scripts/train_primuus.py --headless --max_iterations 100
-```
-
-This uses the default 4096 environments. Primuus and Go2 have independent train/play entry points; generic scripts default to Primuus. Use `train_go2.py` and `play_go2.py` for Go2.
+Training entry points and default parameters are described in the [training guide](../README.md).
 
 | Symptom | Check |
 | --- | --- |
