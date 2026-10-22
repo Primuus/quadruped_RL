@@ -17,6 +17,7 @@ from quadruped_rl.envs.base.commands import (
     post_quadruped_command_step,
     resample_quadruped_commands,
     update_quadruped_command_curriculum,
+    validate_command_sampling,
 )
 from quadruped_rl.envs.base.domain_rand import (
     process_quadruped_rigid_body_props,
@@ -754,6 +755,7 @@ class LeggedRobot(BaseTask):
         self.use_rigid_body_state = reward_requires_rigid_body_state(self.reward_scales)
         self.track_turn_steps = self.reward_scales.get("turn_step", 0.0) != 0.0
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
+        validate_command_sampling(cfg.commands)
         if not math.isfinite(cfg.commands.max_translation_speed) or not 0.0 < cfg.commands.min_translation_speed <= cfg.commands.max_translation_speed:
             raise ValueError("commands translation speed limits must be finite, positive and ordered")
         if not math.isfinite(cfg.commands.low_speed_probability) or not 0.0 <= cfg.commands.low_speed_probability <= 1.0:
