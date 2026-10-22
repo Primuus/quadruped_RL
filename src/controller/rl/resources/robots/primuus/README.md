@@ -91,7 +91,7 @@ Primuus的训练与策略部署使用[统一关节损耗](../../../../../../doc/
 python3 -m mujoco.viewer --mjcf=src/controller/rl/resources/robots/primuus/scene_flat.xml
 ```
 
-空格暂停。裸Viewer不读取YAML、不运行PD，直接播放后的自由下落不能代表受控站立。默认部署初始机身Z为0.31212 m，训练复位高度为0.42 m，两者不是高度奖励目标。
+空格暂停。裸Viewer不读取YAML、不运行PD，直接播放后的自由下落不能代表受控站立。默认部署初始机身Z为0.31212 m，Primuus训练复位高度为0.35 m，两者不是高度奖励目标。
 
 查看碰撞时关闭Geom group 2、开启3，并启用 **Convex Hull**；否则STL可能仍按显示网格渲染。外观材质为浅银灰。
 

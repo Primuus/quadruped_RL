@@ -184,7 +184,7 @@ turn/valid_steps_per_second 低
 max(abs(base_z - target) - tolerance, 0)² / sigma²
 ```
 
-配合各模式 `base_height` 判断是站立矮、行走矮还是仅转向时下沉。初始0.42 m不是行走高度目标。
+配合各模式 `base_height` 判断是站立矮、行走矮还是仅转向时下沉。Primuus初始0.35 m不是行走高度目标。
 
 ### Episode/contact_<body>
 
