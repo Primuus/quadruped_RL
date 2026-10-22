@@ -4,10 +4,11 @@ import math
 
 import torch
 
-from .gait import QUALITY_FIELDS
-
-
 MODE_NAMES = ("stand", "forward", "backward", "lateral", "diagonal", "turn", "moving_turn")
+STABILITY_FIELDS = (
+    "foot_slip_speed", "tilt", "height_error",
+    "contact_fl", "contact_fr", "contact_rl", "contact_rr",
+)
 
 
 class PrimuusCommandSampler:
@@ -50,12 +51,12 @@ class PrimuusCommandSampler:
         self.yaw_valid_steps = torch.zeros(num_envs, device=device, dtype=torch.long)
         self.turn_window = torch.zeros(2, 2, 3, device=device)  # mode, direction, count/error/failure
         self.last_quality_ready = False
-        self.gait_sum = torch.zeros(num_envs, len(QUALITY_FIELDS), device=device)
-        self.gait_steps = torch.zeros_like(self.segment_steps)
-        self.gait_window = torch.zeros(1 + len(QUALITY_FIELDS), device=device)
-        self.last_gait_values = torch.zeros(len(QUALITY_FIELDS), device=device)
-        self.last_gait_segments = 0
-        self.last_gait_ready = False
+        self.stability_sum = torch.zeros(num_envs, len(STABILITY_FIELDS), device=device)
+        self.stability_steps = torch.zeros_like(self.segment_steps)
+        self.stability_window = torch.zeros(1 + len(STABILITY_FIELDS), device=device)
+        self.last_stability_values = torch.zeros(len(STABILITY_FIELDS), device=device)
+        self.last_stability_segments = 0
+        self.last_stability_ready = False
 
     def _validate(self):
         cfg = self.cfg
@@ -117,11 +118,9 @@ class PrimuusCommandSampler:
             raise ValueError('Invalid Primuus standing duration or per-motion stopping coverage')
         if not minimum_valid(cfg):
             raise ValueError("Invalid Primuus turn/transition curriculum or repair settings")
-        limits = [getattr(cfg, 'curriculum_max_' + name) for name in QUALITY_FIELDS[:-4]]
+        limits = [getattr(cfg, 'curriculum_max_' + name) for name in STABILITY_FIELDS[:-4]]
         if any(not math.isfinite(v) or v <= 0 for v in limits) or not 0 < cfg.curriculum_min_foot_contact < 1:
-            raise ValueError('Invalid Primuus gait curriculum thresholds')
-        if any(getattr(cfg, 'curriculum_max_' + name) > 1 for name in ('foot_region_violation', 'target_violation', 'clearance_violation')):
-            raise ValueError('Primuus gait violation fractions must be at most one')
+            raise ValueError('Invalid Primuus stability curriculum thresholds')
 
     def _uniform(self, count, low, high):
         return low + (high - low) * torch.rand(count, device=self.device)
@@ -207,11 +206,11 @@ class PrimuusCommandSampler:
         self.segment_yaw_limit[env_ids] = yaw_max
         self.yaw_error_sum[env_ids] = 0
         self.yaw_valid_steps[env_ids] = 0
-        self.gait_sum[env_ids] = 0
-        self.gait_steps[env_ids] = 0
+        self.stability_sum[env_ids] = 0
+        self.stability_steps[env_ids] = 0
         return commands, modes
 
-    def observe(self, commands, actual_velocity, done, time_out, actual_yaw=None, quality_ready=False, gait_values=None):
+    def observe(self, commands, actual_velocity, done, time_out, actual_yaw=None, quality_ready=False, stability_values=None):
         """Observe the command actually used by this physics step, before reset/resampling."""
         if not self.curriculum_enabled:
             return
@@ -222,13 +221,13 @@ class PrimuusCommandSampler:
         score = torch.exp(-error / self.tracking_sigma)
         self.tracking_sum += torch.where(valid, score, 0.0)
         self.valid_steps += valid.long()
-        if gait_values is not None:
-            # 缺少或非有限测量不计作合格样本，不能用默认零值绕过步态门槛。
-            if gait_values.shape != self.gait_sum.shape:
-                raise ValueError('Primuus gait curriculum values have an invalid shape')
-            gait_valid = valid & torch.isfinite(gait_values).all(dim=1) & (gait_values >= 0).all(dim=1)
-            self.gait_sum += torch.where(gait_valid[:, None], gait_values, 0.0)
-            self.gait_steps += gait_valid.long()
+        if stability_values is not None:
+            # 缺少或非有限测量不计作合格样本，不能用默认零值绕过基础稳定性门槛。
+            if stability_values.shape != self.stability_sum.shape:
+                raise ValueError('Primuus stability curriculum values have an invalid shape')
+            stability_valid = valid & torch.isfinite(stability_values).all(dim=1) & (stability_values >= 0).all(dim=1)
+            self.stability_sum += torch.where(stability_valid[:, None], stability_values, 0.0)
+            self.stability_steps += stability_valid.long()
         if actual_yaw is not None:
             yaw_valid = self.active & (self.segment_steps * self.dt > self.cfg.curriculum_settle_time)
             self.yaw_error_sum += torch.where(yaw_valid, (self.segment_yaw - actual_yaw).abs(), 0.0)
@@ -244,23 +243,23 @@ class PrimuusCommandSampler:
             self.last_segments = int(count)
             self.last_tracking = score_sum / count
             self.last_failure_rate = failures / count
-            gait_count = self.gait_window[0].item()
-            self.last_gait_segments = int(gait_count)
-            self.last_gait_values.copy_(self.gait_window[1:] / max(gait_count, 1))
-            limits = self.last_gait_values.new_tensor([getattr(self.cfg, 'curriculum_max_' + name) for name in QUALITY_FIELDS[:-4]])
-            self.last_gait_ready = bool(gait_count >= self.cfg.curriculum_min_segments and
-                                       (self.last_gait_values[:-4] <= limits).all() and
-                                       (self.last_gait_values[-4:] >= self.cfg.curriculum_min_foot_contact).all())
+            stability_count = self.stability_window[0].item()
+            self.last_stability_segments = int(stability_count)
+            self.last_stability_values.copy_(self.stability_window[1:] / max(stability_count, 1))
+            limits = self.last_stability_values.new_tensor([getattr(self.cfg, 'curriculum_max_' + name) for name in STABILITY_FIELDS[:-4]])
+            self.last_stability_ready = bool(stability_count >= self.cfg.curriculum_min_segments and
+                                       (self.last_stability_values[:-4] <= limits).all() and
+                                       (self.last_stability_values[-4:] >= self.cfg.curriculum_min_foot_contact).all())
             if (self.last_tracking >= self.cfg.curriculum_tracking_threshold and
                     self.last_failure_rate <= self.cfg.curriculum_max_failure_rate and
-                    self.last_gait_ready and quality_ready):
+                    self.last_stability_ready and quality_ready):
                 self.forward_limit = min(self.forward_limit + self.cfg.curriculum_step, self.cfg.max_curriculum)
             self.window.zero_()
-            self.gait_window.zero_()
+            self.stability_window.zero_()
         self.last_quality_ready = bool(quality_ready)
-        if quality_ready and self.last_gait_ready:
+        if quality_ready and self.last_stability_ready:
             self.transition_limit = min(self.transition_limit + self.cfg.transition_step, self.forward_limit)
-        repair_ready = quality_ready and self.last_gait_ready and self.repair_elapsed >= self.cfg.repair_duration and self.transition_limit >= self.cfg.max_curriculum
+        repair_ready = quality_ready and self.last_stability_ready and self.repair_elapsed >= self.cfg.repair_duration and self.transition_limit >= self.cfg.max_curriculum
         for index, name in enumerate(("turn_limit", "moving_turn_limit")):
             window = self.turn_window[index]
             if torch.all(window[:, 0] >= self.cfg.curriculum_min_segments):
@@ -281,10 +280,10 @@ class PrimuusCommandSampler:
             eligible = self.active[env_ids] & self.high_speed[env_ids] & (self.segment_limit[env_ids] == self.forward_limit) & (enough_time | failed)
             mean_score = self.tracking_sum[env_ids] / self.valid_steps[env_ids].clamp(min=1)
             self.window += torch.stack((eligible.sum(), torch.where(eligible, mean_score, 0.0).sum(), (eligible & failed).sum()))
-            gait_eligible = eligible & (self.gait_steps[env_ids] * self.dt + 1e-6 >= self.cfg.curriculum_min_segment_time)
-            gait_mean = self.gait_sum[env_ids] / self.gait_steps[env_ids, None].clamp(min=1)
-            self.gait_window[0] += gait_eligible.sum()
-            self.gait_window[1:] += torch.where(gait_eligible[:, None], gait_mean, 0.0).sum(dim=0)
+            stability_eligible = eligible & (self.stability_steps[env_ids] * self.dt + 1e-6 >= self.cfg.curriculum_min_segment_time)
+            stability_mean = self.stability_sum[env_ids] / self.stability_steps[env_ids, None].clamp(min=1)
+            self.stability_window[0] += stability_eligible.sum()
+            self.stability_window[1:] += torch.where(stability_eligible[:, None], stability_mean, 0.0).sum(dim=0)
             yaw_steps = self.yaw_valid_steps[env_ids]
             for index, mode in enumerate((5, 6)):
                 current_limit = self.turn_limit if index == 0 else self.moving_turn_limit
@@ -296,7 +295,7 @@ class PrimuusCommandSampler:
 
     def state_dict(self):
         return {
-            "version": 4,
+            "version": 5,
             "forward_limit": float(self.forward_limit),
             "window": self.window.tolist(),
             "check_elapsed": self.check_elapsed,
@@ -308,10 +307,10 @@ class PrimuusCommandSampler:
             "transition_limit": self.transition_limit,
             "repair_elapsed": self.repair_elapsed,
             "turn_window": self.turn_window.tolist(),
-            "gait_window": self.gait_window.tolist(),
-            "last_gait_values": self.last_gait_values.tolist(),
-            "last_gait_segments": self.last_gait_segments,
-            "last_gait_ready": self.last_gait_ready,
+            "stability_window": self.stability_window.tolist(),
+            "last_stability_values": self.last_stability_values.tolist(),
+            "last_stability_segments": self.last_stability_segments,
+            "last_stability_ready": self.last_stability_ready,
         }
 
     def load_state_dict(self, state):
@@ -327,16 +326,16 @@ class PrimuusCommandSampler:
         self.sequence_target.zero_()
         self.recovery_target.zero_()
         self.last_quality_ready = False
-        self.gait_sum.zero_()
-        self.gait_steps.zero_()
-        self.gait_window.zero_()
-        self.last_gait_values.zero_()
-        self.last_gait_segments = 0
-        self.last_gait_ready = False
+        self.stability_sum.zero_()
+        self.stability_steps.zero_()
+        self.stability_window.zero_()
+        self.last_stability_values.zero_()
+        self.last_stability_segments = 0
+        self.last_stability_ready = False
         if state is None:
             self.forward_limit = self.cfg.initial_forward_speed if self.cfg.curriculum else self.cfg.max_curriculum
             return
-        if state.get("version") not in (1, 2, 3, 4) or not math.isfinite(state["forward_limit"]):
+        if state.get("version") not in (1, 2, 3, 4, 5) or not math.isfinite(state["forward_limit"]):
             raise ValueError("unsupported or invalid Primuus command curriculum checkpoint")
         saved_limit = state["forward_limit"]
         self.forward_limit = min(max(saved_limit, self.cfg.initial_forward_speed), self.cfg.max_curriculum) if self.cfg.curriculum else self.cfg.max_curriculum
@@ -363,32 +362,32 @@ class PrimuusCommandSampler:
         if turn_window.shape != (2, 2, 3) or not torch.isfinite(turn_window).all() or (turn_window < 0).any() or (turn_window[..., 2] > turn_window[..., 0]).any():
             raise ValueError("Invalid saved turn evaluation window")
         self.turn_window.copy_(turn_window)
-        if state.get('version') == 4:
-            gait_window = torch.tensor(state.get('gait_window'), device=self.device)
-            last_values = torch.tensor(state.get('last_gait_values'), device=self.device)
-            for values, shape in ((gait_window, self.gait_window.shape), (last_values, self.last_gait_values.shape)):
+        if state.get('version') == 5:
+            stability_window = torch.tensor(state.get('stability_window'), device=self.device)
+            last_values = torch.tensor(state.get('last_stability_values'), device=self.device)
+            for values, shape in ((stability_window, self.stability_window.shape), (last_values, self.last_stability_values.shape)):
                 if values.shape != shape or not torch.isfinite(values).all() or (values < 0).any():
-                    raise ValueError('Invalid saved Primuus gait evaluation window')
-            if (gait_window[-4:] > gait_window[0]).any() or (last_values[-4:] > 1).any():
+                    raise ValueError('Invalid saved Primuus stability evaluation window')
+            if (stability_window[-4:] > stability_window[0]).any() or (last_values[-4:] > 1).any():
                 raise ValueError('Invalid saved Primuus foot contact fractions')
-            self.last_gait_segments = state.get('last_gait_segments', 0)
-            if not isinstance(self.last_gait_segments, int) or self.last_gait_segments < 0 or not isinstance(state.get('last_gait_ready'), bool):
-                raise ValueError('Invalid saved Primuus gait evaluation status')
+            self.last_stability_segments = state.get('last_stability_segments', 0)
+            if not isinstance(self.last_stability_segments, int) or self.last_stability_segments < 0 or not isinstance(state.get('last_stability_ready'), bool):
+                raise ValueError('Invalid saved Primuus stability evaluation status')
             if self.forward_limit == saved_limit:
-                self.gait_window.copy_(gait_window)
-                self.last_gait_values.copy_(last_values)
-                self.last_gait_ready = state['last_gait_ready']
+                self.stability_window.copy_(stability_window)
+                self.last_stability_values.copy_(last_values)
+                self.last_stability_ready = state['last_stability_ready']
         else:
-            # 旧窗口的指标布局不同，保留已存速度上限，重新累计晋级证据。
+            # v1–v4含已删除的额外整形指标；保留速度上限，重新累计基础稳定性证据。
             self.window.zero_()
             self.turn_window.zero_()
             self.check_elapsed = 0.0
         if self.forward_limit != saved_limit:
             self.window.zero_()
-            self.gait_window.zero_()
+            self.stability_window.zero_()
             self.turn_window.zero_()
             self.check_elapsed = 0.0
-            self.last_gait_ready = False
+            self.last_stability_ready = False
 
     def metrics(self):
         metrics = {
@@ -401,10 +400,10 @@ class PrimuusCommandSampler:
             "transition_limit": self.transition_limit,
             "repair_elapsed": self.repair_elapsed,
             "quality_ready": float(self.last_quality_ready),
-            "gait_ready": float(self.last_gait_ready),
-            "gait_evaluated_segments": self.last_gait_segments,
+            "stability_ready": float(self.last_stability_ready),
+            "stability_evaluated_segments": self.last_stability_segments,
         }
-        metrics.update({'gait_' + name: value for name, value in zip(QUALITY_FIELDS, self.last_gait_values.tolist())})
+        metrics.update({'stability_' + name: value for name, value in zip(STABILITY_FIELDS, self.last_stability_values.tolist())})
         return metrics
 
 

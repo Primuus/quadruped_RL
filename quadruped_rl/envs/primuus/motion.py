@@ -84,14 +84,14 @@ class MotionTracker:
         self.velocity_mean[env_ids] = 0
 
     def observe(self, requested, reference, velocity, yaw, position, gravity_z,
-                joint_velocity, contacts, done, time_out, phase, normal_stance):
+                contacts, done, time_out, phase):
         self.elapsed += self.active * self.dt
         actual = torch.cat((velocity[:, :2], yaw[:, None]), dim=1)
         self.velocity_mean.lerp_(actual, self.dt / (0.2 + self.dt))
         upright = (position[:, 2] > 0.18) & (gravity_z < -0.866)
         body = (torch.linalg.vector_norm(velocity[:, :2], dim=1) < 0.1) & (yaw.abs() < 0.1) & upright
         quiet = ((torch.linalg.vector_norm(velocity[:, :2], dim=1) < 0.05) & (yaw.abs() < 0.05) &
-                 (joint_velocity.square().mean(dim=1).sqrt() < 0.25) & contacts.all(dim=1) & upright & normal_stance &
+                 contacts.all(dim=1) & upright &
                  (torch.linalg.vector_norm(reference, dim=1) < 1e-7))
         stopping = self.active & self.stopping
         starting_body = stopping & body & (self.body_hold == 0)
@@ -114,7 +114,7 @@ class MotionTracker:
         target_speed = torch.linalg.vector_norm(requested[:, :2], dim=1)
         acquired = (xy_error < (0.12 + 0.10 * target_speed)) & (yaw_error < (0.12 + 0.10 * requested[:, 2].abs())) & upright
         self.target_hold.copy_(torch.where(self.active & ~self.stopping & acquired, self.target_hold + self.dt, 0.0))
-        # 停车完整观察五秒，防止先短暂回正、随后塌姿仍被当作成功。
+        # 停车完整观察五秒，检查持续低速、四足支撑与直立状态。
         settled = torch.where(self.stopping, self.body_done & self.quiet_done & body & quiet, self.target_hold >= 0.5)
         failed = self.active & done.bool() & ~time_out.bool()
         deadline = torch.where(self.stopping, self.cfg.stop_observation_time, 5.0)
