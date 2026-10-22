@@ -167,7 +167,7 @@ class PrimuusCfg(LeggedRobotCfg):
         target_tolerance = 0.005  # [rad]；日志/课程的目标越界检测容差
 
     class rewards(LeggedRobotCfg.rewards):
-        # 保留e961f13的17项基础奖励，另启用3项小权重足端和站立整形。
+        # 仅启用e961f13的17项基础奖励，额外整形奖励全部关闭。
         tracking_sigma = 0.25  # XY误差平方/yaw误差平方的指数分母，先提供宽跟踪反馈
         soft_dof_pos_limit = 0.9
         base_height_target = 0.28  # [m]；奖励目标，不代表默认角纯 PD 承重后的实际高度
@@ -201,7 +201,7 @@ class PrimuusCfg(LeggedRobotCfg):
             base_height = -0.4
             feet_air_time = 0.0  # 基础walk不额外奖励长腾空，避免鼓励跳跃
             foot_clearance = -0.01  # 通用机身系目标高度误差×摆动足水平相对速度
-            foot_placement = -0.05  # 轻约束活动区域、跨中线及平均中心，原-0.4的1/8
+            foot_placement = 0.0  # 关闭额外足端区域、跨中线及平均中心奖励
             foot_slip = -0.10
             turn_step = 0.1
             action_rate = -0.01
@@ -209,11 +209,11 @@ class PrimuusCfg(LeggedRobotCfg):
             torques = -0.0002
             collision = -1.0
             stand_still = -0.1  # 零参考命令下的默认关节角绝对偏差，使用通用公式
-            stand_height = -0.02  # 与base_height共用0.28±0.03m，回正阶段最多增加5%高度代价
+            stand_height = 0.0  # 关闭额外站立高度奖励，由base_height统一约束
             stand_contacts = -0.4  # 零参考命令下的缺足比例，使用通用四足支撑公式
             dof_pos_limits = -10.0
             braking = 0.0  # 暂停额外制动奖励，停车由零指令速度跟踪学习
-            stand_joint_motion = -0.002  # 原-0.02的1/10；姿态未回正时仍由quiet_weight减弱
+            stand_joint_motion = 0.0  # 关闭额外站立关节运动奖励
 
     class sim(LeggedRobotCfg.sim):
         dt = 0.002  # [s]；部署仍为 0.5 ms，两侧策略周期均为 20 ms
