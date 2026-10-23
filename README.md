@@ -320,6 +320,7 @@ python3 src/controller/rl/rl_controller/deploy_real_rl.py \
 
 - [TensorBoard 使用指南](doc/TensorBoard使用指南.md)
 - [训练调参教程](doc/训练调参教程.md)
+- [关节动力学](doc/关节动力学.md)
 
 ## 故障行为
 
