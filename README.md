@@ -425,6 +425,8 @@ Go2 的 `collision=-1.0` 惩罚持续大腿/小腿接触；力阈值 5 N、持�
 
 Primuus的零命令站立和其他指令一样保持5秒、直接切换。默认关节角由`stand_still`引导，高度由`base_height`约束，四足支撑由`stand_contacts`引导。`Command/stand`记录速度、姿态和支撑足统计，参数和奖励见[运动训练说明](doc/primuus_motion_training.md)。
 
+Primuus的`stand_still`使用加权绝对角度误差：`rewards.stand_still_joint_weights`将四个髋关节设为3.0，其余关节按1.0计算；总系数保持-0.1。该权重只在站立指令下生效，为大腿和小腿保留承重调整空间。
+
 站立奖励要求平移命令模长不超过 `rewards.stand_lin_vel_threshold=0.1` m/s，且偏航命令绝对值不超过 `stand_ang_vel_threshold=0.1` rad/s。原地转向不满足这一条件，因此不会被要求保持默认站姿或四足同时支撑。
 
 Go2 启用以下两项站立专用约束，高度由全局 `base_height` 负责：

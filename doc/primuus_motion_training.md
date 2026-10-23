@@ -1,7 +1,7 @@
 # Primuus 训练配置与基础奖励
 
 Primuus在`envs/primuus/primuus_config.py`中定义任务参数，继承通用环境与HIM-PPO配置。
-`PrimuusEnv`负责Jenkins关节损耗和复位，指令采样使用通用`envs/base/commands.py`。
+`PrimuusEnv`负责Jenkins关节损耗、复位和站立姿态关节权重，指令采样使用通用`envs/base/commands.py`。
 本任务启用17项基础奖励，使用固定范围的五类运动指令。
 
 ## 当前有效奖励
@@ -22,7 +22,7 @@ Primuus在`envs/primuus/primuus_config.py`中定义任务参数，继承通用�
 | smoothness | -0.01 | 动作二阶差分平方和 |
 | torques | -0.0002 | 电机力矩平方和 |
 | collision | -1.0 | 持续非足端接触数量 |
-| stand_still | -0.1 | 零参考指令时，关节相对本机默认角的绝对偏差之和 |
+| stand_still | -0.1 | 零参考指令时，关节相对本机默认角的加权绝对偏差之和；四髋3倍，其余1倍 |
 | stand_contacts | -0.4 | 零参考指令时，缺少支撑的足端比例 |
 | dof_pos_limits | -10.0 | 实际关节角超软限位的幅度之和 |
 
@@ -36,7 +36,11 @@ Primuus在`envs/primuus/primuus_config.py`中定义任务参数，继承通用�
 这仍是高度引导惩罚，不强制固定四足相位，也不额外奖励长时间腾空。
 
 零参考指令掩码与通用基线一致：XY模长和yaw绝对值均不超过0.1。
-站姿偏差直接使用本机默认角，支撑足使用5N阈值并保留一帧接触滤波。
+站姿偏差直接使用本机默认角。`rewards.stand_still_joint_weights`按关节名称指定相对权重：
+四个`hip_joint`均为3.0，未列出的大腿和小腿关节为1.0，总系数仍为`scales.stand_still=-0.1`。
+因此站立时髋关节的有效系数为-0.3，其余关节为-0.1；行走、侧移和转向不启用此项。
+该项是姿态软约束，不锁定关节，也不要求四条腿使用相同动作。
+支撑足使用5N阈值并保留一帧接触滤波。
 缺足奖励按四足缺失比例计分。
 
 表外奖励保持零权重，包括通用base中的`stand_height`和`feet_air_time`。

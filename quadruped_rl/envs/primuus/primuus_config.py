@@ -104,6 +104,13 @@ class PrimuusCfg(LeggedRobotCfg):
         turn_step_min_yaw = 0.12
         turn_step_reward_interval = 0.5
         only_positive_rewards = False
+        # 仅用于 stand_still：四髋默认角偏差按3倍计分，未列出的关节按1倍计分。
+        stand_still_joint_weights = {
+            'FL_hip_joint': 3.0,
+            'FR_hip_joint': 3.0,
+            'RL_hip_joint': 3.0,
+            'RR_hip_joint': 3.0,
+        }
 
         class scales(LeggedRobotCfg.rewards.scales):
             tracking_lin_vel = 1.0

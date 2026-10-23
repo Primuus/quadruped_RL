@@ -1,4 +1,4 @@
-"""Primuus 环境入口；观测、奖励和控制循环使用通用 base。"""
+"""Primuus 环境入口；适配关节损耗和站立姿态权重，观测与控制循环使用通用 base。"""
 
 from isaacgym import gymtorch
 import torch
@@ -25,6 +25,10 @@ class PrimuusEnv(LeggedRobot):
 
     def _init_buffers(self):
         super()._init_buffers()
+        self.stand_still_joint_weights = torch.tensor(
+            [self.cfg.rewards.stand_still_joint_weights.get(name, 1.0) for name in self.dof_names],
+            dtype=torch.float, device=self.device,
+        )
         self.joint_dynamics.validate_joint_names(self.dof_names)
         self.joint_friction = JenkinsJointFriction(self.joint_dynamics, self.dof_pos, torch.clamp)
         self.passive_joint_torques = torch.zeros_like(self.torques)
@@ -35,6 +39,10 @@ class PrimuusEnv(LeggedRobot):
         # self.torques remains the capped motor effort used by torque rewards.
         self.net_joint_torques[:] = self.torques + self.passive_joint_torques
         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.net_joint_torques))
+
+    def _reward_stand_still(self):
+        joint_error = torch.abs(self.dof_pos - self.default_dof_pos)
+        return torch.sum(joint_error * self.stand_still_joint_weights, dim=1) * self._standing_command_mask()
 
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
