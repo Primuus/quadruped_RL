@@ -143,7 +143,7 @@ class LeggedRobot(BaseTask):
         self.reset_idx(env_ids)
         
         if self.cfg.domain_rand.push_robots:
-            push_quadruped_robots(self)
+            self._push_robots()
             self._update_base_state()
 
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)

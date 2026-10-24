@@ -89,7 +89,9 @@ class PrimuusCfg(LeggedRobotCfg):
         friction_range = [0.4, 1.25]
         randomize_base_mass = True  # 创建各环境时随机化机身质量，腿部质量保持标称值
         added_mass_range = [-0.5, 0.5]  # [kg]；相对模型标称机身质量均匀增减
-        push_robots = False
+        push_robots = False  # 已支持增量Push；当前先验证质量随机化
+        push_interval_range_s = [12.0, 18.0]  # [s]；各环境独立倒计时，复位后重新采样
+        max_push_vel_xy = 0.25  # 每轴世界系速度增量上限 [m/s]，XY合成最大约0.354 m/s
 
     class noise(LeggedRobotCfg.noise):
         add_noise = True

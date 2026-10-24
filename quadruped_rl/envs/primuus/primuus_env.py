@@ -27,6 +27,20 @@ class PrimuusEnv(LeggedRobot):
 
     def _parse_cfg(self, cfg):
         super()._parse_cfg(cfg)
+        if cfg.domain_rand.push_robots:
+            interval = cfg.domain_rand.push_interval_range_s
+            if (len(interval) != 2 or not all(math.isfinite(v) for v in interval)
+                    or not 0.0 < interval[0] <= interval[1]):
+                raise ValueError('push_interval_range_s must contain finite 0 < min <= max')
+            # PhysX exposes dt as float32; snap near-integer ratios before taking bounds.
+            step_bounds = [v / self.dt for v in interval]
+            step_bounds = [round(v) if math.isclose(v, round(v), rel_tol=1e-7) else v for v in step_bounds]
+            self.push_interval_min_steps = math.ceil(step_bounds[0])
+            self.push_interval_max_steps = math.floor(step_bounds[1])
+            if self.push_interval_min_steps > self.push_interval_max_steps:
+                raise ValueError('push_interval_range_s must contain at least one policy timestep')
+            if not math.isfinite(cfg.domain_rand.max_push_vel_xy) or cfg.domain_rand.max_push_vel_xy < 0.0:
+                raise ValueError('max_push_vel_xy must be finite and nonnegative')
         if self.reward_scales.get('stand_foot_lateral', 0.0) == 0.0:
             return
         sigma = cfg.rewards.stand_foot_lateral_sigma
@@ -66,6 +80,38 @@ class PrimuusEnv(LeggedRobot):
         self.joint_friction = JenkinsJointFriction(self.joint_dynamics, self.dof_pos, torch.clamp)
         self.passive_joint_torques = torch.zeros_like(self.torques)
         self.net_joint_torques = torch.zeros_like(self.torques)
+        if self.cfg.domain_rand.push_robots:
+            self.push_steps_remaining = torch.empty(self.num_envs, dtype=torch.long, device=self.device)
+            self._reset_push_timer(torch.arange(self.num_envs, device=self.device))
+
+    def _reset_push_timer(self, env_ids):
+        if len(env_ids) == 0:
+            return
+        self.push_steps_remaining[env_ids] = torch.randint(
+            self.push_interval_min_steps, self.push_interval_max_steps + 1,
+            (len(env_ids),), device=self.device,
+        )
+
+    def _push_robots(self):
+        """Independent interval pushes: add world XY velocity once, never on a reset step."""
+        if not self.cfg.domain_rand.push_robots:
+            return
+        # reset_idx has already run; fresh resets must not consume their first timer tick.
+        active = self.episode_length_buf > 0
+        self.push_steps_remaining[active] -= 1
+        env_ids = (active & (self.push_steps_remaining <= 0)).nonzero(as_tuple=False).flatten()
+        if len(env_ids) == 0:
+            return
+        # IsaacLab mdp.events.push_by_setting_velocity also adds a sampled velocity increment.
+        max_vel = self.cfg.domain_rand.max_push_vel_xy
+        delta = (2.0 * torch.rand(len(env_ids), 2, device=self.device) - 1.0) * max_vel
+        self.root_states[env_ids, 7:9] += delta
+        env_ids_int32 = env_ids.to(dtype=torch.int32)
+        self.gym.set_actor_root_state_tensor_indexed(
+            self.sim, gymtorch.unwrap_tensor(self.root_states),
+            gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32),
+        )
+        self._reset_push_timer(env_ids)
 
     def _apply_torques(self):
         self.passive_joint_torques[:] = self.joint_friction.compute(self.dof_pos, self.dof_vel)
@@ -99,3 +145,5 @@ class PrimuusEnv(LeggedRobot):
         self.joint_friction.reset(self.dof_pos, env_ids)
         self.passive_joint_torques[env_ids] = 0.
         self.net_joint_torques[env_ids] = 0.
+        if self.cfg.domain_rand.push_robots:
+            self._reset_push_timer(env_ids)
