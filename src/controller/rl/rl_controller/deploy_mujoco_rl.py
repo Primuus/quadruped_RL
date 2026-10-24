@@ -5,6 +5,7 @@ import math
 import sys
 import time
 import weakref
+from itertools import count
 from pathlib import Path
 
 if __package__ in (None, ''):
@@ -344,7 +345,10 @@ class MujocoRLRunner:
             self.data.qfrc_applied[self.joint_qvel_adr] = self.passive_joint_torque
 
     def run(self, headless: bool = False) -> None:
-        total_steps = max(1, int(np.ceil(self.cfg.simulation_duration / self.cfg.simulation_dt)))
+        total_steps = (
+            None if self.cfg.simulation_duration == 0.0
+            else max(1, int(np.ceil(self.cfg.simulation_duration / self.cfg.simulation_dt)))
+        )
         decimation = max(1, int(self.cfg.control_decimation))
 
         if headless:
@@ -378,7 +382,7 @@ class MujocoRLRunner:
             flush=True,
         )
 
-    def _run_loop(self, total_steps: int, viewer: mujoco.viewer.Handle | None, decimation: int) -> None:
+    def _run_loop(self, total_steps: int | None, viewer: mujoco.viewer.Handle | None, decimation: int) -> None:
         wall_start = time.perf_counter()
         next_render = wall_start
         render_interval = 1.0 / self.render_fps
@@ -391,7 +395,8 @@ class MujocoRLRunner:
         last_render_sim = 0.0
         window_sim_gap_ms = window_wall_gap_ms = 0.0
         total_sim_gap_ms = total_wall_gap_ms = 0.0
-        for step in range(total_steps):
+        steps = count() if total_steps is None else range(total_steps)
+        for step in steps:
             self._process_keyboard_input()
             if step % decimation == 0:
                 self._compute_policy_output()
@@ -458,7 +463,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help='Policy inference backend. Default: infer from the model file extension.',
     )
     parser.add_argument('--xml-path', type=Path, default=None, help='Override MuJoCo XML path.')
-    parser.add_argument('--duration', type=float, default=None, help='Override simulation duration in seconds.')
+    parser.add_argument(
+        '--duration', type=float, default=None,
+        help='Override simulation duration in seconds; 0 runs until stopped.',
+    )
     parser.add_argument(
         '--command',
         type=float,

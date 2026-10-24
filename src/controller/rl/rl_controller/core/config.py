@@ -130,7 +130,7 @@ class RobotRLConfig:
     package_root: Path  # 包根目录
     policy_path: Path  # 策略权重文件路径
     xml_path: Path  # MuJoCo 场景文件路径
-    simulation_duration: float  # 仿真总时长 [s]
+    simulation_duration: float  # 仿真总时长 [s]；0 表示不限时
     simulation_dt: float  # 仿真步长 [s]
     control_decimation: int  # 一个动作持续的仿真步数
     num_actions: int  # 动作维度
@@ -245,7 +245,7 @@ class RobotRLConfig:
             policy_path=policy_path,
             xml_path=xml_path,
             simulation_duration=float(
-                raw.get('simulation_duration', 60.0)
+                raw.get('simulation_duration', 0.0)
                 if simulation_duration is None else simulation_duration
             ),
             simulation_dt=float(raw.get('simulation_dt', 0.002)),
@@ -310,7 +310,8 @@ class RobotRLConfig:
             raise ValueError(f'xml_path does not exist: {self.xml_path}')
         if self.simulation_joint_dynamics_path is not None and not self.simulation_joint_dynamics_path.is_file():
             raise ValueError(f'simulation_joint_dynamics_path does not exist: {self.simulation_joint_dynamics_path}')
-        _require_positive_finite(self.simulation_duration, 'simulation_duration')
+        if not np.isfinite(self.simulation_duration) or self.simulation_duration < 0.0:
+            raise ValueError('simulation_duration must be finite and nonnegative')
         _require_positive_finite(self.simulation_dt, 'simulation_dt')
         if self.control_decimation <= 0:
             raise ValueError('control_decimation must be positive')

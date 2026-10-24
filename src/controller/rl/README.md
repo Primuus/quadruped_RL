@@ -156,6 +156,8 @@ MuJoCo 正式入口和主循环，负责：
 
 MuJoCo策略不使用critic特权观测，但使用已导出的estimator+actor。历史缓存由运行器维护，不能把270维外部输入误解为直接加载一个裸actor MLP。
 
+`config/primuus.yaml`的`simulation_duration`默认为0，即不限时运行，关闭窗口或按`Ctrl+C`停止；正数表示仿真总秒数。`--duration`可临时覆盖该配置，例如`--duration 30`运行30秒，`--duration 0`不限时。无界面不限时运行时使用`Ctrl+C`停止。
+
 显示频率可用`--render-fps 60`调整，参数必须为有限正数；积压时跳过显示帧，不重复同步追帧。
 界面同步不再跟随Primuus的2000Hz物理循环。`--status-interval 1`控制终端状态输出间隔，
 设为0只保留结束汇总。RTF为仿真推进时长除以现实耗时，接近1表示实时，低于1表示慢放。

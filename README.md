@@ -155,6 +155,8 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 
 Primuus 使用自身平地场景、默认角和 `60 / 1.5` PD。训练物理步长2 ms、部署0.5 ms，两侧策略周期均为20 ms；统一关节损耗只在Python运行器中生效，不改变电机限矩或地面接触模型。
 
+Primuus默认不限运行时长，关闭窗口或按`Ctrl+C`停止。时长在`src/controller/rl/config/primuus.yaml`的`simulation_duration`中设置：0表示不限时，正数表示仿真秒数；命令行`--duration 30`可临时运行30秒，`--duration 0`表示不限时。
+
 界面同步默认独立运行于60Hz，可用`--render-fps`调整。终端每现实秒显示目标指令、
 策略参考指令、实际机身速度及实时率RTF；RTF接近1表示实时，低于1表示画面慢放。
 `--status-interval 0`关闭周期状态输出，结束时仍保留运行汇总。显示刷新不改变物理步长、策略频率或四档速度。
