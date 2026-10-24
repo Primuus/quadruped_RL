@@ -43,7 +43,7 @@ class PrimuusCfg(LeggedRobotCfg):
         resampling_time = 5.0  # [s]；所有运动状态统一保持5秒并直接切换
         heading_command = False
         mode_names = ('turn', 'moving_turn', 'translate', 'stand', 'forward')
-        mode_probabilities = [0.25, 0.15, 0.15, 0.30, 0.15]  # 原地转向、边走边转、平移、站立、纯前进
+        mode_probabilities = [0.20, 0.15, 0.25, 0.20, 0.20]  # 原地转向、边走边转、平移、站立、纯前进
         translation_axis_probability = 0.60  # 平移中60%等概率采样纯后退、纯左移、纯右移，其余保留任意方向
         forward_speed_bins = [[0.12, 1.0], [1.0, 1.5], [1.5, 2.0]]  # 纯前进分段范围 [m/s]
         forward_speed_probabilities = [0.60, 0.15, 0.25]  # 分段内均匀采样，不再叠加low_speed缩放
@@ -87,8 +87,8 @@ class PrimuusCfg(LeggedRobotCfg):
     class domain_rand(LeggedRobotCfg.domain_rand):
         randomize_friction = True
         friction_range = [0.4, 1.25]
-        randomize_base_mass = False  # 初步训练使用模型标称质量
-        added_mass_range = [0.0, 0.0]  # [kg]；不添加额外机身质量
+        randomize_base_mass = True  # 创建各环境时随机化机身质量，腿部质量保持标称值
+        added_mass_range = [-0.5, 0.5]  # [kg]；相对模型标称机身质量均匀增减
         push_robots = False
 
     class noise(LeggedRobotCfg.noise):
