@@ -180,7 +180,7 @@ python quadruped_rl/scripts/train_primuus.py --headless
 
 Primuus使用独立任务配置和Jenkins关节损耗模型，连续速度范围和采样比例见[训练资产说明](resources/robots/primuus/README.md#速度指令与采样)。观测为 `45×6`、输出12关节，部署档位由部署工程另行设置。修改训练配置不会追溯改变已经导出的策略。
 
-当前启用18项基础奖励，HIM估计器使用原始观测学习速度和隐变量。训练速度课程关闭，纯前进上限2 m/s，其他平移状态的XY合速度上限1 m/s，偏航上限1 rad/s；奖励名称、公式及参数见[Primuus运动训练](doc/primuus_motion_training.md)。
+当前启用19项基础奖励，HIM估计器使用原始观测学习速度和隐变量。训练速度课程关闭，纯前进上限2 m/s，其他平移状态的XY合速度上限1 m/s，偏航上限1 rad/s；奖励名称、公式及参数见[Primuus运动训练](doc/primuus_motion_training.md)。
 
 所有运动状态共用0.28±0.03 m高度目标。采样为纯前进20%、原地转向20%、边走边转15%、平移25%、站立20%，统一保持5秒并直接切换。平移模式中60%等概率采样纯后退、纯左移和纯右移，其余40%保留任意XY方向；边走边转保留任意XY方向。纯前进的侧向和偏航指令为零，按[0.12,1.0]、[1.0,1.5]、[1.5,2.0]m/s三段分别以60%、15%、25%的概率采样，不叠加低速缩放；其他运动命令仍有30%使用0.35倍低速采样范围。五类`Command/*`日志分别反映速度误差、姿态、换步和足端支撑情况。
 
@@ -426,7 +426,7 @@ Go2 的 `collision=-1.0` 惩罚持续大腿/小腿接触；力阈值 5 N、持�
 Primuus的零命令站立和其他指令一样保持5秒、直接切换。默认关节角由`stand_still`引导，高度由`base_height`约束，四足支撑由`stand_contacts`引导。`Command/stand`记录速度、姿态和支撑足统计，参数和奖励见[运动训练说明](doc/primuus_motion_training.md)。
 
 Primuus的`stand_still`使用加权绝对角度误差：`rewards.stand_still_joint_weights`将四个髋关节设为3.0，其余关节按1.0计算；总系数保持-0.1。该权重只在站立指令下生效，为大腿和小腿保留承重调整空间。
-`stand_foot_lateral`另以-0.2系数约束站立足端的机身系横向范围：左足0.12–0.18 m、右足-0.18至-0.12 m，越界距离按0.05 m归一化后平方求和；范围内及运动指令下不计罚，不限制足端前后位置和高度。
+`stand_orientation=-5.0`额外引导站立时机身水平；全局`orientation=-0.2`保持不变。`stand_foot_lateral=+0.5`使用指数奖励引导左足Y为+0.15 m、右足Y为-0.15 m，误差尺度为0.10 m；按名称匹配足端，并使用直立缩放。两项仅在站立命令下生效，不限制足端X/Z，不要求四脚受力相等。公式、开源出处及适配差异见[运动训练说明](doc/primuus_motion_training.md)。
 
 站立奖励要求平移命令模长不超过 `rewards.stand_lin_vel_threshold=0.1` m/s，且偏航命令绝对值不超过 `stand_ang_vel_threshold=0.1` rad/s。原地转向不满足这一条件，因此不会被要求保持默认站姿或四足同时支撑。
 

@@ -111,15 +111,15 @@ class PrimuusCfg(LeggedRobotCfg):
             'RL_hip_joint': 3.0,
             'RR_hip_joint': 3.0,
         }
-        # 站立足端在机身坐标系的横向允许范围 [m]；按名称匹配，不依赖足端排列。
-        # 标称站姿足端横向位置约为±0.1495 m，范围内允许承重与平衡调整。
-        stand_foot_lateral_bounds = {
-            'FL_foot_link': [0.12, 0.18],
-            'FR_foot_link': [-0.18, -0.12],
-            'RL_foot_link': [0.12, 0.18],
-            'RR_foot_link': [-0.18, -0.12],
+        # robot_lab feet_distance_y_exp 的站立适配；按名称指定机身系Y目标 [m]。
+        # 总站宽0.30 m，接近本机标称±0.1495 m；软奖励不锁定足端位置。
+        stand_foot_lateral_targets = {
+            'FL_foot_link': 0.15,
+            'FR_foot_link': -0.15,
+            'RL_foot_link': 0.15,
+            'RR_foot_link': -0.15,
         }
-        stand_foot_lateral_sigma = 0.05  # 越界距离归一化尺度 [m]，不约束足端前后位置和高度
+        stand_foot_lateral_sigma = 0.10  # 指数分母为sigma² [m²]，不约束足端X/Z
 
         class scales(LeggedRobotCfg.rewards.scales):
             tracking_lin_vel = 1.0
@@ -138,7 +138,8 @@ class PrimuusCfg(LeggedRobotCfg):
             collision = -1.0
             stand_still = -0.1
             stand_contacts = -0.4
-            stand_foot_lateral = -0.2
+            stand_orientation = -5.0  # 仅站立额外约束水平，总orientation系数为-5.2
+            stand_foot_lateral = 0.5  # 指数奖励：越接近横向目标越大，必须使用正权重
             dof_pos_limits = -10.0
 
     class sim(LeggedRobotCfg.sim):

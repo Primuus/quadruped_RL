@@ -1,8 +1,8 @@
 # Primuus 训练配置与基础奖励
 
 Primuus在`envs/primuus/primuus_config.py`中定义任务参数，继承通用环境与HIM-PPO配置。
-`PrimuusEnv`负责Jenkins关节损耗、复位、站立姿态关节权重和足端横向范围，指令采样使用通用`envs/base/commands.py`。
-本任务启用18项基础奖励，使用固定范围的五类运动指令。
+`PrimuusEnv`负责Jenkins关节损耗、复位、站立姿态关节权重、水平约束和足端横向目标，指令采样使用通用`envs/base/commands.py`。
+本任务启用19项基础奖励，使用固定范围的五类运动指令。
 
 ## 当前有效奖励
 
@@ -24,7 +24,8 @@ Primuus在`envs/primuus/primuus_config.py`中定义任务参数，继承通用�
 | collision | -1.0 | 持续非足端接触数量 |
 | stand_still | -0.1 | 零参考指令时，关节相对本机默认角的加权绝对偏差之和；四髋3倍，其余1倍 |
 | stand_contacts | -0.4 | 零参考指令时，缺少支撑的足端比例 |
-| stand_foot_lateral | -0.2 | 零参考指令时，足端越出机身系横向范围的归一化距离平方和 |
+| stand_orientation | -5.0 | 零参考指令时，额外计算重力投影XY分量平方和 |
+| stand_foot_lateral | +0.5 | 零参考指令时，exp(-四足横向目标误差平方和 / 0.10²) × 直立缩放 |
 | dof_pos_limits | -10.0 | 实际关节角超软限位的幅度之和 |
 
 `tracking_sigma=0.25`是误差平方的指数分母，不是标准差。
@@ -41,12 +42,35 @@ Primuus在`envs/primuus/primuus_config.py`中定义任务参数，继承通用�
 四个`hip_joint`均为3.0，未列出的大腿和小腿关节为1.0，总系数仍为`scales.stand_still=-0.1`。
 因此站立时髋关节的有效系数为-0.3，其余关节为-0.1；行走、侧移和转向不启用此项。
 该项是姿态软约束，不锁定关节，也不要求四条腿使用相同动作。
-`stand_foot_lateral`使用同一站立指令掩码，按足端名称匹配横向范围：
-FL/RL为[0.12,0.18]m，FR/RR为[-0.18,-0.12]m；机身系Y轴左侧为正。
-范围围绕本机标称站姿约±0.1495m的足端横向位置设置，范围内不计罚。
-每只脚越界距离除以`stand_foot_lateral_sigma=0.05`m后平方，再对四足求和。
-该项需要刚体状态，只约束机身系横向位置，不约束足端前后位置或高度；
-行走、侧移、转向指令超出站立掩码时不生效。改变机械模型时应重新校准范围。
+`stand_orientation`复用通用`_reward_orientation()`的重力投影XY平方和，仅在站立指令下
+额外乘以-5.0；与全局`orientation=-0.2`相加后，站立水平约束的总系数为-5.2。
+它同时约束roll和pitch，不约束yaw；运动指令仍只有全局-0.2系数。
+
+`stand_foot_lateral`使用同一站立指令掩码，按足端名称匹配机身系横向目标：
+`stand_foot_lateral_targets`中FL/RL为+0.15m，FR/RR为-0.15m，总站宽为0.30m。
+该值接近本机标称站姿约±0.1495m的足端横向位置。令各足横向误差为e_i，原始奖励为：
+
+`exp(-sum(e_i²) / stand_foot_lateral_sigma²) * clamp(-gravity_z, 0, 0.7) / 0.7`
+
+`stand_foot_lateral_sigma=0.10`m；该尺度用于四足误差平方和，不是每只脚的硬容差。
+指数项使用正权重+0.5，越贴近目标越大；直立缩放避免翻倒时得到足端对齐奖励。
+该项需要刚体状态，采用完整机身旋转变换，计算全部四足，不区分支撑与摆动。
+只约束Y，不约束X/Z，不锁死足端，也不要求四脚受力相等。
+行走、侧移、转向指令超出站立掩码时，两项站立奖励均为零。
+改变机械模型时应重新校准足端目标。
+
+### 奖励来源与Primuus适配
+
+- 水平公式来自[legged_gym的LeggedRobot._reward_orientation](https://github.com/leggedrobotics/legged_gym/blob/master/legged_gym/envs/base/legged_robot.py)，
+  [AnymalCFlatCfg.rewards.scales](https://github.com/leggedrobotics/legged_gym/blob/master/legged_gym/envs/anymal_c/flat/anymal_c_flat_config.py)
+  以-5.0启用，原实现无站立门控。Primuus复用相同公式，增加站立命令门控，作为额外奖励项；全局水平项保持-0.2。
+- 横向公式来自[robot_lab的feet_distance_y_exp](https://github.com/fan-ziqi/robot_lab/blob/26acb225aad129e222da7a34ba11f39e29b73e39/source/robot_lab/robot_lab/tasks/manager_based/locomotion/velocity/mdp/rewards.py#L452)。
+  该版本[通用配置](https://github.com/fan-ziqi/robot_lab/blob/26acb225aad129e222da7a34ba11f39e29b73e39/source/robot_lab/robot_lab/tasks/manager_based/locomotion/velocity/velocity_env_cfg.py#L616)
+  权重为0、std为0.5m；[Tita配置](https://github.com/fan-ziqi/robot_lab/blob/26acb225aad129e222da7a34ba11f39e29b73e39/source/robot_lab/robot_lab/tasks/manager_based/locomotion/velocity/config/wheeled/ddtrobot_tita/rough_env_cfg.py#L243)
+  以-1.0和0.6m站宽启用。该负权重与贴近目标的优化方向相反，不用于Primuus。
+  Primuus保留指数公式和直立缩放，将索引奇偶映射改为足端名称映射，增加站立门控；
+  使用本机±0.15m目标、0.10m误差尺度和+0.5权重。这些参数是Primuus适配值，不代表上游四足任务的已验证配置。
+
 修改奖励需要重新训练或续训并重新导出策略，已有部署模型不会随配置自动改变。
 支撑足使用5N阈值并保留一帧接触滤波。
 缺足奖励按四足缺失比例计分。

@@ -32,14 +32,16 @@ class PrimuusEnv(LeggedRobot):
         sigma = cfg.rewards.stand_foot_lateral_sigma
         if not math.isfinite(sigma) or sigma <= 0.0:
             raise ValueError('stand_foot_lateral_sigma must be finite and positive')
-        bounds = cfg.rewards.stand_foot_lateral_bounds
+        if self.reward_scales['stand_foot_lateral'] < 0.0:
+            raise ValueError('stand_foot_lateral is an exponential reward and requires a positive scale')
+        targets = cfg.rewards.stand_foot_lateral_targets
         expected = {leg + '_foot_link' for leg in ('FL', 'FR', 'RL', 'RR')}
-        if set(bounds) != expected:
-            raise ValueError('stand_foot_lateral_bounds must name all four Primuus feet exactly')
-        for name, interval in bounds.items():
-            if (len(interval) != 2 or not all(math.isfinite(v) for v in interval)
-                    or interval[0] >= interval[1]):
-                raise ValueError(f'Invalid stand_foot_lateral_bounds for {name}: {interval}')
+        if set(targets) != expected:
+            raise ValueError('stand_foot_lateral_targets must name all four Primuus feet exactly')
+        for name, target in targets.items():
+            side = 1.0 if name.startswith(('FL_', 'RL_')) else -1.0
+            if not math.isfinite(target) or side * target <= 0.0:
+                raise ValueError(f'Invalid stand_foot_lateral_targets for {name}: {target}')
 
     def _init_buffers(self):
         super()._init_buffers()
@@ -48,17 +50,17 @@ class PrimuusEnv(LeggedRobot):
             dtype=torch.float, device=self.device,
         )
         if self.reward_scales.get('stand_foot_lateral', 0.0) != 0.0:
-            bounds_by_body = {}
-            for name, interval in self.cfg.rewards.stand_foot_lateral_bounds.items():
+            targets_by_body = {}
+            for name, target in self.cfg.rewards.stand_foot_lateral_targets.items():
                 body = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], name)
-                if body < 0 or body in bounds_by_body:
+                if body < 0 or body in targets_by_body:
                     raise ValueError(f'Invalid or duplicate standing foot body: {name}')
-                bounds_by_body[body] = interval
+                targets_by_body[body] = target
             feet = self.feet_indices.tolist()
-            if len(feet) != 4 or set(feet) != set(bounds_by_body):
-                raise ValueError('Standing foot bounds do not match the four selected feet')
-            self.stand_foot_lateral_bounds = torch.tensor(
-                [bounds_by_body[body] for body in feet], dtype=torch.float, device=self.device,
+            if len(feet) != 4 or set(feet) != set(targets_by_body):
+                raise ValueError('Standing foot targets do not match the four selected feet')
+            self.stand_foot_lateral_targets = torch.tensor(
+                [targets_by_body[body] for body in feet], dtype=torch.float, device=self.device,
             )
         self.joint_dynamics.validate_joint_names(self.dof_names)
         self.joint_friction = JenkinsJointFriction(self.joint_dynamics, self.dof_pos, torch.clamp)
@@ -75,16 +77,22 @@ class PrimuusEnv(LeggedRobot):
         joint_error = torch.abs(self.dof_pos - self.default_dof_pos)
         return torch.sum(joint_error * self.stand_still_joint_weights, dim=1) * self._standing_command_mask()
 
+    def _reward_stand_orientation(self):
+        # legged_gym LeggedRobot._reward_orientation；仅给站立命令增加水平约束。
+        return self._reward_orientation() * self._standing_command_mask()
+
     def _reward_stand_foot_lateral(self):
+        # Adapted from robot_lab feet_distance_y_exp (26acb225); source and config in
+        # doc/primuus_motion_training.md. Add a standing mask and name-based targets.
         # 使用完整机身旋转变换；世界位置、朝向和足端索引顺序不改变约束语义。
         relative = self.feet_pos - self.root_states[:, None, :3]
         quats = self.base_quat[:, None, :].expand(-1, relative.shape[1], -1)
         feet_body = quat_rotate_inverse(quats.reshape(-1, 4), relative.reshape(-1, 3))
         lateral = feet_body.reshape(self.num_envs, -1, 3)[:, :, 1]
-        bounds = self.stand_foot_lateral_bounds
-        excess = (bounds[:, 0] - lateral).clamp(min=0.0) + (lateral - bounds[:, 1]).clamp(min=0.0)
-        cost = torch.square(excess / self.cfg.rewards.stand_foot_lateral_sigma).sum(dim=1)
-        return cost * self._standing_command_mask()
+        error = lateral - self.stand_foot_lateral_targets
+        reward = torch.exp(-torch.square(error).sum(dim=1) / self.cfg.rewards.stand_foot_lateral_sigma ** 2)
+        upright = torch.clamp(-self.projected_gravity[:, 2], min=0.0, max=0.7) / 0.7
+        return reward * upright * self._standing_command_mask()
 
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
