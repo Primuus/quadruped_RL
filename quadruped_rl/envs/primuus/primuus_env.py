@@ -8,9 +8,10 @@ import torch
 from quadruped_rl import QUADRUPED_RL_ROOT_DIR
 from quadruped_rl.envs.base.legged_robot import LeggedRobot
 from quadruped_rl.utils.joint_dynamics import JointDynamicsParameters, JenkinsJointFriction
+from .domain_randomization import PrimuusDomainRandomization
 
 
-class PrimuusEnv(LeggedRobot):
+class PrimuusEnv(PrimuusDomainRandomization, LeggedRobot):
     """独立机器人适配器，不继承或导入 Go2 环境。"""
 
     def __init__(self, cfg, *args, **kwargs):
@@ -27,6 +28,7 @@ class PrimuusEnv(LeggedRobot):
 
     def _parse_cfg(self, cfg):
         super()._parse_cfg(cfg)
+        self._parse_domain_randomization(cfg)
         if cfg.domain_rand.push_robots:
             interval = cfg.domain_rand.push_interval_range_s
             if (len(interval) != 2 or not all(math.isfinite(v) for v in interval)
@@ -80,6 +82,7 @@ class PrimuusEnv(LeggedRobot):
         self.joint_friction = JenkinsJointFriction(self.joint_dynamics, self.dof_pos, torch.clamp)
         self.passive_joint_torques = torch.zeros_like(self.torques)
         self.net_joint_torques = torch.zeros_like(self.torques)
+        self._init_domain_rand_buffers()
         if self.cfg.domain_rand.push_robots:
             self.push_steps_remaining = torch.empty(self.num_envs, dtype=torch.long, device=self.device)
             self._reset_push_timer(torch.arange(self.num_envs, device=self.device))
@@ -142,6 +145,7 @@ class PrimuusEnv(LeggedRobot):
 
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
+        self._resample_episode_domain_rand(env_ids)
         self.joint_friction.reset(self.dof_pos, env_ids)
         self.passive_joint_torques[env_ids] = 0.
         self.net_joint_torques[env_ids] = 0.

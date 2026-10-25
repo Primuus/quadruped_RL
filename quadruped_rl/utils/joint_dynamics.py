@@ -55,9 +55,24 @@ class JenkinsJointFriction:
     def __init__(self, parameters, position, clip):
         self.parameters = parameters
         self.clip = clip
+        self.viscous_damping = parameters.viscous_damping
         self.yield_deflection = parameters.coulomb_torque / parameters.presliding_stiffness
         self.previous_position = position * 1.0
         self.deflection = position * 0.0
+
+    def set_parameters(self, env_ids, coulomb_torque, viscous_damping):
+        """Set selected environments' positive coefficients before resetting history.
+
+        Inputs have shape (selected environments, joints); the caller validates
+        ranges. Keep scalar defaults until randomization is actually requested.
+        """
+        if len(env_ids) == 0:
+            return
+        if isinstance(self.viscous_damping, (int, float)):
+            self.viscous_damping = self.deflection * 0.0 + self.parameters.viscous_damping
+            self.yield_deflection = self.deflection * 0.0 + self.yield_deflection
+        self.viscous_damping[env_ids] = viscous_damping
+        self.yield_deflection[env_ids] = coulomb_torque / self.parameters.presliding_stiffness
 
     def reset(self, position, env_ids=None):
         selected = slice(None) if env_ids is None else env_ids
@@ -71,4 +86,4 @@ class JenkinsJointFriction:
         )
         self.previous_position[...] = position
         return (-self.parameters.presliding_stiffness * self.deflection
-                - self.parameters.viscous_damping * velocity)
+                - self.viscous_damping * velocity)

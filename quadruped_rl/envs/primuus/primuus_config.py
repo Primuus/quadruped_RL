@@ -93,6 +93,27 @@ class PrimuusCfg(LeggedRobotCfg):
         push_interval_range_s = [12.0, 18.0]  # [s]；各环境独立倒计时，复位后重新采样
         max_push_vel_xy = 0.25  # 每轴世界系速度增量上限 [m/s]，XY合成最大约0.354 m/s
 
+        randomize_pd_gains = False
+        kp_scale_range = [0.95, 1.05]
+        kd_scale_range = [0.95, 1.05]
+        # 初期每个环境共用一组增益系数；开启后可分别采样十二个关节。
+        pd_gains_per_joint = False
+
+        randomize_joint_friction = False  # Jenkins 被动阻力，与足地摩擦分开
+        joint_coulomb_scale_range = [0.9, 1.1]
+        joint_viscous_scale_range = [0.9, 1.1]
+
+        randomize_base_com = False  # 仅创建环境时采样；base_link 局部坐标 [m]
+        base_com_offset_range = {
+            'x': [-0.005, 0.005], 'y': [-0.005, 0.005], 'z': [0.0, 0.0],
+        }
+
+        randomize_action_latency = False
+        action_latency_range_ms = [0.0, 10.0]  # 按物理步量化，当前步长 2 ms
+
+        randomize_motor_strength = False  # PD 输出缩放后限幅，不缩放被动摩擦
+        motor_strength_range = [0.95, 1.05]
+
     class noise(LeggedRobotCfg.noise):
         add_noise = True
 

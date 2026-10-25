@@ -131,3 +131,43 @@ Primuus使用该范围参数，不使用通用基类的固定`push_interval_s`�
 随机间隔机制参考其[速度任务配置](https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab_tasks/isaaclab_tasks/core/velocity/velocity_env_cfg.py)。
 上游通用配置使用10–15秒、每轴±0.5m/s；Primuus适配为12–18秒、每轴±0.25m/s，
 并明确跳过复位步骤。此方式是速度冲击近似，不代表指定牛顿数、作用点或持续时间的外力。
+
+## 执行器与质心随机化
+
+Primuus的五项可选随机化均由`primuus_config.py`的`domain_rand`配置，默认关闭。
+现有机身质量、足地摩擦、Push和观测噪声使用各自开关。更改开关或范围后必须重新创建环境。
+这些范围是初步试验参数，不代表已辨识的硬件误差。
+
+| 开关 | 范围参数及默认值 | 采样方式 |
+|---|---|---|
+| `randomize_pd_gains` | `kp_scale_range`、`kd_scale_range`均为[0.95,1.05] | 初始化及reset各采样一次；每个环境共用一组Kp/Kd系数，`pd_gains_per_joint=True`时逐关节采样 |
+| `randomize_joint_friction` | `joint_coulomb_scale_range`、`joint_viscous_scale_range`均为[0.9,1.1] | 初始化及reset逐环境、逐关节采样，episode内固定 |
+| `randomize_base_com` | `base_com_offset_range`：x/y各[-0.005,0.005]m，z为[0,0]m | 创建环境时采样；只改变`base_link`局部坐标下的原始COM，reset保持不变 |
+| `randomize_action_latency` | `action_latency_range_ms=[0,10]` | 初始化及reset逐环境采样整数物理步，episode内固定 |
+| `randomize_motor_strength` | `motor_strength_range=[0.95,1.05]` | 初始化及reset逐环境、逐关节采样，episode内固定 |
+
+范围内均匀采样，系数相对标称值计算，不在上回合结果上累计。
+激活的比例范围必须有限且严格大于零；延迟必须非负且包含至少一个物理时间步。
+目标延迟按物理步写入环形缓存，当前2ms步长下[0,10]ms包含0、2、4、6、8、10ms。
+对于不能整除步长的边界，仅使用范围内的整数步，不向范围外取整。
+局部reset只清空对应环境的历史，缓存中的零动作对应默认关节角。
+`self.actions`仍是策略输出；`applied_actions`单独保存延迟动作，观测维度和动作变化奖励语义不变。
+PD仍使用当前关节状态，不同时延迟反馈或力矩输出；这里没有模拟观测延迟、丢包或执行器带宽。
+
+控制顺序为：目标动作延迟 → 标称增益乘随机系数 → PD力矩乘电机强度 → 电机力矩限幅 → 加Jenkins被动力矩。
+`self.torques`仍表示限幅后的电机力矩，`net_joint_torques`包含机械被动阻力。
+强度系数不改变力矩上限、不缩放摩擦，也不代表转速/电压/温度相关的输出包络；它与共同缩放PD增益存在重叠，宜先分别启用。
+执行器随机化要求`control_type='P'`。关闭PD、强度及延迟时直接使用原基类力矩路径。
+
+关节摩擦通过`JenkinsJointFriction.set_parameters()`更新屈服力矩和粘性阻尼，预滑移刚度保持标称值；
+同步更新屈服位移并在reset清空摩擦历史。引擎原生关节摩擦/阻尼仍清零，避免重复阻力。
+COM不移动碰撞几何、根节点或腿部质量；刚体名称由加载的asset解析，沿用刚体设置的`recomputeInertia=True`。
+COM偏移与质量随机化分别采样，不表达某个具体载荷的质量、位置、惯性耦合。
+运行时系数/延迟可从环境缓冲区读取，COM偏移保存在`base_com_offsets`，原值在`base_com_nominal`。
+
+实现集中于`quadruped_rl/envs/primuus/domain_randomization.py`，由`PrimuusEnv`接入。
+方法参考如下，当前范围和采样粒度是Primuus适配配置：
+
+- [IsaacLab events.py](https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab/isaaclab/envs/mdp/events.py)：`randomize_actuator_gains`、`randomize_rigid_body_com`；关节阻力采用本工程Jenkins模型，不能直接复制引擎关节参数事件。
+- [IsaacLab actuator_pd.py](https://github.com/isaac-sim/IsaacLab/blob/main/source/isaaclab/isaaclab/actuators/actuator_pd.py)：`DelayedPDActuator`按物理步延迟目标；Primuus只延迟位置动作，保持现有观测契约。
+- [Walk These Ways legged_robot.py](https://github.com/Improbable-AI/walk-these-ways/blob/master/go1_gym/envs/base/legged_robot.py)：`_randomize_dof_props`、`_compute_torques`，参考电机比例缩放后限幅；Primuus强度按关节独立采样。
