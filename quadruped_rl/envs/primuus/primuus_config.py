@@ -91,7 +91,7 @@ class PrimuusCfg(LeggedRobotCfg):
         added_mass_range = [-0.5, 0.5]  # [kg]；相对模型标称机身质量均匀增减
         push_robots = True  # 启用瞬时水平速度增量扰动，训练抗推扰恢复能力
         push_interval_range_s = [12.0, 18.0]  # [s]；各环境独立倒计时，复位后重新采样
-        max_push_vel_xy = 0.25  # 每轴世界系速度增量上限 [m/s]，XY合成最大约0.354 m/s
+        max_push_vel_xy = 0.10  # 每轴世界系速度增量上限 [m/s]，XY合成最大约0.141 m/s
 
         randomize_pd_gains = False
         kp_scale_range = [0.95, 1.05]
