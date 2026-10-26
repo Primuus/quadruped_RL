@@ -84,7 +84,7 @@ python3 -m pip install -e src/controller/rl
 
 Go2 MuJoCo 示例配置，负责策略路径、XML、关节/执行器顺序、PD、动作缩放、观测缩放、仿真频率、跌倒阈值和键盘参数。它只服务 MuJoCo，不应被复制为自研实机参数。
 
-当前默认场景是 `resources/robots/go2/ROBOCON2027.xml`，不是平地；物理步长2 ms、decimation=10、策略周期20 ms。机身高度跌倒阈值为0，表示关闭高度条件，重力投影条件仍生效。
+当前默认场景是 `resources/site/ROBOCON2027.xml`，不是平地；物理步长2 ms、decimation=10、策略周期20 ms。机身高度跌倒阈值为0，表示关闭高度条件，重力投影条件仍生效。
 
 ### `config/primuus.yaml`
 
@@ -113,7 +113,7 @@ primuus/policy.onnx
 
 ### `resources/robots/<robot>/`
 
-存放MuJoCo XML、URDF和网格资源。`go2/go2.xml` 定义Go2本体，`scene_flat.xml` 提供平地对照，`scene_obstacles.xml` 是可选障碍场景，`ROBOCON2027.xml` 是当前Go2 YAML选择的场地。
+存放MuJoCo XML、URDF和网格资源。`go2/go2.xml` 定义Go2本体，`scene_flat.xml` 提供平地对照，`scene_obstacles.xml` 是可选障碍场景，`../../site/ROBOCON2027.xml` 保留原完整场地并由Go2 YAML引用。独立障碍与Primuus审核场景统一放在 [`resources/site/`](resources/site/README.md)。
 
 Primuus的资源职责见[模型说明](resources/robots/primuus/README.md)。模型包含21个link、12个驱动关节、65个碰撞形状；用圆柱、盒体和凸块近似大腿外壳，保留31 mm代表截面主槽净宽及折膝接触面。显示STL与碰撞代理各司其职，足端与小腿载体独立，质量惯量和机械限位不按代理体积重算。训练侧显式关闭圆柱自动替换胶囊，使两侧尺寸一致。
 

@@ -1,5 +1,6 @@
 <mujoco model="go2 robocon2027 scene">
-  <include file="go2.xml" />
+  <include file="../robots/go2/go2.xml" />
+  <compiler meshdir="../robots/go2/obj" />
   <!-- 场地欧拉角使用弧度，与 go2.xml 的编译设置一致。 -->
   <option gravity="0 0 -9.81" integrator="RK4" />
   <statistic center="0 0 0" extent="14.15" />

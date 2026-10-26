@@ -1,0 +1,10 @@
+<mujocoinclude>
+  <!-- 沟壑组合的台阶侧；在父body内引用，局部原点为第一阶前缘中心的地面投影。 -->
+  <!-- 沿+X上阶；box size为半尺寸。顶面高度依次0.12、0.24、0.36m。 -->
+  <geom name="stairs_step_1" type="box" pos="0.16 0 0.06" size="0.16 0.4 0.06"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+  <geom name="stairs_step_2" type="box" pos="0.48 0 0.12" size="0.16 0.4 0.12"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+  <geom name="stairs_top_platform" type="box" pos="1.04 0 0.18" size="0.4 0.4 0.18"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+</mujocoinclude>
