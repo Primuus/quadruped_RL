@@ -10,6 +10,7 @@
 | `narrow_bridge.xml` / `scene_primuus_narrow_bridge.xml` | 单木桥几何片段 / Primuus单木桥审核场景 |
 | `ramp.xml` / `ramp_assets.xml` / `scene_primuus_ramp.xml` | 斜坡及顶部平台几何 / 斜坡网格定义 / Primuus斜坡审核场景 |
 | `high_wall.xml` / `scene_primuus_high_wall.xml` | 高墙几何片段 / Primuus高墙审核场景 |
+| `limit_frame.xml` / `scene_primuus_limit_frame.xml` | 限高框架几何片段 / Primuus限高框架审核场景 |
 
 完整场景用于保留场地来源，当前Primuus开发和审核使用独立场景。其余障碍尚未逐项审核，不能将整场文件视为全部满足规则的已核定模型。
 
@@ -79,6 +80,31 @@ MuJoCo的box `size`为半尺寸；三个箱体均从地面向上填实，接缝�
 
 网格顶点内嵌于`ramp_assets.xml`，不依赖机器人mesh目录；父body负责整体平移和旋转。
 
+## 限高框架
+
+尺寸以《2027年足式机器人挑战赛-V1.0》第3.1节、PDF第5页为准：净高290mm、净宽800mm、长800mm，颜色为绿色。
+长度按通行方向的整体外长建模。原场地的`limit_frame_pillar_*`和`limit_frame_beam_*`只作为结构参考；
+原模型外长880mm，独立模型修正为规则规定的800mm，完整场地源文件不随独立模型改写。
+规则未标注杆件截面；本模型暂用40mm×40mm方杆作为建模假设，不能将其视作规则尺寸。
+
+| 项目 | 局部范围 / 数值 |
+| --- | --- |
+| 行进方向及整体长度 | +X，x∈[0,0.80]m |
+| 通道净宽 | y∈[-0.40,0.40]m，宽0.80m |
+| 最低横梁底面 | z=0.29m，地面z=0 |
+| 整体外宽 / 外高 | 0.88m / 0.33m，由40mm方杆假设推导 |
+| 前后立柱中心 | x=0.02、0.78m |
+| 左右立柱中心 | y=+0.42、-0.42m |
+| 前后横梁之间的内部距离 | 0.72m；此数值不是规则所指的整体长度 |
+
+结构包含四根立柱和顶部前、后、左、右四根横梁，顶部中央开放；没有顶板、侧墙或地面门槛。
+框架为静态碰撞体，在父body内引用`limit_frame.xml`即可，不依赖网格文件。
+审核场景将前缘放在世界x=1m、后缘x=1.8m，Primuus从原点朝+X接近入口。
+摩擦参数沿用原场地的`0.8 0.1 0.1`，属于仿真假设，规则没有提供摩擦系数。
+
+规则第4.3节允许机器人以任意姿态从框架下穿过，允许触碰，但禁止暴力撞击（例如造成框架移位）。
+本模型不模拟框架被推移，不能仅以静态框架未移动认定符合比赛要求；后续需结合接触与完整穿越判断。
+
 ## 查看与加载策略
 
 在`quadruped`工程根目录查看几何：
@@ -98,7 +124,7 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 
 `--xml-path`只替换场景，策略路径、关节顺序、PD和观测仍由Primuus配置决定。
 其他场景将上述命令中的`scene_primuus_stairs.xml`替换为`scene_primuus_narrow_bridge.xml`、
-`scene_primuus_ramp.xml`或`scene_primuus_high_wall.xml`即可。
+`scene_primuus_ramp.xml`、`scene_primuus_high_wall.xml`或`scene_primuus_limit_frame.xml`即可。
 已有平地策略不保证具备越障能力。默认`primuus.yaml`继续指向平地，审核场景通过命令显式选择。
 
 ## 后续训练接入

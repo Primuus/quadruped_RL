@@ -1,0 +1,21 @@
+<mujocoinclude>
+  <!-- 规则尺寸：净高0.29m、净宽0.80m、沿+X外长0.80m；绿色。 -->
+  <!-- 规则未规定杆件截面；采用40mm方杆作为建模假设，保持规定的净空和长度。 -->
+  <!-- 局部原点为入口前缘中心的地面投影；顶部仅四边横梁，不封顶。 -->
+  <geom name="limit_frame_pillar_front_left" type="box" pos="0.02 0.42 0.145" size="0.02 0.02 0.145"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+  <geom name="limit_frame_pillar_front_right" type="box" pos="0.02 -0.42 0.145" size="0.02 0.02 0.145"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+  <geom name="limit_frame_beam_front" type="box" pos="0.02 0 0.31" size="0.02 0.44 0.02"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+  <geom name="limit_frame_pillar_rear_left" type="box" pos="0.78 0.42 0.145" size="0.02 0.02 0.145"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+  <geom name="limit_frame_pillar_rear_right" type="box" pos="0.78 -0.42 0.145" size="0.02 0.02 0.145"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+  <geom name="limit_frame_beam_rear" type="box" pos="0.78 0 0.31" size="0.02 0.44 0.02"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+  <geom name="limit_frame_beam_left" type="box" pos="0.4 0.42 0.31" size="0.4 0.02 0.02"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+  <geom name="limit_frame_beam_right" type="box" pos="0.4 -0.42 0.31" size="0.4 0.02 0.02"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+</mujocoinclude>
