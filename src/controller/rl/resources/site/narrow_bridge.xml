@@ -1,0 +1,5 @@
+<mujocoinclude>
+  <!-- 单木桥：长3m、宽0.4m、高0.1m；局部原点为入口短边中心的地面投影。 -->
+  <geom name="narrow_bridge_deck" type="box" pos="1.5 0 0.05" size="1.5 0.2 0.05"
+    rgba="0.25 0.55 0.18 1" friction="0.8 0.1 0.1" contype="1" conaffinity="1" condim="3" />
+</mujocoinclude>

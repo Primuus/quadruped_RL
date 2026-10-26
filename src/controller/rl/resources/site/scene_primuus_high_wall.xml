@@ -1,0 +1,28 @@
+<mujoco model="primuus high_wall review">
+  <include file="../robots/primuus/primuus.xml" />
+  <!-- 本体mesh文件仍由robots/primuus维护，路径相对于本场景。 -->
+  <compiler meshdir="../robots/primuus" />
+  <statistic center="0.6 0 0.15" extent="2.6" />
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0" />
+    <rgba haze="0.15 0.2 0.25 1" />
+    <global azimuth="135" elevation="-25" />
+  </visual>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.4 0.5" rgb2="0.05 0.07 0.1"
+      width="512" height="3072" />
+    <texture type="2d" name="high_wall_ground" builtin="checker" mark="edge"
+      rgb1="0.22 0.26 0.3" rgb2="0.14 0.18 0.2" markrgb="0.7 0.75 0.8" width="300" height="300" />
+    <material name="high_wall_ground" texture="high_wall_ground" texuniform="true"
+      texrepeat="5 5" reflectance="0.1" />
+  </asset>
+  <worldbody>
+    <light pos="1 0 4" dir="0 0 -1" directional="true" />
+    <geom name="floor" type="plane" size="0 0 0.05" material="high_wall_ground"
+      friction="0.8 0.005 0.0001" condim="3" margin="0.001" solref="0.002 1" />
+    <!-- 机器人初始位置沿用本体，障碍前缘距原点1m。 -->
+    <body name="high_wall" pos="1 0 0">
+      <include file="high_wall.xml" />
+    </body>
+  </worldbody>
+</mujoco>
