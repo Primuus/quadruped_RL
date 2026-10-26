@@ -265,7 +265,7 @@ Primuus的 `asset.joint_dynamics_file`指向自身资源中的JSON，算法位�
 
 `PrimuusEnv`将原生DOF friction/damping替换为上述非零损耗，每个物理步提交限幅电机力矩与被动损耗之和。`torques`仍用于电机力矩奖励，`passive_joint_torques`与 `net_joint_torques`另行保留；不扩大限矩、不修改速度来制造静止，复位清除摩擦历史。
 
-`domain_rand.randomize_friction`随机化形状接触摩擦；Primuus可另外通过`randomize_joint_friction`随机化Jenkins关节损耗。新增PD增益、关节损耗、机身COM、目标动作延迟和电机输出比例五项均默认关闭，开关、单位和采样方式见[Primuus训练配置](doc/primuus_motion_training.md#执行器与质心随机化)。统一关节公式不等于统一足地接触求解，也不保证旧策略在新动力学下仍有相同行为。Go2和真实电机输出不启用此模型；原理见[关节动力学](https://github.com/Primuus/quadruped_RL/blob/main/doc/关节动力学.md)。
+`domain_rand.randomize_friction`随机化形状接触摩擦；Primuus另外通过`randomize_joint_friction`随机化Jenkins关节损耗。关节损耗、机身COM和电机输出比例随机化默认开启，PD增益及目标动作延迟随机化默认关闭，开关、单位和采样方式见[Primuus训练配置](doc/primuus_motion_training.md#执行器与质心随机化)。统一关节公式不等于统一足地接触求解，也不保证旧策略在新动力学下仍有相同行为。Go2和真实电机输出不启用此模型；原理见[关节动力学](https://github.com/Primuus/quadruped_RL/blob/main/doc/关节动力学.md)。
 
 ## 自碰撞配置
 
