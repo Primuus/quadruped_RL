@@ -76,11 +76,11 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
 
 | 项目 | 实现与约束 |
 | --- | --- |
-| 训练任务 | `go2`、`primuus`；通用入口默认 `primuus`，专用入口固定选择各自任务 |
+| 训练任务 | `go2`、`primuus`、`primuus_obstacles`；通用及Primuus入口默认平地任务，可显式选择Primuus障碍任务 |
 | 训练环境 | Isaac Gym Preview / PhysX；自定义 `quadruped_rl`，不是 Isaac Lab |
 | 默认并行规模 | 4096 环境，20 s 回合，50 Hz 策略周期 |
-| 训练地形 | 当前 `create_sim()` 只创建平地；配置保留地形字段不等于已接入粗糙地形 |
-| critic 外力与高度 | 3 + 187 维目前为零占位；没有实际外力/高度数据回填 |
+| 训练地形 | `primuus`使用平地；`primuus_obstacles`加载真实碰撞三角网格，包含矮障碍、正反台阶及正反坡 |
+| critic 外力与高度 | 外力3维保持零占位；平地高度187维为零，障碍任务填入实际地形采样 |
 | 正式算法 | Go2 和 Primuus 均选择 HIM-PPO；普通 PPO 源码仍保留，但不是这两个任务所选链路 |
 | Primuus关节动力学 | 独立适配器使用Jenkins预滑移干摩擦与粘性阻尼，与MuJoCo共用定义，不影响Go2 |
 | 产物管理 | train新增run/checkpoint，play覆盖固定双模型，本地部署须另行复制 |
@@ -92,14 +92,14 @@ critic privileged obs 只用于训练 value function 和 estimator，不进入�
 
 - `quadruped_rl/envs/base/`：四足机器人通用环境基类、观测、reward、随机化、命令和终止条件。
 - `quadruped_rl/envs/go2/`：仅保留 `go2_config.py` 和 `go2_env.py`，负责Go2独立参数与环境入口；通用实现直接使用base。
-- `quadruped_rl/envs/primuus/`：`primuus_config.py`定义独立参数，`primuus_env.py`适配被动关节损耗与复位；不依赖Go2。
+- `quadruped_rl/envs/primuus/`：`primuus_config.py`和`primuus_env.py`定义平地参数及动力学；`primuus_obstacles_*`和`obstacles_terrain.py`提供独立障碍任务。
 - `quadruped_rl/scripts/train.py`：通用训练入口，通过 `--task <robot>` 选择机器人任务。
 - `quadruped_rl/scripts/play.py`：通用 play / 策略导出入口，通过 `--task <robot>` 选择机器人任务。
 - `quadruped_rl/scripts/train_go2.py`：Go2 快捷训练入口，会自动设置 `--task go2`。
 - `quadruped_rl/scripts/play_go2.py`：Go2 快捷 play / 策略导出入口。
 - `quadruped_rl/scripts/train_primuus.py` / `play_primuus.py`：Primuus专用训练和play/双格式导出入口。
 - `resources/robots/go2/` / `resources/robots/primuus/`：独立模型资产；Primuus包含URDF、引用网格、自碰撞排除规则及 `joint_dynamics.json`。
-- `quadruped_rl/utils/`：任务注册、导出、日志及 `joint_dynamics.py` 等工具；`terrain.py`不属于平地创建链路。
+- `quadruped_rl/utils/`：任务注册、导出、日志及 `joint_dynamics.py` 等工具；通用`terrain.py`不属于平地或Primuus障碍任务创建链路。
 - `rsl_rl/`：随工程同步的 RL 算法库，当前包含 HIM-PPO 相关实现。
 - `docker/`：Docker 训练环境构建脚本。
 - `logs/`：训练日志和 checkpoint 输出目录，通常不提交。
@@ -178,6 +178,14 @@ Primuus快捷训练入口：
 python quadruped_rl/scripts/train_primuus.py --headless
 ```
 
+选择Primuus障碍地形任务：
+
+```bash
+python quadruped_rl/scripts/train_primuus.py --task primuus_obstacles --headless
+```
+
+该任务使用独立的`logs/primuus_obstacles/`目录，地形参数、复位、高度输入和加载平地检查点的方法见[obstacles训练说明](doc/primuus_obstacles.md)。
+
 Primuus使用独立任务配置和Jenkins关节损耗模型，连续速度范围和采样比例见[训练资产说明](resources/robots/primuus/README.md#速度指令与采样)。观测为 `45×6`、输出12关节，部署档位由部署工程另行设置。修改训练配置不会追溯改变已经导出的策略。
 
 当前启用19项基础奖励，HIM估计器使用原始观测学习速度和隐变量。训练速度课程关闭，纯前进上限2 m/s，其他平移状态的XY合速度上限1 m/s，偏航上限1 rad/s；奖励名称、公式及参数见[Primuus运动训练](doc/primuus_motion_training.md)。
@@ -223,7 +231,7 @@ python quadruped_rl/scripts/train_primuus.py \
 
 | 参数 | 示例 | 说明 |
 | --- | --- | --- |
-| `--task` | `--task primuus` | 通用入口任务名，默认Primuus；两个机器人专用入口分别强制选择自己的task。 |
+| `--task` | `--task primuus_obstacles` | 默认`primuus`平地；Primuus专用入口支持`primuus`和`primuus_obstacles`。 |
 | `--headless` | `--headless` | 无窗口运行，适合服务器。 |
 | `--num_envs` | `--num_envs 4096` | 并行环境数量。 |
 | `--seed` | `--seed 1` | 在创建训练/play环境前设置随机种子；`-1`随机选择种子，并把实际值同步到环境与训练配置。 |

@@ -7,7 +7,8 @@ from quadruped_rl.utils import get_args
 
 def main():
     args = get_args()
-    args.task = "primuus"
+    if args.task not in ("primuus", "primuus_obstacles"):
+        raise ValueError("Primuus entry point accepts --task primuus or primuus_obstacles")
     train(args)
 
 

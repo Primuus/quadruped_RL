@@ -73,10 +73,9 @@ def parse_sim_params(args, cfg):
 
 def get_load_path(root, load_run=-1, checkpoint=-1):
     root_path = Path(root)
-    if not root_path.is_dir():
-        raise ValueError(f"No runs in this directory: {root_path}")
-
     if load_run in (-1, '-1'):
+        if not root_path.is_dir():
+            raise ValueError(f"No runs in this directory: {root_path}")
         runs = []
         for run_path in root_path.iterdir():
             if not run_path.is_dir() or run_path.name == 'exported':

@@ -9,7 +9,8 @@ def main():
     play_module.EXPORT_POLICY = True
 
     args = get_args()
-    args.task = "primuus"
+    if args.task not in ("primuus", "primuus_obstacles"):
+        raise ValueError("Primuus entry point accepts --task primuus or primuus_obstacles")
     play_module.play(args)
 
 
