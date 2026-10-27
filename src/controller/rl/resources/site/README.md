@@ -12,6 +12,8 @@
 | `high_wall.xml` / `scene_primuus_high_wall.xml` | 高墙几何片段 / Primuus高墙审核场景 |
 | `limit_frame.xml` / `scene_primuus_limit_frame.xml` | 限高框架几何片段 / Primuus限高框架审核场景 |
 | `stepping_stones.xml` / `scene_primuus_stepping_stones.xml` | 梅花桩几何片段 / Primuus梅花桩审核场景 |
+| `brick_wood_pit.xml` / `brick_wood_pit_assets.xml` / `scene_primuus_brick_wood_pit.xml` | 砖木坑几何 / 填充底层网格 / Primuus砖木坑审核场景 |
+| `generate_brick_wood_pit.py` | 按固定尺寸生成砖木坑资源与场景 |
 | `tire_array.xml` / `tire_array_assets.xml` / `scene_primuus_tire_array.xml` | 轮胎阵几何 / 凸扇段网格 / Primuus轮胎阵审核场景 |
 
 完整场景用于保留场地来源，当前Primuus开发和审核使用独立场景。其余障碍尚未逐项审核，不能将整场文件视为全部满足规则的已核定模型。
@@ -154,6 +156,37 @@ MuJoCo的box `size`为半尺寸；三个箱体均从地面向上填实，接缝�
 复用时在主MJCF顶层include `tire_array_assets.xml`，在静态父body内include `tire_array.xml`，
 方式与斜坡的资源/几何拆分一致。每胎有独立body名`tire_left_1`至`tire_right_4`，便于区分接触。
 
+## 砖木坑
+
+外形依据规则书第3.1节、PDF第5页：L形，外侧两条长边各2m，两端短边各1m，绿色护栏高0.15m。
+局部原点为入口短边中心的地面投影，先沿+X进入，再转向+Y离开。
+外轮廓顶点依次为`(0,-0.5),(2,-0.5),(2,1.5),(1,1.5),(1,0.5),(0,0.5)`，单位为米。
+入口为x=0、y∈[-0.5,0.5]，出口为y=1.5、x∈[1,2]。
+审核场景父body位于`(1,0,0)`，世界范围为x∈[1,3]、y∈[-0.5,1.5]。
+
+坑底与外部地面齐平，填充最高处为z=0.10m，比护栏顶面低0.05m；100mm填充深度是用户指定值，规则未规定填充深度。
+六段外围护栏包含入口和出口短边，机器人需跨过边缘；护栏厚25mm是建模假设，外轮廓尺寸包含护栏。
+按规则示意图用对角线`x+y=1.5`区分碎砖区和树皮区；入口侧为碎砖，出口侧为腐松树皮。
+对角线仅为材料分界，不增加规则未明确要求的凸起隔板。
+
+| 填料 | 表面方块边长 | 实体底层高度 | 方块顶面高度 |
+| --- | --- | --- | --- |
+| 碎砖 | 30、40、50mm；规则未规定，属于建模假设 | 50mm | 80～100mm |
+| 树皮 | 10、14、18、20mm；位于规则10～20mm范围内 | 80mm | 90～100mm |
+
+按用户要求，表面填料均用小正方体近似，采用固定排列和交错尺寸；碎砖360块、树皮2751块。
+表面方块下方使用两个凸实心底层填充，保留方块之间的凹槽，不逐层生成不可见颗粒。
+所有填料和护栏均为固定刚体，不模拟碎砖移动、树皮压缩或颗粒重排；摩擦`0.8 0.1 0.1`沿用原场地假设值，未按材料辨识。
+该近似用于几何接触和落脚训练准备，不能代表真实松散填料的全部动力学。
+
+复用时在主MJCF顶层include `brick_wood_pit_assets.xml`，在静态父body内include `brick_wood_pit.xml`。
+网格顶点内嵌于资源文件，方块使用MJCF `replicate`展开为具名静态geom，需要支持该元素的MuJoCo版本。
+可从工程根目录重新生成，尺寸和排列参数在生成器内维护；场景外观模板来自同目录的`scene_primuus_high_wall.xml`：
+
+```bash
+python3 -B src/controller/rl/resources/site/generate_brick_wood_pit.py
+```
+
 ## 查看与加载策略
 
 在`quadruped`工程根目录查看几何：
@@ -174,7 +207,7 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 `--xml-path`只替换场景，策略路径、关节顺序、PD和观测仍由Primuus配置决定。
 其他场景将上述命令中的`scene_primuus_stairs.xml`替换为`scene_primuus_narrow_bridge.xml`、
 `scene_primuus_ramp.xml`、`scene_primuus_high_wall.xml`、`scene_primuus_limit_frame.xml`、
-`scene_primuus_stepping_stones.xml`或`scene_primuus_tire_array.xml`即可。
+`scene_primuus_stepping_stones.xml`、`scene_primuus_tire_array.xml`或`scene_primuus_brick_wood_pit.xml`即可。
 已有平地策略不保证具备越障能力。默认`primuus.yaml`继续指向平地，审核场景通过命令显式选择。
 
 ## 后续训练接入
@@ -187,4 +220,5 @@ python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
 梅花桩需从一侧平台进入、从另一平台离开，并至少触及每个桩顶一次；侧面摔下或半数及以上足触地需重新越障。
 轮胎阵需从短边踏入、从另一短边离开；半数及以上足接触阵列外矩形地面需重新越障。
 轮胎中心孔和胎间空隙位于阵列矩形内，不能把所有地面接触不加区分地判成该项失败。
+砖木坑需从一条短边进入、另一条短边离开；半数及以上足接触坑外地面需重新越障，判定区域应使用L形轮廓而非外接矩形。
 此资源不包含奖励、成功判定、地形课程或策略切换逻辑。审核通过后，再逐项提取其他障碍。
