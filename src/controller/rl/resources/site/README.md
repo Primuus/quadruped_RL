@@ -15,8 +15,38 @@
 | `brick_wood_pit.xml` / `brick_wood_pit_assets.xml` / `scene_primuus_brick_wood_pit.xml` | 砖木坑几何 / 填充底层网格 / Primuus砖木坑审核场景 |
 | `generate_brick_wood_pit.py` | 按固定尺寸生成砖木坑资源与场景 |
 | `tire_array.xml` / `tire_array_assets.xml` / `scene_primuus_tire_array.xml` | 轮胎阵几何 / 凸扇段网格 / Primuus轮胎阵审核场景 |
+| `obstacles.xml` / `obstacles_assets.xml` | 通用低障碍、台阶、斜坡及矮块；由`../robots/primuus/scene_obstacles.xml`加载 |
 
 完整场景用于保留场地来源，当前Primuus开发和审核使用独立场景。其余障碍尚未逐项审核，不能将整场文件视为全部满足规则的已核定模型。
+
+## obstacles综合场景
+
+`../robots/primuus/scene_obstacles.xml`加载Primuus本体和本目录的`obstacles.xml`、`obstacles_assets.xml`。
+这是后续复杂地形训练配套的通用障碍场景，尺寸不表示比赛规则要求。
+机器人初始位置为原点，面向+X；障碍前方保留平地。
+
+| 通道 | 位置与尺寸 |
+| --- | --- |
+| 主通道，中心y=0 | x=1.3m、2.0m处分别为4cm、8cm高横条，沿X厚0.20m、宽1.60m |
+| 主通道台阶 | x∈[3.0,5.1]m，4cm一级，上至12cm平台后下行；踏面深0.30m，顶平台长0.90m，宽1.60m |
+| 坡道，中心y=2.5m | x∈[1.5,4.5]m，两端各1m长坡道、中间1m平台；平台高0.20m、宽1.60m，坡度0.2，约11.3° |
+| 矮块，中心y约−2.5m | x=1.5～4.1m范围内四块2/4/6/8cm高盒体，长宽0.5～0.6m |
+
+`obstacles.xml`的`pos`是中心坐标，box的`size`是半尺寸；斜坡网格和接触默认值在`obstacles_assets.xml`。
+各障碍为静态实体，接触参数沿用Primuus平地场景；不增加隐形踏板或护栏。
+可整体移动或旋转包含几何的父body，修改后重新加载场景生效。
+
+在部署工程根目录运行：
+
+```bash
+python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
+  --config src/controller/rl/config/primuus.yaml \
+  --xml-path src/controller/rl/resources/robots/primuus/scene_obstacles.xml
+```
+
+训练工程通过`train_primuus.py --task primuus_obstacles`选择障碍任务，实际使用Isaac Gym生成的随机凸块/凹陷、正反台阶和正反坡网格。
+MuJoCo为固定通道布局，与训练任务覆盖相近类型，不是训练地形拼图的逐点复刻。
+默认`primuus.yaml`仍选择平地；障碍策略的模型路径通过`--policy-path`或YAML的`policy_path`指定。
 
 ## 台阶尺寸与坐标
 

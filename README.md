@@ -225,6 +225,16 @@ debug是正式运行器的可选输出，不是另一套部署链路。它区分
 python3 -m mujoco.viewer --mjcf=src/controller/rl/resources/robots/primuus/scene_flat.xml
 ```
 
+Primuus综合障碍场景包含低横条、上下台阶、坡道和矮块，可加载策略运行：
+
+```bash
+python3 src/controller/rl/rl_controller/deploy_mujoco_rl.py \
+  --config src/controller/rl/config/primuus.yaml \
+  --xml-path src/controller/rl/resources/robots/primuus/scene_obstacles.xml
+```
+
+场景尺寸、资源职责和配套的Isaac Gym `primuus_obstacles`任务见[场地说明](src/controller/rl/resources/site/README.md#obstacles综合场景)。
+
 这个原生Viewer不读取机器人YAML、策略、统一关节损耗或evdev控制器，播放后无控制机器人会倒地。它使用XML原生关节损耗，快捷键与本工程RL入口的WASD控制不同。检查策略运动请使用上面的Primuus RL入口，不能拿Go2权重运行Primuus YAML。
 
 Primuus小腿机械范围为 `[-2.7227, -0.8378] rad`，通过固定碰撞载体和凸分段处理接触，不以收紧关节范围代替碰撞约束。几何职责及数值接触边界见[模型说明](src/controller/rl/resources/robots/primuus/README.md)。

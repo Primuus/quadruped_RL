@@ -16,6 +16,7 @@ Primuus资产由URDF、显示网格、碰撞几何、MuJoCo本体和场景组成
 | `collision/self_collision_exclusions.json` | 20对正常装配接触的命名排除规则 |
 | `primuus.xml` | MuJoCo本体：浮动机身、执行器、虚拟IMU和机械/碰撞数据 |
 | `scene_flat.xml` | 引用本体并加入地面、灯光和相机 |
+| `scene_obstacles.xml` | 引用本体与`../../site/obstacles*.xml`，提供低障碍、台阶、斜坡及矮块场景 |
 | `joint_dynamics.json` | 仿真关节损耗的物理单位参数与关节顺序；由Python适配器加载 |
 | `../../../config/primuus.yaml` | 策略路径、关节顺序、PD、默认姿态与观测契约 |
 

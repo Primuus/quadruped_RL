@@ -88,7 +88,7 @@ Go2 MuJoCo 示例配置，负责策略路径、XML、关节/执行器顺序、PD
 
 ### `config/primuus.yaml`
 
-Primuus独立运行配置，引用自身 `scene_flat.xml`、关节名称和默认角。部署物理步长0.5 ms、decimation=40，PD 2 kHz；独立训练任务使用2 ms、decimation=10，PD 500 Hz，两侧策略周期均为20 ms。离散接触不保证任意高速冲击零穿入。策略路径由 `policy_path` 指定，正式入口检查文件存在性和观测/动作契约，不能用Go2权重填充以绕过检查。
+Primuus独立运行配置，引用自身 `scene_flat.xml`、关节名称和默认角。可通过`--xml-path src/controller/rl/resources/robots/primuus/scene_obstacles.xml`选择障碍场景；命令行相对路径以工作目录为基准，工程根目录的完整命令见[场地说明](resources/site/README.md#obstacles综合场景)。部署物理步长0.5 ms、decimation=40，PD 2 kHz；独立训练任务使用2 ms、decimation=10，PD 500 Hz，两侧策略周期均为20 ms。离散接触不保证任意高速冲击零穿入。策略路径由 `policy_path` 指定，正式入口检查文件存在性和观测/动作契约，不能用Go2权重填充以绕过检查。
 
 与独立训练任务共用 PD `60 / 1.5`、动作缩放 `0.25` 和每腿默认角 `[0, -0.75, -1.5]`。高度奖励目标为0.28±0.03 m，不是独立的机身高度控制器；默认角也不保证承重后的高度。部署初始机身Z为0.31212 m，训练复位为0.42 m并带关节角扰动，两者不是高度奖励目标。
 
@@ -113,7 +113,7 @@ primuus/policy.onnx
 
 ### `resources/robots/<robot>/`
 
-存放MuJoCo XML、URDF和网格资源。`go2/go2.xml` 定义Go2本体，`scene_flat.xml` 提供平地对照，`scene_obstacles.xml` 是可选障碍场景，`../../site/ROBOCON2027.xml` 保留原完整场地并由Go2 YAML引用。独立障碍与Primuus审核场景统一放在 [`resources/site/`](resources/site/README.md)。
+存放MuJoCo XML、URDF和网格资源。各机器人目录的`scene_flat.xml`提供平地，`scene_obstacles.xml`提供可选障碍场景；Primuus障碍几何维护在`site/obstacles*.xml`。`../../site/ROBOCON2027.xml`保留原完整场地并由Go2 YAML引用。独立障碍与Primuus审核场景统一放在 [`resources/site/`](resources/site/README.md)。
 
 Primuus的资源职责见[模型说明](resources/robots/primuus/README.md)。模型包含21个link、12个驱动关节、65个碰撞形状；用圆柱、盒体和凸块近似大腿外壳，保留31 mm代表截面主槽净宽及折膝接触面。显示STL与碰撞代理各司其职，足端与小腿载体独立，质量惯量和机械限位不按代理体积重算。训练侧显式关闭圆柱自动替换胶囊，使两侧尺寸一致。
 
